@@ -7,8 +7,10 @@ from frappe.permissions import add_permission, update_permission_property
 from crm.api.doc import get_assigned_users
 from crm.fcrm.doctype.crm_notification.crm_notification import notify_user
 from crm.integrations.api import get_contact_lead_or_deal_from_number
+from crm.utils import parse_phone_number
 
 ALLOWED_WHATSAPP_ROLES = ["System Manager", "Sales Manager", "Sales User"]
+WHATSAPP_LEAD_SOURCE = "WhatsApp"
 
 
 def validate_access(reference_doctype=None, reference_name=None, permtype="read"):
@@ -38,12 +40,125 @@ def validate(doc, method):
 	phone_number = doc.get("from") if doc.type == "Incoming" else doc.get("to")
 	if phone_number:
 		try:
+			phone_number = normalize_whatsapp_number(phone_number)
 			name, doctype = get_contact_lead_or_deal_from_number(phone_number)
+			if not name and doc.type == "Incoming":
+				name, doctype = create_lead_from_whatsapp_message(doc, phone_number)
 			if doctype and name is not None:
 				doc.reference_doctype = doctype
 				doc.reference_name = name
 		except Exception:
-			frappe.log_error(frappe.get_traceback(), "CRM WhatsApp: failed to resolve contact from number")
+			frappe.log_error(
+				frappe.get_traceback(),
+				"CRM WhatsApp: failed to resolve contact or create lead",
+			)
+
+
+def normalize_whatsapp_number(phone_number: str) -> str:
+	"""Return the E.164 form of a WhatsApp sender number when it is valid.
+
+	Meta sends sender IDs as E.164 digits without the leading plus sign. Adding
+	the plus before parsing prevents the site's default country from being
+	applied to an already international number.
+	"""
+	raw_number = frappe.utils.cstr(phone_number).strip()
+	digits = "".join(character for character in raw_number if character.isdigit())
+	if not digits:
+		return raw_number
+
+	parsed_number = parse_phone_number(f"+{digits}")
+	if parsed_number.get("is_valid"):
+		return parsed_number["formats"]["E164"]
+
+	return raw_number
+
+
+def create_lead_from_whatsapp_message(doc, phone_number: str) -> tuple[str | None, str | None]:
+	"""Create one CRM Lead for an unknown incoming WhatsApp sender.
+
+	The lookup is repeated while holding a per-number Redis lock so concurrent
+	messages from the same new sender reuse the first Lead.
+	"""
+	if not parse_phone_number(phone_number).get("is_valid"):
+		return None, None
+
+	lock_key = f"crm:whatsapp-lead:{phone_number}"
+	lock = frappe.cache.lock(lock_key, timeout=60, blocking_timeout=15)
+	lock.acquire(blocking=True)
+	release_immediately = True
+
+	try:
+		name, doctype = get_contact_lead_or_deal_from_number(phone_number)
+		if name:
+			return name, doctype
+
+		ensure_whatsapp_lead_source()
+		profile_name = frappe.utils.cstr(doc.get("profile_name")).strip()[:140]
+		first_name = profile_name or f"WhatsApp Lead {phone_number[-4:]}"
+
+		lead = frappe.get_doc(
+			{
+				"doctype": "CRM Lead",
+				"first_name": first_name,
+				"mobile_no": phone_number,
+				"source": WHATSAPP_LEAD_SOURCE,
+			}
+		).insert(ignore_permissions=True)
+
+		def release_lock_after_transaction():
+			if lock.owned():
+				lock.release()
+
+		frappe.db.after_commit.add(release_lock_after_transaction)
+		frappe.db.after_rollback.add(release_lock_after_transaction)
+		release_immediately = False
+		return lead.name, lead.doctype
+	finally:
+		if release_immediately and lock.owned():
+			lock.release()
+
+
+def ensure_whatsapp_lead_source():
+	if frappe.db.exists("CRM Lead Source", WHATSAPP_LEAD_SOURCE):
+		return
+
+	frappe.get_doc(
+		{
+			"doctype": "CRM Lead Source",
+			"source_name": WHATSAPP_LEAD_SOURCE,
+		}
+	).insert(ignore_permissions=True, ignore_if_duplicate=True)
+
+
+def backfill_unlinked_whatsapp_messages() -> dict:
+	"""Link stored incoming messages, creating Leads for unknown senders."""
+	if not frappe.db.exists("DocType", "WhatsApp Message"):
+		return {"processed": 0, "linked": 0, "leads": []}
+
+	messages = frappe.get_all(
+		"WhatsApp Message",
+		filters={
+			"type": "Incoming",
+			"reference_name": ["is", "not set"],
+		},
+		pluck="name",
+	)
+	linked = 0
+	leads = set()
+
+	for message_name in messages:
+		message = frappe.get_doc("WhatsApp Message", message_name)
+		message.save(ignore_permissions=True)
+		if message.reference_doctype and message.reference_name:
+			linked += 1
+			if message.reference_doctype == "CRM Lead":
+				leads.add(message.reference_name)
+
+	return {
+		"processed": len(messages),
+		"linked": linked,
+		"leads": sorted(leads),
+	}
 
 
 def on_update(doc, method):

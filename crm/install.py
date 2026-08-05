@@ -443,6 +443,7 @@ def add_default_lead_sources():
 		"Campaign",
 		"Walk In",
 		"Facebook",
+		"WhatsApp",
 		"Website",
 		"Web Form",
 	]
