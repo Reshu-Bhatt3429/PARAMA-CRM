@@ -27,6 +27,11 @@ from crm.api.whatsapp import (
 	validate,
 	whatsapp_message_preview,
 )
+from crm.api.whatsapp_followups import (
+	build_digest_summary,
+	create_followup_notification,
+	get_pending_conversations,
+)
 
 
 class TestWhatsAppHooks(FrappeTestCase):
@@ -772,3 +777,220 @@ class TestWhatsAppPriority(FrappeTestCase):
 			)
 		)
 		self.assertFalse(is_unanswered({"last_outgoing_at": datetime(2026, 8, 1, 9, 0, 0)}))
+
+
+class TestWhatsAppFollowups(FrappeTestCase):
+	"""Scheduler-side nudges and the manager digest."""
+
+	NOW = datetime(2026, 8, 1, 12, 0, 0)
+
+	def tearDown(self):
+		frappe.db.rollback()
+
+	def _aggregate(self, name, last_incoming_at, last_outgoing_at=None):
+		return {
+			"reference_doctype": "CRM Lead",
+			"reference_name": name,
+			"last_at": last_incoming_at,
+			"message_count": 3,
+			"last_incoming_at": last_incoming_at,
+			"last_outgoing_at": last_outgoing_at,
+			"message_count_7d": 3,
+		}
+
+	def test_only_conversations_waiting_longer_than_the_cutoff_are_pending(self):
+		aggregates = [
+			self._aggregate("LEAD-0001", datetime(2026, 8, 1, 8, 0, 0)),
+			# Waiting for 30 minutes: inside the two hour grace period.
+			self._aggregate("LEAD-0002", datetime(2026, 8, 1, 11, 30, 0)),
+			# Answered: not waiting at all.
+			self._aggregate("LEAD-0003", datetime(2026, 8, 1, 7, 0, 0), datetime(2026, 8, 1, 8, 0, 0)),
+		]
+		references = {
+			("CRM Lead", "LEAD-0001"): {
+				"display_name": "Ada Lovelace",
+				"assigned_users": ["priya@demo.crm"],
+				"owner_user": "priya@demo.crm",
+			},
+			("CRM Lead", "LEAD-0002"): {
+				"display_name": "Grace Hopper",
+				"assigned_users": ["rahul@demo.crm"],
+				"owner_user": "rahul@demo.crm",
+			},
+		}
+		unanswered_since = {
+			("CRM Lead", "LEAD-0001"): datetime(2026, 8, 1, 8, 0, 0),
+			("CRM Lead", "LEAD-0002"): datetime(2026, 8, 1, 11, 30, 0),
+		}
+
+		with (
+			patch(
+				"crm.api.whatsapp_followups.get_conversation_aggregates",
+				return_value=aggregates,
+			),
+			patch(
+				"crm.api.whatsapp_followups.get_unanswered_since",
+				return_value=unanswered_since,
+			),
+			patch(
+				"crm.api.whatsapp_followups.get_conversation_references",
+				return_value=references,
+			),
+		):
+			pending = get_pending_conversations(now=self.NOW)
+
+		self.assertEqual([row["reference_name"] for row in pending], ["LEAD-0001"])
+		self.assertEqual(pending[0]["assigned_users"], ["priya@demo.crm"])
+		self.assertEqual(pending[0]["waiting_since"], datetime(2026, 8, 1, 8, 0, 0))
+
+	def test_an_unassigned_conversation_falls_back_to_its_owner(self):
+		aggregates = [self._aggregate("LEAD-0001", datetime(2026, 8, 1, 8, 0, 0))]
+		references = {
+			("CRM Lead", "LEAD-0001"): {
+				"display_name": "Ada Lovelace",
+				"assigned_users": [],
+				"owner_user": "priya@demo.crm",
+			}
+		}
+
+		with (
+			patch(
+				"crm.api.whatsapp_followups.get_conversation_aggregates",
+				return_value=aggregates,
+			),
+			patch(
+				"crm.api.whatsapp_followups.get_unanswered_since",
+				return_value={("CRM Lead", "LEAD-0001"): datetime(2026, 8, 1, 8, 0, 0)},
+			),
+			patch(
+				"crm.api.whatsapp_followups.get_conversation_references",
+				return_value=references,
+			),
+		):
+			pending = get_pending_conversations(now=self.NOW)
+
+		self.assertEqual(pending[0]["assigned_users"], ["priya@demo.crm"])
+
+	def test_a_conversation_nobody_owns_is_not_nudged(self):
+		aggregates = [self._aggregate("LEAD-0001", datetime(2026, 8, 1, 8, 0, 0))]
+		references = {
+			("CRM Lead", "LEAD-0001"): {
+				"display_name": "Ada Lovelace",
+				"assigned_users": [],
+				"owner_user": "",
+			}
+		}
+
+		with (
+			patch(
+				"crm.api.whatsapp_followups.get_conversation_aggregates",
+				return_value=aggregates,
+			),
+			patch(
+				"crm.api.whatsapp_followups.get_unanswered_since",
+				return_value={("CRM Lead", "LEAD-0001"): datetime(2026, 8, 1, 8, 0, 0)},
+			),
+			patch(
+				"crm.api.whatsapp_followups.get_conversation_references",
+				return_value=references,
+			),
+		):
+			self.assertEqual(get_pending_conversations(now=self.NOW), [])
+
+	def test_a_reminder_is_not_repeated_while_an_unread_one_exists(self):
+		conversation = {
+			"reference_doctype": "CRM Lead",
+			"reference_name": "LEAD-0001",
+			"display_name": "Ada Lovelace",
+			"waiting_since": datetime(2026, 8, 1, 8, 0, 0),
+		}
+
+		with (
+			patch("crm.api.whatsapp_followups.has_unread_followup", return_value=True),
+			patch("crm.api.whatsapp_followups.notify_user") as mock_notify,
+		):
+			self.assertFalse(create_followup_notification(conversation, "priya@demo.crm"))
+
+		mock_notify.assert_not_called()
+
+		with (
+			patch("crm.api.whatsapp_followups.has_unread_followup", return_value=False),
+			patch("crm.api.whatsapp_followups.notify_user") as mock_notify,
+		):
+			self.assertTrue(create_followup_notification(conversation, "priya@demo.crm"))
+
+		payload = mock_notify.call_args.args[0]
+		self.assertEqual(payload["assigned_to"], "priya@demo.crm")
+		self.assertEqual(payload["notification_type"], "WhatsApp")
+		# Keeps reminders apart from per-message notifications, which point
+		# notification_type_doctype at "WhatsApp Message".
+		self.assertEqual(payload["reference_doctype"], "CRM Lead")
+		self.assertEqual(payload["reference_docname"], "LEAD-0001")
+		self.assertIn("Ada Lovelace", payload["notification_text"])
+
+	def test_digest_counts_new_leads_replies_due_and_overdue_waits(self):
+		aggregates = [
+			self._aggregate("LEAD-0001", datetime(2026, 8, 1, 8, 0, 0)),
+			self._aggregate("LEAD-0002", datetime(2026, 8, 1, 11, 30, 0)),
+		]
+		unanswered_since = {
+			("CRM Lead", "LEAD-0001"): datetime(2026, 8, 1, 8, 0, 0),
+			("CRM Lead", "LEAD-0002"): datetime(2026, 8, 1, 11, 30, 0),
+		}
+
+		with (
+			patch(
+				"crm.api.whatsapp_followups.frappe.get_all",
+				return_value=["LEAD-0007", "LEAD-0008"],
+			) as mock_leads,
+			patch(
+				"crm.api.whatsapp_followups.get_conversation_aggregates",
+				return_value=aggregates,
+			),
+			patch(
+				"crm.api.whatsapp_followups.get_unanswered_since",
+				return_value=unanswered_since,
+			),
+		):
+			summary = build_digest_summary(now=self.NOW)
+
+		self.assertEqual(mock_leads.call_args.args[0], "CRM Lead")
+		self.assertEqual(summary["new_leads"], 2)
+		self.assertEqual(summary["needs_reply"], 2)
+		# Only LEAD-0001 has been waiting for more than two hours.
+		self.assertEqual(summary["overdue"], 1)
+		# The newest WhatsApp lead is what the digest links to.
+		self.assertEqual(summary["reference_doctype"], "CRM Lead")
+		self.assertEqual(summary["reference_name"], "LEAD-0007")
+
+	def test_digest_falls_back_to_the_longest_wait_when_no_lead_is_new(self):
+		aggregates = [self._aggregate("LEAD-0001", datetime(2026, 8, 1, 8, 0, 0))]
+
+		with (
+			patch("crm.api.whatsapp_followups.frappe.get_all", return_value=[]),
+			patch(
+				"crm.api.whatsapp_followups.get_conversation_aggregates",
+				return_value=aggregates,
+			),
+			patch(
+				"crm.api.whatsapp_followups.get_unanswered_since",
+				return_value={("CRM Lead", "LEAD-0001"): datetime(2026, 8, 1, 8, 0, 0)},
+			),
+		):
+			summary = build_digest_summary(now=self.NOW)
+
+		self.assertEqual(summary["new_leads"], 0)
+		self.assertEqual(summary["reference_name"], "LEAD-0001")
+
+	def test_an_empty_pipeline_produces_a_zero_summary(self):
+		with (
+			patch("crm.api.whatsapp_followups.frappe.get_all", return_value=[]),
+			patch("crm.api.whatsapp_followups.get_conversation_aggregates", return_value=[]),
+			patch("crm.api.whatsapp_followups.get_unanswered_since", return_value={}),
+		):
+			summary = build_digest_summary(now=self.NOW)
+
+		self.assertEqual(summary["new_leads"], 0)
+		self.assertEqual(summary["needs_reply"], 0)
+		self.assertEqual(summary["overdue"], 0)
+		self.assertIsNone(summary["reference_doctype"])
