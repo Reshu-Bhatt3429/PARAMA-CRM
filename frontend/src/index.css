@@ -360,6 +360,52 @@
   line-height: 1;
 }
 
+/* ---------------------------------------------------------------------------
+   App-wide finishing details
+   --------------------------------------------------------------------------- */
+
+/* Slim, quiet scrollbars everywhere. The stock chunky bars read as unfinished,
+   especially the horizontal one under wide list views. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--outline-gray-3) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--outline-gray-3);
+  border-radius: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+/* List pages (Leads, Deals, Contacts, …): replace the solid gray header band
+   with a quiet bordered row of small uppercase labels, the treatment every
+   modern table uses. Selector matches frappe-ui's ListHeader root. */
+.mb-2.grid.items-center.gap-4.rounded.bg-surface-gray-2.p-2 {
+  background-color: transparent;
+  border-bottom: 1px solid var(--outline-gray-1);
+  border-radius: 0;
+  margin-bottom: 4px;
+  padding-top: 6px;
+  padding-bottom: 10px;
+}
+
+.mb-2.grid.items-center.gap-4.rounded.bg-surface-gray-2.p-2
+  .text-sm.text-ink-gray-5 {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-gray-4);
+}
+
 @layer components {
   .prose-f {
     @apply break-all
