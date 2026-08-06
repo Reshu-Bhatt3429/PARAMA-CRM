@@ -6,13 +6,24 @@
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
   >
+    <defs>
+      <linearGradient id="crm-logo-grad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#6366f1" />
+        <stop offset="1" stop-color="#4338ca" />
+      </linearGradient>
+    </defs>
+    <rect width="300" height="300" rx="76" fill="url(#crm-logo-grad)" />
     <path
-      d="M214.286 0H85.7143C38.3756 0 0 38.3756 0 85.7143V214.286C0 261.624 38.3756 300 85.7143 300H214.286C261.624 300 300 261.624 300 214.286V85.7143C300 38.3756 261.624 0 214.286 0Z"
-      fill="#EF0BF5"
+      d="M150 58c-53 0-96 37-96 83 0 27 15 50 38 65l-8 36 41-17c8 1 16 2 25 2 53 0 96-37 96-84s-43-85-96-85z"
+      fill="#ffffff"
     />
     <path
-      d="M64.2141 90.301V111.862H214.339V140.214L160.187 193.146V208.993L139.705 208.885V193.146L85.6605 140.214H64.2141V149.269L118.259 202.202V230.23L181.634 230.769V202.202L235.786 149.269V90.301H64.2141Z"
-      fill="white"
+      d="M92 150h32l14-34 20 62 16-42 10 14h34"
+      stroke="#4f46e5"
+      stroke-width="16"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      fill="none"
     />
   </svg>
 </template>
