@@ -95,8 +95,18 @@
   --surface-blue-7: oklch(0.457 0.215 277.02); /* #077ddf -> #4338ca */
   --surface-blue-8: oklch(0.398 0.177 277.37); /* #0475d3 -> #3730a3 */
 
+  /* The whole ink-blue ramp, not just the mid steps: `text-ink-blue-8` on
+     `bg-surface-blue-2` is frappe-ui's subtle blue Badge, so leaving the text
+     steps cyan would print cyan text on an indigo chip. Contrast on the new
+     surface-blue-2: 9.27 (was 4.86 with the stock cyan on stock blue-100). */
+  --ink-blue-2: oklch(0.93 0.033 272.79); /* #e6f4ff -> #e0e7ff */
+  --ink-blue-3: oklch(0.87 0.062 274.04); /* #d1eaff -> #c7d2fe */
+  --ink-blue-4: oklch(0.785 0.104 274.71); /* #b5ddfd -> #a5b4fc */
   --ink-blue-5: oklch(0.511 0.23 276.97); /* #71c2fb -> #4f46e5 (checkbox tick) */
   --ink-blue-6: oklch(0.457 0.215 277.02); /* #0c8ef8 -> #4338ca */
+  --ink-blue-7: oklch(0.398 0.177 277.37); /* #077ddf -> #3730a3 */
+  --ink-blue-8: oklch(0.359 0.135 278.7); /* #0375d3 -> #312e81 */
+  --ink-blue-9: oklch(0.257 0.086 281.29); /* #005cad -> #1e1b4b */
   --ink-blue-link: oklch(0.511 0.23 276.97); /* #0c8ef8 -> #4f46e5 */
 
   --outline-blue-1: oklch(0.93 0.033 272.79); /* #e6f4ff -> #e0e7ff */
@@ -134,6 +144,23 @@
   /* Dark's canvas stays the dark base: a light-lavender wash would blow out
      the whole shell. Only the hue follows the light theme. */
   --app-canvas: oklch(0.205 0.008 275);
+
+  /* Dark's blue tint ramp, re-hued from ~250 to 277 at unchanged lightness and
+     chroma, so subtle blue chips (Badge, the inbox's info pills, alerts) read
+     as the same indigo family the light theme uses. ink-blue-8 on
+     surface-blue-2: 6.64. */
+  --surface-blue-1: oklch(0.255 0.056 277); /* #0f233d -> #1c1f3d */
+  --surface-blue-2: oklch(0.305 0.092 277); /* #0a2e5c -> #25285c */
+  --surface-blue-3: oklch(0.327 0.098 277); /* #063465 -> #292d65 */
+  --surface-blue-4: oklch(0.397 0.117 277); /* #074783 -> #393d84 */
+
+  --ink-blue-7: oklch(0.671 0.155 277); /* #349bef -> #7f89f3 */
+  --ink-blue-8: oklch(0.777 0.112 277); /* #76bef9 -> #a4b0fd */
+  --ink-blue-9: oklch(0.849 0.063 277); /* #add2f5 -> #c2caf7 */
+
+  --outline-blue-1: oklch(0.305 0.092 277); /* #0a2e5c -> #25285c */
+  --outline-blue-2: oklch(0.327 0.098 277); /* #063465 -> #292d65 */
+  --outline-blue-3: oklch(0.397 0.117 277); /* #074783 -> #393d84 */
 
   --ink-blue-link: oklch(0.68 0.158 276.93); /* #1c6ec4 -> #818cf8, 3.48 -> 6.00 on the dark base */
 
