@@ -739,7 +739,7 @@ class TestWhatsAppPriority(FrappeTestCase):
 
 	def test_activity_within_three_days_is_warm(self):
 		priority = compute_priority(
-			datetime(2026, 7, 29, 6, 0, 0), datetime(2026, 7, 29, 7, 0, 0), 2, now=self.NOW
+			datetime(2026, 7, 30, 6, 0, 0), datetime(2026, 7, 30, 7, 0, 0), 2, now=self.NOW
 		)
 		self.assertEqual(priority, "warm")
 
