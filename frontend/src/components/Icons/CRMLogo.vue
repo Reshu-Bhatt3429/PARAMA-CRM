@@ -14,12 +14,12 @@
     </defs>
     <rect width="300" height="300" rx="76" fill="url(#crm-logo-grad)" />
     <path
-      d="M150 56c-54 0-98 38-98 85 0 28 16 52 40 67l-9 37 43-18c8 1 16 2 24 2 54 0 98-38 98-86s-44-87-98-87z"
-      fill="#ffffff"
-    />
-    <path
-      d="M150 190c-2 0-4-.7-5.5-2l-33-31c-9-8.6-9-22.6 0-31.2 8.6-8.2 22.6-8.2 31.2 0l7.3 7 7.3-7c8.6-8.2 22.6-8.2 31.2 0 9 8.6 9 22.6 0 31.2l-33 31c-1.5 1.3-3.5 2-5.5 2z"
-      fill="#4f46e5"
+      d="M112 234 V80 h48 a52 52 0 0 1 0 104 h-48"
+      stroke="#ffffff"
+      stroke-width="34"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      fill="none"
     />
   </svg>
 </template>
