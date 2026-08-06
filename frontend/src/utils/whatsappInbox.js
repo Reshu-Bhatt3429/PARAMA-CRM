@@ -2,10 +2,24 @@
  * Pure helpers for the WhatsApp team inbox (`@/pages/WhatsAppInbox.vue`).
  *
  * A conversation is one row from `crm.api.whatsapp.get_whatsapp_conversations`:
- * `{ reference_doctype, reference_name, display_name, phone, last_message,
- *    last_message_type, last_at, message_count, assigned_to, needs_reply,
- *    waiting_since, priority }`.
+ * `{ reference_doctype, reference_name, display_name, phone, status,
+ *    last_message, last_message_type, last_at, message_count, assigned_to,
+ *    needs_reply, waiting_since, priority }`.
  */
+
+/**
+ * Pastel pill palettes. `surface-*-2` backgrounds with the matching dark ink
+ * step: every pair clears WCAG AA in both themes (amber 6.5/8.3, green
+ * 7.2/9.3, red 5.7/4.8, purple 6.6/7.1, indigo 9.3/6.6, gray 7.4/10.4).
+ */
+const PILL_TINTS = {
+  red: 'bg-surface-red-2 text-ink-red-8',
+  amber: 'bg-surface-amber-2 text-ink-amber-9',
+  green: 'bg-surface-green-2 text-ink-green-9',
+  purple: 'bg-surface-purple-2 text-ink-purple-8',
+  indigo: 'bg-surface-blue-2 text-ink-blue-8',
+  gray: 'bg-surface-gray-2 text-ink-gray-6',
+}
 
 /**
  * Stable identity of a conversation, used as a list key and to match the
@@ -86,6 +100,100 @@ export function priorityMeta(priority) {
     dotClass: 'bg-surface-gray-4',
     label: __('Cold — no recent activity'),
   }
+}
+
+/**
+ * The priority pill shown on a conversation card: short label plus the tint
+ * classes. The long explanation stays in `priorityMeta` and is used as the
+ * pill's tooltip, so the two never disagree about what a bucket means.
+ */
+export function priorityPill(priority) {
+  const meta = priorityMeta(priority)
+
+  if (meta.priority === 'hot') {
+    return {
+      label: __('High intent'),
+      class: PILL_TINTS.red,
+      title: meta.label,
+    }
+  }
+  if (meta.priority === 'warm') {
+    return { label: __('Warm'), class: PILL_TINTS.amber, title: meta.label }
+  }
+  return { label: __('Cold'), class: PILL_TINTS.gray, title: meta.label }
+}
+
+/**
+ * Tint family of every seeded CRM Lead / CRM Deal status, keyed lowercase.
+ * Statuses a site added itself fall through to the neutral gray pill rather
+ * than rendering untinted.
+ */
+const STATUS_TINTS = {
+  new: 'indigo',
+  open: 'indigo',
+  contacted: 'amber',
+  nurture: 'amber',
+  negotiation: 'amber',
+  demo: 'amber',
+  qualified: 'purple',
+  'proposal sent': 'purple',
+  'proposal/quotation': 'purple',
+  ready: 'purple',
+  converted: 'green',
+  booked: 'green',
+  won: 'green',
+  unqualified: 'red',
+  junk: 'red',
+  lost: 'red',
+}
+
+/**
+ * Pill for a conversation's pipeline stage. Returns null when the linked
+ * Lead/Deal has no status, so the caller can `v-if` on it.
+ */
+export function statusPill(status) {
+  const label = (status || '').trim()
+  if (!label) return null
+
+  const tint = STATUS_TINTS[label.toLowerCase()] || 'gray'
+  return { label: __(label), class: PILL_TINTS[tint] }
+}
+
+/**
+ * Amber pill for a conversation still owed a reply, or null when nothing is
+ * owed. Wraps `waitingLabel` so the card only has to ask once.
+ */
+export function waitingPill(conversation, now = new Date()) {
+  const label = waitingLabel(conversation, now)
+  if (!label) return null
+
+  return { label, class: PILL_TINTS.amber }
+}
+
+/**
+ * Join two already-formatted dates into one travel window. Formatting stays
+ * with the caller (`formatDate`, which honours the site's date format); this
+ * only decides how a half-open range reads.
+ */
+export function travelWindowLabel(startLabel, endLabel) {
+  const start = (startLabel || '').trim()
+  const end = (endLabel || '').trim()
+
+  if (start && end) return start === end ? start : `${start} → ${end}`
+  if (start) return __('from {0}', [start])
+  if (end) return __('until {0}', [end])
+  return ''
+}
+
+/**
+ * `4 travellers` / `1 traveller`, or '' when the lead carries no group size.
+ * Zero and unparseable values count as absent, since the field is optional.
+ */
+export function groupSizeLabel(size) {
+  const count = Number.parseInt(size, 10)
+  if (!Number.isFinite(count) || count <= 0) return ''
+
+  return count === 1 ? __('1 traveller') : __('{0} travellers', [count])
 }
 
 /**

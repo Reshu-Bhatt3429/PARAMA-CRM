@@ -76,7 +76,9 @@
   --ink-gray-9: oklch(0.168 0.024 275); /* #0f0f0f -> #0e0e23 */
 
   /* Hairline card border of the reference design, #e8eaf2. */
-  --outline-gray-1: oklch(0.938 0.011 275); /* #ededed -> #e8e8f3 (border DEFAULT) */
+  --outline-gray-1: oklch(
+    0.938 0.011 275
+  ); /* #ededed -> #e8e8f3 (border DEFAULT) */
   --outline-gray-2: oklch(0.913 0.012 275); /* #e2e2e2 -> #e0e0ec */
   --outline-gray-3: oklch(0.83 0.014 275); /* #c7c7c7 -> #c4c4d1 */
 
@@ -102,7 +104,9 @@
   --ink-blue-2: oklch(0.93 0.033 272.79); /* #e6f4ff -> #e0e7ff */
   --ink-blue-3: oklch(0.87 0.062 274.04); /* #d1eaff -> #c7d2fe */
   --ink-blue-4: oklch(0.785 0.104 274.71); /* #b5ddfd -> #a5b4fc */
-  --ink-blue-5: oklch(0.511 0.23 276.97); /* #71c2fb -> #4f46e5 (checkbox tick) */
+  --ink-blue-5: oklch(
+    0.511 0.23 276.97
+  ); /* #71c2fb -> #4f46e5 (checkbox tick) */
   --ink-blue-6: oklch(0.457 0.215 277.02); /* #0c8ef8 -> #4338ca */
   --ink-blue-7: oklch(0.398 0.177 277.37); /* #077ddf -> #3730a3 */
   --ink-blue-8: oklch(0.359 0.135 278.7); /* #0375d3 -> #312e81 */
@@ -139,7 +143,9 @@
   --surface-gray-2: oklch(0.281 0.01 275); /* #292929 -> #27282f */
   --surface-gray-3: oklch(0.341 0.011 275); /* #383838 -> #36373f */
 
-  --surface-elevation-3: oklch(0.341 0.055 275); /* #383838 -> #303655 (active nav) */
+  --surface-elevation-3: oklch(
+    0.341 0.055 275
+  ); /* #383838 -> #303655 (active nav) */
 
   /* Dark's canvas stays the dark base: a light-lavender wash would blow out
      the whole shell. Only the hue follows the light theme. */
@@ -162,7 +168,9 @@
   --outline-blue-2: oklch(0.327 0.098 277); /* #063465 -> #292d65 */
   --outline-blue-3: oklch(0.397 0.117 277); /* #074783 -> #393d84 */
 
-  --ink-blue-link: oklch(0.68 0.158 276.93); /* #1c6ec4 -> #818cf8, 3.48 -> 6.00 on the dark base */
+  --ink-blue-link: oklch(
+    0.68 0.158 276.93
+  ); /* #1c6ec4 -> #818cf8, 3.48 -> 6.00 on the dark base */
 
   --focus-default: 0px 0px 0px 3px #3730a3cc;
   --focus-outline-default: 3px solid #3730a3cc; /* was 3px solid #464646cc */
@@ -174,6 +182,46 @@
    canvas white, so DesktopLayout wears this class instead. */
 .app-canvas {
   background-color: var(--app-canvas);
+}
+
+/* ---------------------------------------------------------------------------
+   Chat bubbles in the WhatsApp inbox thread
+   ---------------------------------------------------------------------------
+   WhatsAppArea is shared with the Lead/Deal activity tabs and must not be
+   forked, so the inbox restyles it from its own container instead. The bubble
+   is `.activity > div[id]` — the only id-bearing child; the reaction picker
+   beside it carries none. Direction lives on the wrapper as `flex-row-reverse`.
+
+   The outgoing bubble redefines the ink tokens locally rather than forcing
+   `color`, so the timestamp, read receipts and the quoted-reply block inside it
+   all follow, and nothing outside the bubble is touched. Contrast on indigo:
+   white 6.3, the muted caption tint 4.6.
+   --------------------------------------------------------------------------- */
+.crm-chat .activity > div[id] {
+  border-radius: 1rem;
+}
+
+.crm-chat .activity:not(.flex-row-reverse) > div[id] {
+  background-color: var(--surface-base);
+  border: 1px solid var(--outline-gray-1);
+}
+
+.crm-chat .activity.flex-row-reverse > div[id] {
+  /* Literal indigo-600, not `var(--surface-blue-6)`: the outgoing bubble is a
+     brand surface that stays the same in both themes, like WhatsApp's own
+     green one. The dark theme's blue-6 is a mid blue that white text would
+     sit on at 4.1. */
+  background-color: #4f46e5;
+
+  --ink-gray-9: #ffffff;
+  --ink-gray-8: #ffffff;
+  --ink-gray-5: #c7d2fe;
+  --ink-gray-4: #c7d2fe;
+  --ink-gray-3: #a5b4fc;
+  --ink-blue-5: #ffffff; /* the "read" double check */
+  --ink-blue-link: #c7d2fe;
+  --ink-green-5: #bbf7d0;
+  --surface-gray-3: #4338ca; /* quoted reply block */
 }
 
 /* ---------------------------------------------------------------------------
