@@ -1,7 +1,7 @@
 @import 'frappe-ui/style.css';
 
 /* ---------------------------------------------------------------------------
-   PARAMA-CRM theme: white + blue
+   PARAMA-CRM theme: lavender canvas + indigo primary
    ---------------------------------------------------------------------------
    frappe-ui ships its design tokens as CSS custom properties emitted from
    `frappe-ui/tailwind/plugin.js` into the Tailwind base layer, under two
@@ -27,106 +27,126 @@
      button, ~116 usages) is `text-ink-base bg-surface-gray-10
      hover:bg-surface-gray-9 active:bg-surface-gray-8`. The same three tokens
      back Switch (on state), Progress, Badge `variant="solid"`, Tabs indicator,
-     Tooltip/ShortcutTooltip and Toast. Repointing them at the blue-600 family
-     turns every "inverted" surface into the brand accent in one move.
-     White-on-blue contrast: 5.17 / 6.70 / 8.72 — all AA (was 17.9 on #171717). */
-  --surface-gray-10: oklch(0.546 0.215 262.88); /* #171717 -> #2563eb */
-  --surface-gray-9: oklch(0.488 0.217 264.38); /* #383838 -> #1d4ed8 */
-  --surface-gray-8: oklch(0.424 0.181 265.64); /* #525252 -> #1e40af */
+     Tooltip/ShortcutTooltip and Toast. Repointing them at the indigo-600
+     family turns every "inverted" surface into the brand accent in one move.
+     White-on-indigo contrast: 6.29 / 7.90 / 9.93 — all AA (was 17.9 on
+     #171717, and 5.17 / 6.70 / 8.72 under the previous blue-600 primary). */
+  --surface-gray-10: oklch(0.511 0.23 276.97); /* #2563eb -> #4f46e5 */
+  --surface-gray-9: oklch(0.457 0.215 277.02); /* #1d4ed8 -> #4338ca */
+  --surface-gray-8: oklch(0.398 0.177 277.37); /* #1e40af -> #3730a3 */
 
   /* --- Selected / active surface ------------------------------------------
      `--surface-elevation-3` is used exclusively for selection states in this
      stack (Sidebar active item, SettingsNavItem active, TabButtons active
      pill, RailItem active, UserDropdown active row) — never for popovers or
-     dialogs — so tinting it blue-100 gives the active nav item a light blue
-     chip instead of a white one. ink-gray-8 on it: 14.7 (AAA). */
-  --surface-elevation-3: oklch(0.932 0.032 255.59); /* #ffffff -> #dbeafe */
+     dialogs — so tinting it indigo-100 gives the active nav item a light
+     indigo chip instead of a white one. ink-gray-8 on it: 14.3 (AAA). */
+  --surface-elevation-3: oklch(0.93 0.033 272.79); /* #dbeafe -> #e0e7ff */
 
-  /* --- Cool (blue-tinted) neutral ramp ------------------------------------
+  /* --- Page canvas ---------------------------------------------------------
+     `--surface-base` is white and backs BOTH the app shell column and ~130
+     `bg-surface-base` cards, panels, dialogs and inputs — tinting it would
+     turn every card lavender. So the canvas gets its own token, consumed by
+     the `.app-canvas` class on the layout's content column (see below), and
+     cards stay pure white on top of it. */
+  --app-canvas: #f5f6fa;
+
+  /* --- Cool (lavender-tinted) neutral ramp --------------------------------
      Upstream grays are pure achromatic oklch(L 0 0). Same lightness, a little
-     chroma at hue 258 => the whole chrome reads cool without becoming baby
-     blue. Lightness is untouched, so every existing contrast ratio holds
+     chroma at hue 275 => the whole chrome reads lavender-cool without becoming
+     lilac. Lightness is untouched, so every existing contrast ratio holds
      (ink-gray-8 on white: 17.91 -> 17.97). `--surface-base` stays pure white. */
-  --surface-gray-1: oklch(0.979 0.005 258); /* #f8f8f8 -> #f6f8fc */
-  --surface-gray-2: oklch(0.964 0.007 258); /* #f3f3f3 -> #f0f3f8 */
-  --surface-gray-3: oklch(0.946 0.009 258); /* #ededed -> #e9edf3 */
-  --surface-gray-4: oklch(0.913 0.011 258); /* #e2e2e2 -> #dee3ea */
-  --surface-gray-5: oklch(0.83 0.013 258); /* #c7c7c7 -> #c2c8d0 */
-  --surface-gray-6: oklch(0.683 0.015 258); /* #999999 -> #949aa3 */
-  --surface-gray-7: oklch(0.586 0.016 258); /* #7c7c7c -> #767d86 */
-  --surface-sidebar: oklch(0.979 0.005 258); /* #f8f8f8 -> #f6f8fc */
+  --surface-gray-1: oklch(0.979 0.005 275); /* #f8f8f8 -> #f8f7fc */
+  --surface-gray-2: oklch(0.964 0.007 275); /* #f3f3f3 -> #f3f2f9 */
+  --surface-gray-3: oklch(0.946 0.009 275); /* #ededed -> #ebebf5 */
+  --surface-gray-4: oklch(0.913 0.011 275); /* #e2e2e2 -> #e0e0ec */
+  --surface-gray-5: oklch(0.83 0.013 275); /* #c7c7c7 -> #c4c4d1 */
+  --surface-gray-6: oklch(0.683 0.015 275); /* #999999 -> #96969f */
+  --surface-gray-7: oklch(0.586 0.016 275); /* #7c7c7c -> #787882 */
+  --surface-sidebar: oklch(0.979 0.005 275); /* #f8f8f8 -> #f8f7fc */
 
-  --ink-gray-1: oklch(0.946 0.008 258); /* #ededed -> #eaedf3 */
-  --ink-gray-2: oklch(0.913 0.01 258); /* #e2e2e2 -> #dee3e9 */
-  --ink-gray-3: oklch(0.83 0.012 258); /* #c7c7c7 -> #c3c8cf */
-  --ink-gray-4: oklch(0.683 0.014 258); /* #999999 -> #949aa2 */
-  --ink-gray-5: oklch(0.586 0.016 258); /* #7c7c7c -> #767d86 */
-  --ink-gray-6: oklch(0.439 0.018 258); /* #525252 -> #4c535c */
-  --ink-gray-7: oklch(0.341 0.02 258); /* #383838 -> #323943 */
-  --ink-gray-8: oklch(0.205 0.022 258); /* #171717 -> #111721 */
-  --ink-gray-9: oklch(0.168 0.024 258); /* #0f0f0f -> #080f19 */
+  --ink-gray-1: oklch(0.946 0.008 275); /* #ededed -> #ebebf3 */
+  --ink-gray-2: oklch(0.913 0.01 275); /* #e2e2e2 -> #e0e0eb */
+  --ink-gray-3: oklch(0.83 0.012 275); /* #c7c7c7 -> #c4c4d0 */
+  --ink-gray-4: oklch(0.683 0.014 275); /* #999999 -> #96969e */
+  --ink-gray-5: oklch(0.586 0.016 275); /* #7c7c7c -> #787882 */
+  --ink-gray-6: oklch(0.439 0.018 275); /* #525252 -> #4e4e5a */
+  --ink-gray-7: oklch(0.341 0.02 275); /* #383838 -> #353543 */
+  --ink-gray-8: oklch(0.205 0.022 275); /* #171717 -> #16162a */
+  --ink-gray-9: oklch(0.168 0.024 275); /* #0f0f0f -> #0e0e23 */
 
-  --outline-gray-1: oklch(0.946 0.01 258); /* #ededed -> #e9edf4 (border DEFAULT) */
-  --outline-gray-2: oklch(0.913 0.012 258); /* #e2e2e2 -> #dde3ea */
-  --outline-gray-3: oklch(0.83 0.014 258); /* #c7c7c7 -> #c2c8d1 */
+  /* Hairline card border of the reference design, #e8eaf2. */
+  --outline-gray-1: oklch(0.938 0.011 275); /* #ededed -> #e8e8f3 (border DEFAULT) */
+  --outline-gray-2: oklch(0.913 0.012 275); /* #e2e2e2 -> #e0e0ec */
+  --outline-gray-3: oklch(0.83 0.014 275); /* #c7c7c7 -> #c4c4d1 */
 
   /* --- Blue family re-hued onto the primary ------------------------------
      Upstream blues sit at hue ~242-252 (cyan-leaning); the new primary is at
-     hue ~263. Re-hue the light blue ramp so tints, blue buttons and links all
-     read as one colour. This also fixes two pre-existing AA failures:
-     white on `--surface-blue-6` 3.37 -> 5.17, and `--ink-blue-link` on white
-     3.37 -> 5.17. */
-  --surface-blue-1: oklch(0.97 0.014 254.6); /* #f1f8fe -> #eff6ff */
-  --surface-blue-2: oklch(0.932 0.032 255.59); /* #e6f4ff -> #dbeafe */
-  --surface-blue-3: oklch(0.882 0.057 254.13); /* #d3ebff -> #bfdbfe */
-  --surface-blue-4: oklch(0.809 0.096 251.81); /* #bcdfff -> #93c5fd */
-  --surface-blue-5: oklch(0.714 0.143 254.62); /* #71c2fb -> #60a5fa */
-  --surface-blue-6: oklch(0.546 0.215 262.88); /* #0c8ef8 -> #2563eb */
-  --surface-blue-7: oklch(0.488 0.217 264.38); /* #077ddf -> #1d4ed8 */
-  --surface-blue-8: oklch(0.424 0.181 265.64); /* #0475d3 -> #1e40af */
+     hue ~277. Re-hue the light blue ramp so tints, blue buttons and links all
+     read as one colour. This also keeps two formerly-failing pairs above AA:
+     white on `--surface-blue-6` 3.37 -> 6.29, and `--ink-blue-link` on white
+     3.37 -> 6.29. */
+  --surface-blue-1: oklch(0.962 0.018 272.31); /* #f1f8fe -> #eef2ff */
+  --surface-blue-2: oklch(0.93 0.033 272.79); /* #e6f4ff -> #e0e7ff */
+  --surface-blue-3: oklch(0.87 0.062 274.04); /* #d3ebff -> #c7d2fe */
+  --surface-blue-4: oklch(0.785 0.104 274.71); /* #bcdfff -> #a5b4fc */
+  --surface-blue-5: oklch(0.68 0.158 276.93); /* #71c2fb -> #818cf8 */
+  --surface-blue-6: oklch(0.511 0.23 276.97); /* #0c8ef8 -> #4f46e5 */
+  --surface-blue-7: oklch(0.457 0.215 277.02); /* #077ddf -> #4338ca */
+  --surface-blue-8: oklch(0.398 0.177 277.37); /* #0475d3 -> #3730a3 */
 
-  --ink-blue-5: oklch(0.546 0.215 262.88); /* #71c2fb -> #2563eb (checkbox tick) */
-  --ink-blue-6: oklch(0.488 0.217 264.38); /* #0c8ef8 -> #1d4ed8 */
-  --ink-blue-link: oklch(0.546 0.215 262.88); /* #0c8ef8 -> #2563eb */
+  --ink-blue-5: oklch(0.511 0.23 276.97); /* #71c2fb -> #4f46e5 (checkbox tick) */
+  --ink-blue-6: oklch(0.457 0.215 277.02); /* #0c8ef8 -> #4338ca */
+  --ink-blue-link: oklch(0.511 0.23 276.97); /* #0c8ef8 -> #4f46e5 */
 
-  --outline-blue-1: oklch(0.932 0.032 255.59); /* #e6f4ff -> #dbeafe */
-  --outline-blue-2: oklch(0.882 0.057 254.13); /* #d3ebff -> #bfdbfe */
-  --outline-blue-3: oklch(0.809 0.096 251.81); /* #bcdfff -> #93c5fd */
-  --outline-blue-4: oklch(0.714 0.143 254.62); /* #71c2fb -> #60a5fa */
+  --outline-blue-1: oklch(0.93 0.033 272.79); /* #e6f4ff -> #e0e7ff */
+  --outline-blue-2: oklch(0.87 0.062 274.04); /* #d3ebff -> #c7d2fe */
+  --outline-blue-3: oklch(0.785 0.104 274.71); /* #bcdfff -> #a5b4fc */
+  --outline-blue-4: oklch(0.68 0.158 276.93); /* #71c2fb -> #818cf8 */
 
   /* --- Focus ring ---------------------------------------------------------
      `:focus-visible { outline: var(--focus-outline-default) }` is applied
      globally in frappe-ui's base layer; `--focus-*` is the box-shadow form
-     kept in sync by the plugin. Swap the neutral gray ring for blue-400. */
-  --focus-default: 0px 0px 0px 2px #60a5fae5;
-  --focus-outline-default: 2px solid #60a5fae5; /* was 2px solid #c9c9c9e5 */
-  --focus-blue: 0px 0px 0px 2px #60a5fae5;
-  --focus-outline-blue: 2px solid #60a5fae5; /* was 2px solid #65b9fce5 */
+     kept in sync by the plugin. Swap the neutral gray ring for indigo-400. */
+  --focus-default: 0px 0px 0px 2px #818cf8e5;
+  --focus-outline-default: 2px solid #818cf8e5; /* was 2px solid #c9c9c9e5 */
+  --focus-blue: 0px 0px 0px 2px #818cf8e5;
+  --focus-outline-blue: 2px solid #818cf8e5; /* was 2px solid #65b9fce5 */
 }
 
 /* Dark mode counterparts. Dark keeps frappe-ui's inverted logic — the
    "solid" surface is *light* and carries dark `--ink-base` text — so the
-   primary ramp is expressed as light blues, not the blue-600 family, to keep
-   dark text on it readable (14.7 / 12.6 / 9.9, vs 16.9 / 12.7 / 8.2 stock).
-   The neutral ramp only gains chroma; lightness is unchanged. */
+   primary ramp is expressed as light indigos, not the indigo-600 family, to
+   keep dark text on it readable (14.6 / 12.0 / 9.0, vs 16.9 / 12.7 / 8.2
+   stock). The neutral ramp only gains chroma; lightness is unchanged. */
 [data-theme='dark'] {
-  --surface-gray-10: oklch(0.932 0.032 255.59); /* #f8f8f8 -> #dbeafe */
-  --surface-gray-9: oklch(0.882 0.057 254.13); /* #d9d9d9 -> #bfdbfe */
-  --surface-gray-8: oklch(0.809 0.096 251.81); /* #afafaf -> #93c5fd */
+  --surface-gray-10: oklch(0.93 0.033 272.79); /* #f8f8f8 -> #e0e7ff */
+  --surface-gray-9: oklch(0.87 0.062 274.04); /* #d9d9d9 -> #c7d2fe */
+  --surface-gray-8: oklch(0.785 0.104 274.71); /* #afafaf -> #a5b4fc */
 
-  --surface-base: oklch(0.205 0.008 258); /* #171717 -> #15171b */
-  --surface-gray-1: oklch(0.239 0.009 258); /* #1f1f1f -> #1c1f23 */
-  --surface-gray-2: oklch(0.281 0.01 258); /* #292929 -> #26292e */
-  --surface-gray-3: oklch(0.341 0.011 258); /* #383838 -> #35383e */
+  --surface-base: oklch(0.205 0.008 275); /* #171717 -> #16171b */
+  --surface-gray-1: oklch(0.239 0.009 275); /* #1f1f1f -> #1d1e24 */
+  --surface-gray-2: oklch(0.281 0.01 275); /* #292929 -> #27282f */
+  --surface-gray-3: oklch(0.341 0.011 275); /* #383838 -> #36373f */
 
-  --surface-elevation-3: oklch(0.341 0.055 258); /* #383838 -> #263955 (active nav) */
+  --surface-elevation-3: oklch(0.341 0.055 275); /* #383838 -> #303655 (active nav) */
 
-  --ink-blue-link: oklch(0.714 0.143 254.62); /* #1c6ec4 -> #60a5fa, 3.48 -> ~6.4 on the dark base */
+  /* Dark's canvas stays the dark base: a light-lavender wash would blow out
+     the whole shell. Only the hue follows the light theme. */
+  --app-canvas: oklch(0.205 0.008 275);
 
-  --focus-default: 0px 0px 0px 3px #1e40afcc;
-  --focus-outline-default: 3px solid #1e40afcc; /* was 3px solid #464646cc */
-  --focus-blue: 0px 0px 0px 3px #1e40afcc;
-  --focus-outline-blue: 3px solid #1e40afcc; /* was 3px solid #0e3d62cc */
+  --ink-blue-link: oklch(0.68 0.158 276.93); /* #1c6ec4 -> #818cf8, 3.48 -> 6.00 on the dark base */
+
+  --focus-default: 0px 0px 0px 3px #3730a3cc;
+  --focus-outline-default: 3px solid #3730a3cc; /* was 3px solid #464646cc */
+  --focus-blue: 0px 0px 0px 3px #3730a3cc;
+  --focus-outline-blue: 3px solid #3730a3cc; /* was 3px solid #0e3d62cc */
+}
+
+/* The app shell's content column. `bg-surface-base` there would repaint the
+   canvas white, so DesktopLayout wears this class instead. */
+.app-canvas {
+  background-color: var(--app-canvas);
 }
 
 @layer components {

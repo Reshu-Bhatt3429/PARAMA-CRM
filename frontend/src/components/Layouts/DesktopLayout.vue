@@ -1,7 +1,9 @@
 <template>
   <div class="flex h-screen w-screen">
     <AppSidebar />
-    <div class="flex-1 flex flex-col h-full overflow-auto bg-surface-base">
+    <!-- app-canvas, not bg-surface-base: `--surface-base` also backs every
+         white card and input, so the lavender page tint needs its own token. -->
+    <div class="flex-1 flex flex-col h-full overflow-auto app-canvas">
       <AppHeader />
       <slot />
     </div>
