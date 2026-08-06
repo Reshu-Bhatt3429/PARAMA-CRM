@@ -184,6 +184,18 @@
   background-color: var(--app-canvas);
 }
 
+/* The chat thread's backdrop. Distinctly darker than the page canvas so white
+   panes, bubbles and the composer card visibly float on it — the layering the
+   reference design gets its depth from. */
+.crm-thread-canvas {
+  background-color: #edeff5;
+}
+
+:root[data-theme='dark'] .crm-thread-canvas,
+[data-theme='dark'] .crm-thread-canvas {
+  background-color: #101116;
+}
+
 /* ---------------------------------------------------------------------------
    Chat bubbles in the WhatsApp inbox thread
    ---------------------------------------------------------------------------
@@ -198,12 +210,54 @@
    white 6.3, the muted caption tint 4.6.
    --------------------------------------------------------------------------- */
 .crm-chat .activity > div[id] {
-  border-radius: 1rem;
+  border-radius: 18px;
+  max-width: 68%;
+  padding: 8px 12px 6px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
 }
 
+/* The bubble's inner row is `flex gap-2 justify-between` with the timestamp
+   inline after the text, which jams "06:10 pm ✓✓" against the last line.
+   Stack them instead: content on top, timestamp on its own right-aligned
+   line — the WhatsApp Web treatment. The hover menu and reactions are
+   absolutely positioned and unaffected. */
+.crm-chat .activity > div[id] > .justify-between {
+  flex-direction: column;
+  gap: 2px;
+}
+
+.crm-chat .activity > div[id] > .justify-between > div:last-child {
+  align-self: flex-end;
+  margin-bottom: 0;
+}
+
+/* Direction-aware corner, like a speech tail. */
 .crm-chat .activity:not(.flex-row-reverse) > div[id] {
   background-color: var(--surface-base);
-  border: 1px solid var(--outline-gray-1);
+  border: 1px solid var(--outline-gray-2);
+  border-bottom-left-radius: 6px;
+}
+
+.crm-chat .activity.flex-row-reverse > div[id] {
+  border-bottom-right-radius: 6px;
+}
+
+/* Breathing room between messages: the component's own mb-3 stays, this adds
+   air around the whole run without touching the shared component. */
+.crm-chat .activity {
+  margin-bottom: 10px;
+}
+
+/* Attachment rows (document icon + label) inside the indigo bubble read as a
+   solid blob by default; give them a translucent card treatment. */
+.crm-chat .activity.flex-row-reverse > div[id] .flex.items-center.gap-2 {
+  border-radius: 10px;
+  background-color: rgba(255, 255, 255, 0.16);
+  padding: 8px 12px;
+}
+
+.crm-chat .activity.flex-row-reverse > div[id] .flex.items-center.gap-2 svg {
+  color: #e0e7ff;
 }
 
 .crm-chat .activity.flex-row-reverse > div[id] {

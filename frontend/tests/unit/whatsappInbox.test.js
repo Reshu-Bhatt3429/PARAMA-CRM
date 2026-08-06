@@ -12,6 +12,8 @@ import {
   travelWindowLabel,
   waitingLabel,
   waitingPill,
+  groupMessagesByDay,
+  dayLabel,
 } from '@/utils/whatsappInbox'
 
 const conversation = (overrides = {}) => ({
@@ -341,5 +343,47 @@ describe('groupSizeLabel', () => {
     expect(groupSizeLabel(null)).toBe('')
     expect(groupSizeLabel(undefined)).toBe('')
     expect(groupSizeLabel('many')).toBe('')
+  })
+})
+
+describe('groupMessagesByDay', () => {
+  const NOW = new Date(2026, 7, 6, 12, 0, 0)
+
+  it('groups consecutive messages of the same day', () => {
+    const groups = groupMessagesByDay(
+      [
+        { name: 'a', creation: '2026-08-05 09:00:00' },
+        { name: 'b', creation: '2026-08-05 10:00:00' },
+        { name: 'c', creation: '2026-08-06 08:00:00' },
+      ],
+      NOW,
+    )
+    expect(groups.map((g) => g.messages.length)).toEqual([2, 1])
+    expect(groups[0].label).toBe('Yesterday')
+    expect(groups[1].label).toBe('Today')
+  })
+
+  it('returns an empty list for no messages', () => {
+    expect(groupMessagesByDay([], NOW)).toEqual([])
+    expect(groupMessagesByDay(null, NOW)).toEqual([])
+  })
+})
+
+describe('dayLabel', () => {
+  const NOW = new Date(2026, 7, 6, 12, 0, 0)
+
+  it('labels today and yesterday with words', () => {
+    expect(dayLabel(new Date(2026, 7, 6, 1, 0), NOW)).toBe('Today')
+    expect(dayLabel(new Date(2026, 7, 5, 23, 59), NOW)).toBe('Yesterday')
+  })
+
+  it('labels older dates with a readable date', () => {
+    const label = dayLabel(new Date(2026, 6, 30), NOW)
+    expect(label).toMatch(/30/)
+    expect(label).toMatch(/Jul/)
+  })
+
+  it('includes the year for other years', () => {
+    expect(dayLabel(new Date(2025, 11, 31), NOW)).toMatch(/2025/)
   })
 })

@@ -266,3 +266,39 @@ export function filterConversations(conversations, query) {
     return Boolean(phoneDigits) && phoneDigits.includes(digits)
   })
 }
+
+/**
+ * Split a chronologically sorted message list into day groups for the
+ * WhatsApp-style date dividers: [{ label, messages }]. Today and yesterday
+ * get words, everything else a readable date.
+ */
+export function groupMessagesByDay(messages, now = new Date()) {
+  const groups = []
+
+  for (const message of messages || []) {
+    const stamp = parseServerDatetime(message.creation)
+    const label = stamp ? dayLabel(stamp, now) : ''
+    const current = groups[groups.length - 1]
+
+    if (current && current.label === label) {
+      current.messages.push(message)
+    } else {
+      groups.push({ label, messages: [message] })
+    }
+  }
+
+  return groups
+}
+
+export function dayLabel(date, now = new Date()) {
+  const day = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const diffDays = Math.round((today - day) / 86400000)
+
+  if (diffDays <= 0) return 'Today'
+  if (diffDays === 1) return 'Yesterday'
+
+  const options = { day: 'numeric', month: 'short' }
+  if (day.getFullYear() !== today.getFullYear()) options.year = 'numeric'
+  return day.toLocaleDateString(undefined, options)
+}
