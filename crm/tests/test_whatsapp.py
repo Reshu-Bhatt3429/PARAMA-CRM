@@ -334,6 +334,7 @@ class TestWhatsAppConversations(FrappeTestCase):
 				last_name="Lovelace",
 				organization="Analytical Ltd",
 				mobile_no="+14155552671",
+				status="Qualified",
 				lead_owner="priya@demo.crm",
 				_assign='["priya@demo.crm"]',
 			)
@@ -344,6 +345,7 @@ class TestWhatsAppConversations(FrappeTestCase):
 				organization="Acme Corp",
 				lead_name="Bob",
 				mobile_no="+14155552672",
+				status="",
 				deal_owner="",
 				_assign=None,
 			)
@@ -357,6 +359,7 @@ class TestWhatsAppConversations(FrappeTestCase):
 			{
 				"display_name": "Ada Lovelace",
 				"phone": "+14155552671",
+				"status": "Qualified",
 				"owner_user": "priya@demo.crm",
 				"assigned_users": ["priya@demo.crm"],
 			},
@@ -366,10 +369,20 @@ class TestWhatsAppConversations(FrappeTestCase):
 			{
 				"display_name": "Acme Corp",
 				"phone": "+14155552672",
+				"status": "",
 				"owner_user": "",
 				"assigned_users": [],
 			},
 		)
+
+	def test_references_ask_for_the_status_field(self):
+		"""The stage pill rides on the reference query rather than a second round trip."""
+		aggregates = [{"reference_doctype": "CRM Lead", "reference_name": "LEAD-0001"}]
+
+		with patch("crm.api.whatsapp.frappe.get_list", return_value=[]) as mock_get_list:
+			get_conversation_references(aggregates)
+
+		self.assertIn("status", mock_get_list.call_args.kwargs["fields"])
 
 	def test_references_query_only_the_doctypes_present(self):
 		aggregates = [{"reference_doctype": "CRM Lead", "reference_name": "LEAD-0001"}]
@@ -630,6 +643,55 @@ class TestWhatsAppConversations(FrappeTestCase):
 		self.assertEqual(conversations[0]["waiting_since"], datetime(2026, 8, 1, 11, 0, 0))
 		self.assertEqual(conversations[0]["priority"], "hot")
 		self.assertIsNone(conversations[0]["assigned_to"])
+
+	# --- lead/deal status on a conversation row ---
+
+	def test_conversation_row_carries_the_reference_status(self):
+		aggregates = [
+			{
+				"reference_doctype": "CRM Lead",
+				"reference_name": "LEAD-0001",
+				"last_at": datetime(2026, 8, 1, 12, 0, 0),
+				"message_count": 1,
+			},
+			# A reference whose status is missing must still produce a row.
+			{
+				"reference_doctype": "CRM Deal",
+				"reference_name": "DEAL-0001",
+				"last_at": datetime(2026, 8, 1, 11, 0, 0),
+				"message_count": 1,
+			},
+		]
+		references = {
+			("CRM Lead", "LEAD-0001"): {
+				"display_name": "Ada Lovelace",
+				"phone": "",
+				"status": "Qualified",
+				"owner_user": "",
+				"assigned_users": [],
+			},
+			("CRM Deal", "DEAL-0001"): {
+				"display_name": "Acme Corp",
+				"phone": "",
+				"owner_user": "",
+				"assigned_users": [],
+			},
+		}
+
+		with (
+			patch("crm.api.whatsapp.validate_access"),
+			patch("crm.api.whatsapp.frappe.get_installed_apps", return_value=["frappe", "crm"]),
+			patch("crm.api.whatsapp.frappe.db.exists", return_value=True),
+			patch("crm.api.whatsapp.resolve_conversation_scope", return_value="all"),
+			patch("crm.api.whatsapp.get_conversation_aggregates", return_value=aggregates),
+			patch("crm.api.whatsapp.get_last_conversation_messages", return_value={}),
+			patch("crm.api.whatsapp.get_conversation_references", return_value=references),
+			patch("crm.api.whatsapp.get_unanswered_since", return_value={}),
+		):
+			conversations = get_whatsapp_conversations(scope="all")
+
+		self.assertEqual(conversations[0]["status"], "Qualified")
+		self.assertEqual(conversations[1]["status"], "")
 
 
 class TestWhatsAppAssignment(FrappeTestCase):
