@@ -31,6 +31,12 @@
   "job_title",
   "source",
   "lead_owner",
+  "travel_section",
+  "destination",
+  "travel_start_date",
+  "travel_end_date",
+  "group_size",
+  "budget",
   "organization_tab",
   "section_break_uixv",
   "naming_series",
@@ -459,13 +465,44 @@
    "fieldtype": "Data",
    "label": "Facebook",
    "no_copy": 1
+  },
+  {
+   "fieldname": "travel_section",
+   "fieldtype": "Section Break",
+   "label": "Travel"
+  },
+  {
+   "fieldname": "destination",
+   "fieldtype": "Data",
+   "label": "Destination"
+  },
+  {
+   "fieldname": "travel_start_date",
+   "fieldtype": "Date",
+   "label": "Travel Start Date"
+  },
+  {
+   "fieldname": "travel_end_date",
+   "fieldtype": "Date",
+   "label": "Travel End Date"
+  },
+  {
+   "fieldname": "group_size",
+   "fieldtype": "Int",
+   "label": "Group Size",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "budget",
+   "fieldtype": "Currency",
+   "label": "Budget"
   }
  ],
  "grid_page_length": 50,
  "image_field": "image",
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-04-04 12:33:17.177897",
+ "modified": "2026-08-06 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Lead",

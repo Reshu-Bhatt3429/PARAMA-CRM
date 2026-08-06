@@ -193,6 +193,7 @@ import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import CalendarIcon from '@/components/Icons/CalendarIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
+import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
 import CollapseSidebar from '@/components/Icons/CollapseSidebar.vue'
 import NotificationsIcon from '@/components/Icons/NotificationsIcon.vue'
 import HelpIcon from '@/components/Icons/HelpIcon.vue'
@@ -211,6 +212,7 @@ import {
   mobileSidebarOpened,
 } from '@/composables/settings'
 import { showChangePasswordModal } from '@/composables/modals'
+import { isWhatsappInstalled } from '@/composables/whatsapp'
 import { useBroadcast } from '@/composables/useBroadcast.js'
 import { call, Sidebar, SidebarItem, SidebarLabel, Tooltip } from 'frappe-ui'
 import {
@@ -298,6 +300,13 @@ const links = [
     label: 'Call Logs',
     icon: PhoneIcon,
     to: 'Call Logs',
+  },
+  {
+    label: 'WhatsApp',
+    icon: WhatsAppIcon,
+    to: 'WhatsApp',
+    // The shared inbox is meaningless without the frappe_whatsapp app.
+    condition: () => isWhatsappInstalled.value,
   },
 ]
 

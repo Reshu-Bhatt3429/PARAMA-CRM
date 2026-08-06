@@ -108,6 +108,11 @@ const routes = [
     component: () => import('@/pages/Calendar.vue'),
   },
   {
+    path: '/whatsapp',
+    name: 'WhatsApp',
+    component: () => import('@/pages/WhatsAppInbox.vue'),
+  },
+  {
     path: '/data-import',
     name: 'DataImportList',
     component: () => import('@/pages/DataImport.vue'),

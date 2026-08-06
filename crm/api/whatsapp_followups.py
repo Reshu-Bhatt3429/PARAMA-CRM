@@ -1,0 +1,277 @@
+"""Scheduled WhatsApp nudges: per-agent follow-up reminders and a manager digest.
+
+Both entry points are wired into `scheduler_events` in `crm/hooks.py`
+(hourly / daily). They run unattended, so neither is allowed to raise: a
+scheduler job that throws takes the rest of its queue down with it. Every
+failure is logged with `frappe.log_error` and the job reports zero work done.
+
+Nothing here talks to Meta. It only reads WhatsApp Message rows that already
+exist and writes CRM Notifications.
+"""
+
+import frappe
+from frappe import _
+
+from crm.api.whatsapp import (
+	WHATSAPP_LEAD_SOURCE,
+	get_conversation_aggregates,
+	get_conversation_references,
+	get_unanswered_since,
+	is_unanswered,
+)
+from crm.fcrm.doctype.crm_notification.crm_notification import notify_user
+
+# How long an unanswered incoming message may sit before the assignee is nudged.
+FOLLOWUP_DUE_HOURS = 2
+
+# Window the daily digest summarises.
+DIGEST_HOURS = 24
+
+# Roles that receive the daily digest. Administrator is included on purpose:
+# `crm.api.session.get_users` counts it as a CRM user, and on a small site it is
+# often the only account holding a manager role.
+DIGEST_ROLES = ("Sales Manager", "System Manager")
+
+DIGEST_EXCLUDED_USERS = ("Guest",)
+
+
+def notify_pending_followups():
+	"""Hourly: nudge whoever owns a conversation that has been waiting too long."""
+	try:
+		if not frappe.db.exists("DocType", "WhatsApp Message"):
+			return 0
+
+		created = 0
+		for conversation in get_pending_conversations():
+			for user in conversation["assigned_users"]:
+				if create_followup_notification(conversation, user):
+					created += 1
+
+		return created
+	except Exception:
+		frappe.log_error(
+			frappe.get_traceback(),
+			"CRM WhatsApp: pending follow-up notifications failed",
+		)
+		return 0
+
+
+def get_pending_conversations(now=None) -> list[dict]:
+	"""Conversations whose newest message is an incoming one older than the cutoff.
+
+	Reuses the inbox aggregation so a nudge and the inbox badge can never
+	disagree about what "waiting" means.
+	"""
+	now = now or frappe.utils.now_datetime()
+	cutoff = frappe.utils.add_to_date(now, hours=-FOLLOWUP_DUE_HOURS)
+
+	aggregates = [row for row in get_conversation_aggregates() if is_unanswered(row)]
+	if not aggregates:
+		return []
+
+	unanswered_since = get_unanswered_since(aggregates)
+	references = get_conversation_references(aggregates)
+
+	pending = []
+	for row in aggregates:
+		key = (row["reference_doctype"], row["reference_name"])
+		reference = references.get(key)
+		waiting_since = unanswered_since.get(key)
+		if not reference or not waiting_since or waiting_since > cutoff:
+			continue
+
+		assigned_users = reference.get("assigned_users") or []
+		if not assigned_users and reference.get("owner_user"):
+			assigned_users = [reference["owner_user"]]
+		if not assigned_users:
+			# Nobody to nudge. The lead still shows up in the manager digest.
+			continue
+
+		pending.append(
+			{
+				"reference_doctype": row["reference_doctype"],
+				"reference_name": row["reference_name"],
+				"display_name": reference["display_name"],
+				"waiting_since": waiting_since,
+				"assigned_users": assigned_users,
+			}
+		)
+
+	return pending
+
+
+def create_followup_notification(conversation: dict, user: str) -> bool:
+	"""Raise one reminder, unless an unread one for the same conversation exists."""
+	if has_unread_followup(conversation, user):
+		return False
+
+	waiting_since = frappe.utils.format_datetime(conversation["waiting_since"])
+	display_name = frappe.utils.escape_html(conversation["display_name"])
+	notification_text = f"""
+        <div class="mb-2 leading-5 text-ink-gray-5">
+            <span>{_("Pending WhatsApp follow-up:")}</span>
+            <span class="font-medium text-ink-gray-9">{display_name}</span>
+            <span>{_("has been waiting since {0}").format(waiting_since)}</span>
+        </div>
+    """
+
+	notify_user(
+		{
+			# No from_user: the reminder comes from the scheduler, and leaving it
+			# empty is also what lets a user be nudged about their own lead
+			# (notify_user drops notifications a user would send to themselves).
+			"owner": None,
+			"assigned_to": user,
+			"notification_type": "WhatsApp",
+			"message": _("Pending WhatsApp follow-up: {0} has been waiting since {1}").format(
+				conversation["display_name"], waiting_since
+			),
+			"notification_text": notification_text,
+			# The reminder is about a conversation, not about one message. Pointing
+			# notification_type_doctype at the Lead/Deal (per-message notifications
+			# point at "WhatsApp Message") is what keeps the two apart when we look
+			# for an unread copy.
+			"reference_doctype": conversation["reference_doctype"],
+			"reference_docname": conversation["reference_name"],
+			"redirect_to_doctype": conversation["reference_doctype"],
+			"redirect_to_docname": conversation["reference_name"],
+		}
+	)
+	return True
+
+
+def has_unread_followup(conversation: dict, user: str) -> bool:
+	return bool(
+		frappe.db.exists(
+			"CRM Notification",
+			{
+				"to_user": user,
+				"type": "WhatsApp",
+				"read": 0,
+				"notification_type_doctype": conversation["reference_doctype"],
+				"notification_type_doc": conversation["reference_name"],
+			},
+		)
+	)
+
+
+def send_daily_digest():
+	"""Daily: one summary of the WhatsApp pipeline for every manager."""
+	try:
+		if not frappe.db.exists("DocType", "WhatsApp Message"):
+			return 0
+
+		summary = build_digest_summary()
+		if not any(summary[key] for key in ("new_leads", "needs_reply", "overdue")):
+			return 0
+
+		created = 0
+		for user in get_digest_recipients():
+			create_digest_notification(summary, user)
+			created += 1
+
+		return created
+	except Exception:
+		frappe.log_error(
+			frappe.get_traceback(),
+			"CRM WhatsApp: daily digest failed",
+		)
+		return 0
+
+
+def build_digest_summary(now=None) -> dict:
+	"""Count what the manager needs to know, plus a document to link the digest to."""
+	now = now or frappe.utils.now_datetime()
+	digest_cutoff = frappe.utils.add_to_date(now, hours=-DIGEST_HOURS)
+	overdue_cutoff = frappe.utils.add_to_date(now, hours=-FOLLOWUP_DUE_HOURS)
+
+	new_leads = frappe.get_all(
+		"CRM Lead",
+		filters={
+			"source": WHATSAPP_LEAD_SOURCE,
+			"creation": [">=", frappe.utils.get_datetime_str(digest_cutoff)],
+		},
+		pluck="name",
+		order_by="creation desc",
+	)
+
+	aggregates = [row for row in get_conversation_aggregates() if is_unanswered(row)]
+	unanswered_since = get_unanswered_since(aggregates) if aggregates else {}
+	overdue = sorted(
+		(waiting_since, key)
+		for key, waiting_since in unanswered_since.items()
+		if waiting_since <= overdue_cutoff
+	)
+
+	# The notification list builds its route from the reference, so a digest with
+	# no reference would render an unclickable row. Any non-zero summary has at
+	# least one document to point at: the newest lead, else the longest wait.
+	if new_leads:
+		reference = ("CRM Lead", new_leads[0])
+	elif overdue:
+		reference = overdue[0][1]
+	elif unanswered_since:
+		reference = sorted(unanswered_since.items())[0][0]
+	else:
+		reference = (None, None)
+
+	return {
+		"new_leads": len(new_leads),
+		"needs_reply": len(unanswered_since),
+		"overdue": len(overdue),
+		"reference_doctype": reference[0],
+		"reference_name": reference[1],
+	}
+
+
+def get_digest_recipients() -> list[str]:
+	"""Enabled system users holding a manager role, minus Guest."""
+	role_holders = set(
+		frappe.get_all(
+			"Has Role",
+			filters={"parenttype": "User", "role": ["in", list(DIGEST_ROLES)]},
+			pluck="parent",
+			distinct=True,
+		)
+	)
+	# Administrator holds every role implicitly, but its Has Role table is not
+	# guaranteed to list System Manager -- crm.api.session.get_users special-cases
+	# it the same way.
+	role_holders.add("Administrator")
+	role_holders.difference_update(DIGEST_EXCLUDED_USERS)
+	if not role_holders:
+		return []
+
+	return sorted(
+		frappe.get_all(
+			"User",
+			filters={"name": ["in", sorted(role_holders)], "enabled": 1, "user_type": "System User"},
+			pluck="name",
+		)
+	)
+
+
+def create_digest_notification(summary: dict, user: str):
+	message = _(
+		"WhatsApp today: {0} new leads, {1} conversations need a reply, {2} waiting over {3}h"
+	).format(summary["new_leads"], summary["needs_reply"], summary["overdue"], FOLLOWUP_DUE_HOURS)
+	notification_text = f"""
+        <div class="mb-2 leading-5 text-ink-gray-5">
+            <span class="font-medium text-ink-gray-9">{_("WhatsApp daily digest")}</span>
+            <span>{message}</span>
+        </div>
+    """
+
+	notify_user(
+		{
+			"owner": None,
+			"assigned_to": user,
+			"notification_type": "WhatsApp",
+			"message": message,
+			"notification_text": notification_text,
+			"reference_doctype": summary["reference_doctype"],
+			"reference_docname": summary["reference_name"],
+			"redirect_to_doctype": summary["reference_doctype"],
+			"redirect_to_docname": summary["reference_name"],
+		}
+	)
