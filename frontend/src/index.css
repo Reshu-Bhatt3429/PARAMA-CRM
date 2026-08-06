@@ -149,6 +149,88 @@
   background-color: var(--app-canvas);
 }
 
+/* ---------------------------------------------------------------------------
+   Dark navy sidebar (both themes, like the reference design)
+   ---------------------------------------------------------------------------
+   The tokens are redefined *locally* on the <Sidebar> element rather than
+   globally, so only its subtree turns dark. Two consequences are load-bearing:
+
+   1. `Notifications` is a sibling of <Sidebar> inside `.crm-sidebar-shell`, so
+      it must NOT inherit these values — hence the shell only paints a
+      background colour and the token block sits one level in, on `.crm-sidebar`.
+   2. UserDropdown's menu, item tooltips and every other popover portal to
+      <body>, outside this subtree, so they keep the global light/dark tokens
+      and stay readable. Nothing here can produce white-on-white.
+
+   Every value below is AA or better against the surface it lands on:
+   ink-gray-6 8.3, ink-gray-7 11.0, ink-gray-5 5.8, active white 15.0,
+   badge white-on-indigo 6.3.
+   --------------------------------------------------------------------------- */
+.crm-sidebar-shell {
+  background-color: #12111c;
+}
+
+.crm-sidebar {
+  /* Sidebar's own surface + the ring colour of the collapsed unread dot. */
+  --surface-sidebar: #12111c;
+  --surface-gray-1: #12111c;
+  --surface-gray-2: #1e1d2b; /* row hover */
+  --surface-gray-3: #2a2939;
+  /* Active nav pill (SidebarItem active, UserDropdown open row). */
+  --surface-elevation-3: #262538;
+  /* Onboarding / trial / signup banner cards at the sidebar foot. */
+  --surface-elevation-1: #1c1b28;
+  --surface-elevation-2: #1c1b28;
+  /* Collapsed unread dot, which is bg-surface-gray-9 on the dark surface. */
+  --surface-gray-9: #818cf8;
+
+  --ink-gray-3: #3a3a4d; /* collapsed section divider */
+  --ink-gray-4: #7a7d94;
+  --ink-gray-5: #8b8ea6; /* section labels */
+  --ink-gray-6: #a8abc2; /* inactive row text */
+  --ink-gray-7: #c3c6d8; /* icons */
+  --ink-gray-8: #ffffff; /* active row text */
+  --ink-gray-9: #ffffff; /* brand name, section chevron */
+
+  --outline-gray-1: #23222f;
+  --outline-gray-2: #2a2939;
+
+  /* "Clear Demo Data" is `!text-ink-red-6 hover:!bg-surface-red-2`; the stock
+     pale red hover surface would carry pale red text. Invert both. */
+  --ink-red-6: #fca5a5;
+  --surface-red-2: #3a1a24;
+}
+
+/* Active row: lighter pill plus the reference's indigo accent bar. The inset
+   shadow replaces frappe-ui's `shadow-sm` (0,1,0) — this selector is (0,3,0). */
+.crm-sidebar [data-slot='sidebar-item'][data-state='active'] {
+  box-shadow: inset 3px 0 0 0 #818cf8;
+}
+
+/* Small uppercase section labels ("COMMAND", "CRM", "SCALE" in the reference). */
+.crm-sidebar [data-slot='sidebar-label'] h3 {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Indigo unread count, in place of the stock gray subtle Badge. */
+.crm-sidebar-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.375rem;
+  border-radius: 9999px;
+  background-color: #4f46e5;
+  color: #ffffff;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
 @layer components {
   .prose-f {
     @apply break-all

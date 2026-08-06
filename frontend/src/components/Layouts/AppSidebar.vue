@@ -5,15 +5,16 @@
 
        It also paints the sidebar surface: Sidebar's own `bg-surface-sidebar` is
        transparent in dark mode, and nothing behind it sets a background, so the
-       column falls through to the white page canvas. The token cannot be
-       overridden on the Sidebar element itself — `bg-surface-sidebar` is emitted
-       after `bg-surface-gray-1` in the utilities layer and would win. -->
-  <div class="relative flex h-full bg-surface-gray-1">
+       column falls through to the white page canvas. `.crm-sidebar-shell` sets
+       that background directly and deliberately carries no token overrides —
+       Notifications is its child and must keep the app's normal palette. The
+       dark navy tokens live on `.crm-sidebar` one level in (see index.css). -->
+  <div class="crm-sidebar-shell relative flex h-full">
     <Sidebar
       v-model:collapsed="isSidebarCollapsed"
       :disable-collapse="mobile"
       :width="mobile ? '260px' : undefined"
-      class="border-r border-outline-gray-1"
+      class="crm-sidebar border-r border-outline-gray-1"
     >
       <div class="flex h-full flex-col p-2">
         <UserDropdown :isCollapsed="isCollapsed" />
@@ -39,12 +40,14 @@
               </span>
             </template>
             <template #suffix>
-              <Badge
+              <!-- The stock gray subtle Badge disappears on the navy surface;
+                   this is the reference's indigo count pill. -->
+              <span
                 v-if="unreadNotificationsCount"
-                class="mr-2"
-                :label="unreadNotificationsCount"
-                variant="subtle"
-              />
+                class="crm-sidebar-badge mr-2"
+              >
+                {{ unreadNotificationsCount }}
+              </span>
             </template>
           </SidebarItem>
 
