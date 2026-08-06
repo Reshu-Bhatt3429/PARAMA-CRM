@@ -3,7 +3,10 @@ import {
   conversationKey,
   conversationPreview,
   filterConversations,
+  humanizeAge,
   isSameConversation,
+  priorityMeta,
+  waitingLabel,
 } from '@/utils/whatsappInbox'
 
 const conversation = (overrides = {}) => ({
@@ -150,5 +153,85 @@ describe('filterConversations', () => {
 
   it('handles a missing list', () => {
     expect(filterConversations(undefined, 'grace')).toEqual([])
+  })
+})
+
+describe('priorityMeta', () => {
+  it('maps the three buckets to their dot colour', () => {
+    expect(priorityMeta('hot').dotClass).toBe('bg-red-500')
+    expect(priorityMeta('warm').dotClass).toBe('bg-amber-500')
+    expect(priorityMeta('cold').dotClass).toBe('bg-surface-gray-4')
+  })
+
+  it('always carries a tooltip label', () => {
+    expect(priorityMeta('hot').label).toContain('Hot')
+    expect(priorityMeta('warm').label).toContain('Warm')
+    expect(priorityMeta('cold').label).toContain('Cold')
+  })
+
+  it('falls back to cold for anything unknown', () => {
+    expect(priorityMeta(undefined)).toEqual(priorityMeta('cold'))
+    expect(priorityMeta('lukewarm').priority).toBe('cold')
+  })
+})
+
+describe('humanizeAge', () => {
+  const now = new Date('2026-08-01T12:00:00')
+
+  it('reports minutes under an hour', () => {
+    expect(humanizeAge('2026-08-01 11:48:00', now)).toBe('12m')
+  })
+
+  it('rounds anything younger than a minute up to 1m', () => {
+    expect(humanizeAge('2026-08-01 11:59:30', now)).toBe('1m')
+  })
+
+  it('reports hours under a day', () => {
+    expect(humanizeAge('2026-08-01 09:00:00', now)).toBe('3h')
+  })
+
+  it('reports days beyond that', () => {
+    expect(humanizeAge('2026-07-27 12:00:00', now)).toBe('5d')
+  })
+
+  it('accepts a Date and rejects junk', () => {
+    expect(humanizeAge(new Date('2026-08-01T09:00:00'), now)).toBe('3h')
+    expect(humanizeAge('not a date', now)).toBe('')
+    expect(humanizeAge(null, now)).toBe('')
+  })
+})
+
+describe('waitingLabel', () => {
+  const now = new Date('2026-08-01T12:00:00')
+
+  it('is empty when no reply is owed', () => {
+    expect(waitingLabel(conversation({ needs_reply: false }), now)).toBe('')
+    expect(waitingLabel(null, now)).toBe('')
+  })
+
+  it('humanizes the wait since the oldest unanswered message', () => {
+    const waiting = conversation({
+      needs_reply: true,
+      waiting_since: '2026-08-01 09:00:00',
+    })
+    expect(waitingLabel(waiting, now)).toBe('waiting 3h')
+  })
+
+  it('falls back to the last message when the start is unknown', () => {
+    const waiting = conversation({
+      needs_reply: true,
+      waiting_since: null,
+      last_at: '2026-08-01 11:00:00',
+    })
+    expect(waitingLabel(waiting, now)).toBe('waiting 1h')
+  })
+
+  it('still marks the conversation when no timestamp parses', () => {
+    const waiting = conversation({
+      needs_reply: true,
+      waiting_since: null,
+      last_at: null,
+    })
+    expect(waitingLabel(waiting, now)).toBe('needs reply')
   })
 })

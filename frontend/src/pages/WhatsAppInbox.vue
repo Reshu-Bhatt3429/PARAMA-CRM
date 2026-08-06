@@ -4,6 +4,12 @@
       <ViewBreadcrumbs routeName="WhatsApp" />
     </template>
     <template #right-header>
+      <TabButtons
+        v-if="canSwitchScope"
+        v-model="scope"
+        :buttons="scopeButtons"
+        class="mr-2"
+      />
       <Button
         :label="__('Refresh')"
         :loading="conversations.loading"
@@ -84,9 +90,17 @@
             {{ conversationInitials(conversation) }}
           </span>
           <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span class="flex items-baseline justify-between gap-2">
-              <span class="truncate text-base-medium text-ink-gray-9">
-                {{ conversation.display_name }}
+            <span class="flex items-center justify-between gap-2">
+              <span class="flex min-w-0 items-center gap-1.5">
+                <Tooltip :text="priorityMeta(conversation.priority).label">
+                  <span
+                    class="size-2 shrink-0 rounded-full"
+                    :class="priorityMeta(conversation.priority).dotClass"
+                  />
+                </Tooltip>
+                <span class="truncate text-base-medium text-ink-gray-9">
+                  {{ conversation.display_name }}
+                </span>
               </span>
               <Tooltip :text="formatDate(conversation.last_at)">
                 <span class="shrink-0 text-xs text-ink-gray-5">
@@ -94,8 +108,16 @@
                 </span>
               </Tooltip>
             </span>
-            <span class="truncate text-xs text-ink-gray-5">
-              {{ conversation.phone }}
+            <span class="flex items-center gap-1.5">
+              <span class="truncate text-xs text-ink-gray-5">
+                {{ conversation.phone }}
+              </span>
+              <span
+                v-if="waitingLabel(conversation)"
+                class="shrink-0 rounded bg-surface-amber-2 px-1.5 text-xs text-ink-amber-3"
+              >
+                {{ waitingLabel(conversation) }}
+              </span>
             </span>
             <span class="flex items-center gap-1.5">
               <OutboundCallIcon
@@ -109,6 +131,15 @@
               <span class="truncate text-sm text-ink-gray-6">
                 {{ conversationPreview(conversation) }}
               </span>
+              <Tooltip
+                v-if="conversation.assigned_to"
+                class="ml-auto"
+                :text="
+                  __('Assigned to {0}', [conversation.assigned_to.full_name])
+                "
+              >
+                <UserAvatar :user="conversation.assigned_to.user" size="xs" />
+              </Tooltip>
             </span>
           </span>
         </button>
@@ -235,7 +266,9 @@ import OutboundCallIcon from '@/components/Icons/OutboundCallIcon.vue'
 import WhatsAppArea from '@/components/Activities/WhatsAppArea.vue'
 import WhatsAppBox from '@/components/Activities/WhatsAppBox.vue'
 import WhatsappTemplateSelectorModal from '@/components/Modals/WhatsappTemplateSelectorModal.vue'
+import UserAvatar from '@/components/UserAvatar.vue'
 import { globalStore } from '@/stores/global'
+import { usersStore } from '@/stores/users'
 import { whatsappEnabled } from '@/composables/whatsapp'
 import { formatDate, prettyDate } from '@/utils'
 import {
@@ -244,22 +277,35 @@ import {
   conversationPreview,
   filterConversations,
   isSameConversation,
+  priorityMeta,
+  waitingLabel,
 } from '@/utils/whatsappInbox'
 import { useTelemetry } from 'frappe-ui/frappe'
 import {
   Button,
+  TabButtons,
   TextInput,
   Tooltip,
   createResource,
   toast,
   usePageMeta,
 } from 'frappe-ui'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const { $socket } = globalStore()
+const { isManager } = usersStore()
 const { capture } = useTelemetry()
+
+// Only a manager may look past their own conversations; the server enforces
+// this too and quietly answers "mine" to anyone else who asks for "all".
+const canSwitchScope = computed(() => isManager())
+const scope = ref('mine')
+const scopeButtons = [
+  { label: __('My inbox'), value: 'mine' },
+  { label: __('All conversations'), value: 'all' },
+]
 
 const search = ref('')
 const selected = ref(null)
@@ -272,7 +318,13 @@ const activeDoc = ref({})
 const conversations = createResource({
   url: 'crm.api.whatsapp.get_whatsapp_conversations',
   cache: 'whatsapp_conversations',
+  makeParams: () => ({ scope: scope.value }),
   auto: true,
+})
+
+watch(scope, (value) => {
+  conversations.reload()
+  capture('whatsapp_inbox_switch_scope', { scope: value })
 })
 
 const allConversations = computed(() => conversations.data || [])

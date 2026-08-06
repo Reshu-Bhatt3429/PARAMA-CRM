@@ -1,9 +1,10 @@
 /**
- * Pure helpers for the shared WhatsApp team inbox (`@/pages/WhatsAppInbox.vue`).
+ * Pure helpers for the WhatsApp team inbox (`@/pages/WhatsAppInbox.vue`).
  *
  * A conversation is one row from `crm.api.whatsapp.get_whatsapp_conversations`:
  * `{ reference_doctype, reference_name, display_name, phone, last_message,
- *    last_message_type, last_at, message_count }`.
+ *    last_message_type, last_at, message_count, assigned_to, needs_reply,
+ *    waiting_since, priority }`.
  */
 
 /**
@@ -58,6 +59,79 @@ export function conversationPreview(conversation) {
     return __('You: {0}', [message])
   }
   return message
+}
+
+/**
+ * Dot colour and tooltip for a conversation's priority. Anything the backend
+ * has not taught us about reads as `cold`, so a new bucket can never render an
+ * unstyled dot.
+ */
+export function priorityMeta(priority) {
+  if (priority === 'hot') {
+    return {
+      priority: 'hot',
+      dotClass: 'bg-red-500',
+      label: __('Hot — unanswered today, or a busy week'),
+    }
+  }
+  if (priority === 'warm') {
+    return {
+      priority: 'warm',
+      dotClass: 'bg-amber-500',
+      label: __('Warm — active in the last 3 days'),
+    }
+  }
+  return {
+    priority: 'cold',
+    dotClass: 'bg-surface-gray-4',
+    label: __('Cold — no recent activity'),
+  }
+}
+
+/**
+ * Badge text for a conversation still waiting on a reply, e.g. `waiting 3h`.
+ * Empty when nothing is owed, so the caller can `v-if` on it.
+ */
+export function waitingLabel(conversation, now = new Date()) {
+  if (!conversation?.needs_reply) return ''
+
+  const age = humanizeAge(
+    conversation.waiting_since || conversation.last_at,
+    now,
+  )
+  return age ? __('waiting {0}', [age]) : __('needs reply')
+}
+
+/**
+ * Compact age of a server timestamp: `12m`, `3h`, `5d`. Anything younger than a
+ * minute reads as `1m` rather than `0m`, and an unparseable value gives ''.
+ */
+export function humanizeAge(timestamp, now = new Date()) {
+  const started = parseServerDatetime(timestamp)
+  if (!started) return ''
+
+  const minutes = Math.max(
+    1,
+    Math.floor((now.getTime() - started.getTime()) / 60000),
+  )
+  if (minutes < 60) return `${minutes}m`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h`
+
+  return `${Math.floor(hours / 24)}d`
+}
+
+/**
+ * Frappe sends naive `YYYY-MM-DD HH:MM:SS` strings in the site's timezone. The
+ * `T` makes the string parse the same way in every engine, still as local time.
+ */
+function parseServerDatetime(value) {
+  if (!value) return null
+
+  const parsed =
+    value instanceof Date ? value : new Date(String(value).replace(' ', 'T'))
+  return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
 /**
