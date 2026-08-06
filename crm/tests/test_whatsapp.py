@@ -9,13 +9,20 @@ from frappe.tests.utils import FrappeTestCase
 
 from crm.api.whatsapp import (
 	WHATSAPP_LEAD_SOURCE,
+	assign_whatsapp_lead,
+	choose_round_robin_assignee,
+	compute_priority,
+	conversation_belongs_to,
 	create_lead_from_whatsapp_message,
 	get_conversation_references,
 	get_counterpart_number,
 	get_last_conversation_messages,
 	get_whatsapp_conversations,
+	is_unanswered,
 	normalize_whatsapp_number,
 	notify_agent,
+	parse_assigned_users,
+	resolve_conversation_scope,
 	truncate_preview,
 	validate,
 	whatsapp_message_preview,
@@ -110,8 +117,11 @@ class TestWhatsAppHooks(FrappeTestCase):
 			),
 			patch("crm.api.whatsapp.ensure_whatsapp_lead_source") as mock_source,
 			patch("crm.api.whatsapp.frappe.get_doc", return_value=lead) as mock_get_doc,
+			patch("crm.api.whatsapp.assign_whatsapp_lead") as mock_assign,
 		):
 			result = create_lead_from_whatsapp_message(doc, "+14155552671")
+
+		mock_assign.assert_called_once_with("CRM-LEAD-2026-00001")
 
 		lock.acquire.assert_called_once_with(blocking=True)
 		mock_source.assert_called_once_with()
@@ -319,11 +329,18 @@ class TestWhatsAppConversations(FrappeTestCase):
 				last_name="Lovelace",
 				organization="Analytical Ltd",
 				mobile_no="+14155552671",
+				lead_owner="priya@demo.crm",
+				_assign='["priya@demo.crm"]',
 			)
 		]
 		deals = [
 			frappe._dict(
-				name="DEAL-0001", organization="Acme Corp", lead_name="Bob", mobile_no="+14155552672"
+				name="DEAL-0001",
+				organization="Acme Corp",
+				lead_name="Bob",
+				mobile_no="+14155552672",
+				deal_owner="",
+				_assign=None,
 			)
 		]
 
@@ -332,11 +349,21 @@ class TestWhatsAppConversations(FrappeTestCase):
 
 		self.assertEqual(
 			references[("CRM Lead", "LEAD-0001")],
-			{"display_name": "Ada Lovelace", "phone": "+14155552671"},
+			{
+				"display_name": "Ada Lovelace",
+				"phone": "+14155552671",
+				"owner_user": "priya@demo.crm",
+				"assigned_users": ["priya@demo.crm"],
+			},
 		)
 		self.assertEqual(
 			references[("CRM Deal", "DEAL-0001")],
-			{"display_name": "Acme Corp", "phone": "+14155552672"},
+			{
+				"display_name": "Acme Corp",
+				"phone": "+14155552672",
+				"owner_user": "",
+				"assigned_users": [],
+			},
 		)
 
 	def test_references_query_only_the_doctypes_present(self):
@@ -420,11 +447,13 @@ class TestWhatsAppConversations(FrappeTestCase):
 			patch("crm.api.whatsapp.validate_access"),
 			patch("crm.api.whatsapp.frappe.get_installed_apps", return_value=["frappe", "crm"]),
 			patch("crm.api.whatsapp.frappe.db.exists", return_value=True),
+			patch("crm.api.whatsapp.resolve_conversation_scope", return_value="all"),
 			patch("crm.api.whatsapp.get_conversation_aggregates", return_value=aggregates),
 			patch("crm.api.whatsapp.get_last_conversation_messages", return_value=last_messages),
 			patch("crm.api.whatsapp.get_conversation_references", return_value=references),
+			patch("crm.api.whatsapp.get_unanswered_since", return_value={}),
 		):
-			conversations = get_whatsapp_conversations()
+			conversations = get_whatsapp_conversations(scope="all")
 
 		self.assertEqual(
 			[conversation["reference_name"] for conversation in conversations],
@@ -453,11 +482,13 @@ class TestWhatsAppConversations(FrappeTestCase):
 			patch("crm.api.whatsapp.validate_access"),
 			patch("crm.api.whatsapp.frappe.get_installed_apps", return_value=["frappe", "crm"]),
 			patch("crm.api.whatsapp.frappe.db.exists", return_value=True),
+			patch("crm.api.whatsapp.resolve_conversation_scope", return_value="all"),
 			patch("crm.api.whatsapp.get_conversation_aggregates", return_value=aggregates),
 			patch(
 				"crm.api.whatsapp.get_last_conversation_messages", return_value={}
 			) as mock_last_messages,
 			patch("crm.api.whatsapp.get_conversation_references", return_value={}),
+			patch("crm.api.whatsapp.get_unanswered_since", return_value={}),
 		):
 			get_whatsapp_conversations(limit=2)
 
@@ -476,3 +507,268 @@ class TestWhatsAppConversations(FrappeTestCase):
 
 		mock_validate.assert_called_once_with()
 		mock_aggregates.assert_not_called()
+
+	# --- scope ---
+
+	def test_scope_all_is_downgraded_without_a_manager_role(self):
+		with patch("crm.api.whatsapp.can_view_all_conversations", return_value=False):
+			self.assertEqual(resolve_conversation_scope("all"), "mine")
+
+		with patch("crm.api.whatsapp.can_view_all_conversations", return_value=True):
+			self.assertEqual(resolve_conversation_scope("all"), "all")
+			# Anything that is not "all" stays personal, whatever the role.
+			self.assertEqual(resolve_conversation_scope("mine"), "mine")
+			self.assertEqual(resolve_conversation_scope(""), "mine")
+
+	def test_conversation_belongs_to_assignee_or_owner(self):
+		assigned = {"assigned_users": ["priya@demo.crm"], "owner_user": "rahul@demo.crm"}
+		self.assertTrue(conversation_belongs_to(assigned, "priya@demo.crm"))
+		self.assertTrue(conversation_belongs_to(assigned, "rahul@demo.crm"))
+		self.assertFalse(conversation_belongs_to(assigned, "someone@demo.crm"))
+		self.assertFalse(conversation_belongs_to({}, "priya@demo.crm"))
+
+	def test_parse_assigned_users_survives_malformed_values(self):
+		self.assertEqual(parse_assigned_users('["a@x.com", "b@x.com"]'), ["a@x.com", "b@x.com"])
+		self.assertEqual(parse_assigned_users(["a@x.com", ""]), ["a@x.com"])
+		self.assertEqual(parse_assigned_users(None), [])
+		self.assertEqual(parse_assigned_users("not json"), [])
+		self.assertEqual(parse_assigned_users("[1"), [])
+
+	def test_mine_scope_keeps_only_the_session_users_conversations(self):
+		aggregates = [
+			{
+				"reference_doctype": "CRM Lead",
+				"reference_name": "LEAD-0001",
+				"last_at": datetime(2026, 8, 1, 9, 0, 0),
+				"message_count": 2,
+			},
+			{
+				"reference_doctype": "CRM Lead",
+				"reference_name": "LEAD-0002",
+				"last_at": datetime(2026, 8, 1, 12, 0, 0),
+				"message_count": 5,
+			},
+		]
+		references = {
+			("CRM Lead", "LEAD-0001"): {
+				"display_name": "Ada Lovelace",
+				"phone": "",
+				"owner_user": "priya@demo.crm",
+				"assigned_users": ["priya@demo.crm"],
+			},
+			("CRM Lead", "LEAD-0002"): {
+				"display_name": "Grace Hopper",
+				"phone": "",
+				"owner_user": "rahul@demo.crm",
+				"assigned_users": ["rahul@demo.crm"],
+			},
+		}
+
+		with (
+			patch("crm.api.whatsapp.validate_access"),
+			patch("crm.api.whatsapp.frappe.get_installed_apps", return_value=["frappe", "crm"]),
+			patch("crm.api.whatsapp.frappe.db.exists", return_value=True),
+			patch("crm.api.whatsapp.resolve_conversation_scope", return_value="mine"),
+			patch("crm.api.whatsapp.frappe.session") as mock_session,
+			patch("crm.api.whatsapp.get_conversation_aggregates", return_value=aggregates),
+			patch("crm.api.whatsapp.get_last_conversation_messages", return_value={}),
+			patch("crm.api.whatsapp.get_conversation_references", return_value=references),
+			patch("crm.api.whatsapp.get_unanswered_since", return_value={}),
+			patch("crm.api.whatsapp.add_assignee_full_names"),
+		):
+			mock_session.user = "priya@demo.crm"
+			conversations = get_whatsapp_conversations()
+
+		self.assertEqual([row["reference_name"] for row in conversations], ["LEAD-0001"])
+		self.assertEqual(conversations[0]["assigned_to"]["user"], "priya@demo.crm")
+
+	# --- needs_reply / waiting_since / priority on a conversation row ---
+
+	def test_conversation_row_carries_followup_state(self):
+		aggregates = [
+			{
+				"reference_doctype": "CRM Lead",
+				"reference_name": "LEAD-0001",
+				"last_at": datetime(2026, 8, 1, 12, 0, 0),
+				"message_count": 3,
+				"last_incoming_at": datetime(2026, 8, 1, 12, 0, 0),
+				"last_outgoing_at": datetime(2026, 8, 1, 8, 0, 0),
+				"message_count_7d": 3,
+			}
+		]
+		references = {
+			("CRM Lead", "LEAD-0001"): {
+				"display_name": "Ada Lovelace",
+				"phone": "",
+				"owner_user": "",
+				"assigned_users": [],
+			}
+		}
+
+		with (
+			patch("crm.api.whatsapp.validate_access"),
+			patch("crm.api.whatsapp.frappe.get_installed_apps", return_value=["frappe", "crm"]),
+			patch("crm.api.whatsapp.frappe.db.exists", return_value=True),
+			patch("crm.api.whatsapp.resolve_conversation_scope", return_value="all"),
+			patch("crm.api.whatsapp.get_conversation_aggregates", return_value=aggregates),
+			patch("crm.api.whatsapp.get_last_conversation_messages", return_value={}),
+			patch("crm.api.whatsapp.get_conversation_references", return_value=references),
+			patch(
+				"crm.api.whatsapp.get_unanswered_since",
+				return_value={("CRM Lead", "LEAD-0001"): datetime(2026, 8, 1, 11, 0, 0)},
+			),
+			patch("crm.api.whatsapp.compute_priority", return_value="hot"),
+		):
+			conversations = get_whatsapp_conversations(scope="all")
+
+		self.assertTrue(conversations[0]["needs_reply"])
+		self.assertEqual(conversations[0]["waiting_since"], datetime(2026, 8, 1, 11, 0, 0))
+		self.assertEqual(conversations[0]["priority"], "hot")
+		self.assertIsNone(conversations[0]["assigned_to"])
+
+
+class TestWhatsAppAssignment(FrappeTestCase):
+	"""Round-robin assignment of WhatsApp-captured leads."""
+
+	def tearDown(self):
+		frappe.db.rollback()
+
+	def test_least_loaded_candidate_wins(self):
+		candidates = ["priya@demo.crm", "rahul@demo.crm"]
+		self.assertEqual(
+			choose_round_robin_assignee(candidates, {"priya@demo.crm": 3, "rahul@demo.crm": 1}),
+			"rahul@demo.crm",
+		)
+
+	def test_candidate_without_open_leads_counts_as_zero(self):
+		candidates = ["priya@demo.crm", "rahul@demo.crm"]
+		self.assertEqual(
+			choose_round_robin_assignee(candidates, {"priya@demo.crm": 2}),
+			"rahul@demo.crm",
+		)
+
+	def test_ties_break_deterministically_on_user_id(self):
+		counts = {"priya@demo.crm": 2, "rahul@demo.crm": 2}
+		self.assertEqual(
+			choose_round_robin_assignee(["rahul@demo.crm", "priya@demo.crm"], counts),
+			"priya@demo.crm",
+		)
+		self.assertEqual(
+			choose_round_robin_assignee(["priya@demo.crm", "rahul@demo.crm"], counts),
+			"priya@demo.crm",
+		)
+
+	def test_no_candidates_means_no_assignee(self):
+		self.assertIsNone(choose_round_robin_assignee([], {}))
+
+	def test_assignment_uses_the_native_assign_to_mechanism(self):
+		with (
+			patch("crm.api.whatsapp.get_assigned_users", return_value=[]),
+			patch(
+				"crm.api.whatsapp.get_sales_user_candidates",
+				return_value=["priya@demo.crm", "rahul@demo.crm"],
+			),
+			patch("crm.api.whatsapp.get_open_whatsapp_lead_counts", return_value={"priya@demo.crm": 1}),
+			patch("crm.api.whatsapp.assign") as mock_assign,
+		):
+			assignee = assign_whatsapp_lead("CRM-LEAD-2026-00001")
+
+		self.assertEqual(assignee, "rahul@demo.crm")
+		mock_assign.assert_called_once_with(
+			{
+				"assign_to": ["rahul@demo.crm"],
+				"doctype": "CRM Lead",
+				"name": "CRM-LEAD-2026-00001",
+			},
+			ignore_permissions=True,
+		)
+
+	def test_an_already_assigned_lead_is_never_reassigned(self):
+		with (
+			patch("crm.api.whatsapp.get_assigned_users", return_value=["priya@demo.crm"]),
+			patch("crm.api.whatsapp.get_sales_user_candidates") as mock_candidates,
+			patch("crm.api.whatsapp.assign") as mock_assign,
+		):
+			self.assertIsNone(assign_whatsapp_lead("CRM-LEAD-2026-00001"))
+
+		mock_candidates.assert_not_called()
+		mock_assign.assert_not_called()
+
+	def test_no_sales_users_skips_assignment_gracefully(self):
+		with (
+			patch("crm.api.whatsapp.get_assigned_users", return_value=[]),
+			patch("crm.api.whatsapp.get_sales_user_candidates", return_value=[]),
+			patch("crm.api.whatsapp.assign") as mock_assign,
+		):
+			self.assertIsNone(assign_whatsapp_lead("CRM-LEAD-2026-00001"))
+
+		mock_assign.assert_not_called()
+
+
+class TestWhatsAppPriority(FrappeTestCase):
+	"""compute_priority is deterministic: same inputs, same temperature."""
+
+	NOW = datetime(2026, 8, 1, 12, 0, 0)
+
+	def test_unanswered_incoming_within_a_day_is_hot(self):
+		priority = compute_priority(
+			datetime(2026, 8, 1, 6, 0, 0), datetime(2026, 7, 31, 20, 0, 0), 2, now=self.NOW
+		)
+		self.assertEqual(priority, "hot")
+
+	def test_a_busy_week_is_hot_even_when_answered(self):
+		priority = compute_priority(
+			datetime(2026, 8, 1, 6, 0, 0), datetime(2026, 8, 1, 7, 0, 0), 5, now=self.NOW
+		)
+		self.assertEqual(priority, "hot")
+
+	def test_an_answered_incoming_is_not_hot_on_its_own(self):
+		priority = compute_priority(
+			datetime(2026, 8, 1, 6, 0, 0), datetime(2026, 8, 1, 7, 0, 0), 2, now=self.NOW
+		)
+		self.assertEqual(priority, "warm")
+
+	def test_an_old_unanswered_incoming_is_not_hot(self):
+		priority = compute_priority(datetime(2026, 7, 30, 6, 0, 0), None, 1, now=self.NOW)
+		self.assertEqual(priority, "warm")
+
+	def test_activity_within_three_days_is_warm(self):
+		priority = compute_priority(
+			datetime(2026, 7, 29, 6, 0, 0), datetime(2026, 7, 29, 7, 0, 0), 2, now=self.NOW
+		)
+		self.assertEqual(priority, "warm")
+
+	def test_older_activity_is_cold(self):
+		priority = compute_priority(
+			datetime(2026, 7, 20, 6, 0, 0), datetime(2026, 7, 20, 7, 0, 0), 0, now=self.NOW
+		)
+		self.assertEqual(priority, "cold")
+
+	def test_a_conversation_without_timestamps_is_cold(self):
+		self.assertEqual(compute_priority(None, None, 0, now=self.NOW), "cold")
+
+	def test_string_timestamps_are_accepted(self):
+		self.assertEqual(
+			compute_priority("2026-08-01 06:00:00", "2026-07-31 20:00:00", 0, now=self.NOW),
+			"hot",
+		)
+
+	def test_is_unanswered_only_when_the_reply_is_older(self):
+		self.assertTrue(
+			is_unanswered(
+				{
+					"last_incoming_at": datetime(2026, 8, 1, 10, 0, 0),
+					"last_outgoing_at": datetime(2026, 8, 1, 9, 0, 0),
+				}
+			)
+		)
+		self.assertTrue(is_unanswered({"last_incoming_at": datetime(2026, 8, 1, 10, 0, 0)}))
+		self.assertFalse(
+			is_unanswered(
+				{
+					"last_incoming_at": datetime(2026, 8, 1, 8, 0, 0),
+					"last_outgoing_at": datetime(2026, 8, 1, 9, 0, 0),
+				}
+			)
+		)
+		self.assertFalse(is_unanswered({"last_outgoing_at": datetime(2026, 8, 1, 9, 0, 0)}))
