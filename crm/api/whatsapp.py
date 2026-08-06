@@ -3,6 +3,7 @@ import json
 import frappe
 from frappe import _
 from frappe.permissions import add_permission, update_permission_property
+from frappe.query_builder.functions import Coalesce, Count, Max
 
 from crm.api.doc import get_assigned_users
 from crm.fcrm.doctype.crm_notification.crm_notification import notify_user
@@ -11,6 +12,29 @@ from crm.utils import parse_phone_number
 
 ALLOWED_WHATSAPP_ROLES = ["System Manager", "Sales Manager", "Sales User"]
 WHATSAPP_LEAD_SOURCE = "WhatsApp"
+
+# CRM doctypes a WhatsApp Message can be linked to (see crm.api.whatsapp.validate).
+CONVERSATION_DOCTYPES = ("CRM Lead", "CRM Deal")
+
+# (icon, untranslated label) used to preview messages that carry no readable text.
+MEDIA_PREVIEW_LABELS = {
+	"image": ("📷", "Image"),
+	"video": ("🎥", "Video"),
+	"audio": ("🎤", "Audio"),
+	"document": ("📄", "Document"),
+	"location": ("📍", "Location"),
+	"contact": ("👤", "Contact"),
+	"order": ("🛒", "Order"),
+	"interactive": ("🔘", "Interactive message"),
+	"button": ("🔘", "Button reply"),
+	"flow": ("🧩", "Form"),
+	"reaction": ("❤️", "Reaction"),
+}
+
+PREVIEW_MAX_LENGTH = 120
+
+# Most recent conversations returned by get_whatsapp_conversations by default.
+CONVERSATION_LIMIT = 200
 
 
 def validate_access(reference_doctype=None, reference_name=None, permtype="read"):
@@ -365,6 +389,210 @@ def get_whatsapp_messages(reference_doctype: str, reference_name: str):
 			reply_message["reply_to_from"] = from_name
 
 	return [message for message in messages if message["content_type"] != "reaction"]
+
+
+@frappe.whitelist()
+def get_whatsapp_conversations(limit: int = CONVERSATION_LIMIT):
+	"""Return one row per WhatsApp conversation across every CRM Lead and Deal.
+
+	Powers the shared team inbox. Three bounded queries regardless of how many
+	messages exist: one GROUP BY for the counts/last timestamps, one to fetch
+	the last message of each conversation, and one per reference doctype to
+	resolve display names. Conversations whose reference document the current
+	user cannot read are dropped, since the reference lookup is permission
+	aware.
+	"""
+	validate_access()
+
+	# twilio integration app is not compatible with crm app
+	if "twilio_integration" in frappe.get_installed_apps():
+		return []
+	if not frappe.db.exists("DocType", "WhatsApp Message"):
+		return []
+
+	aggregates = get_conversation_aggregates()
+	if not aggregates:
+		return []
+
+	# Trim before the follow-up lookups so their `in (...)` lists stay bounded.
+	aggregates.sort(key=lambda row: row["last_at"], reverse=True)
+	limit = frappe.utils.cint(limit) or CONVERSATION_LIMIT
+	aggregates = aggregates[:limit]
+
+	last_messages = get_last_conversation_messages(aggregates)
+	references = get_conversation_references(aggregates)
+
+	conversations = []
+	for row in aggregates:
+		key = (row["reference_doctype"], row["reference_name"])
+		reference = references.get(key)
+		if not reference:
+			# Reference document was deleted, or is not readable by this user.
+			continue
+
+		last_message = last_messages.get(key) or {}
+		conversations.append(
+			{
+				"reference_doctype": row["reference_doctype"],
+				"reference_name": row["reference_name"],
+				"display_name": reference["display_name"],
+				"phone": get_counterpart_number(last_message) or reference["phone"],
+				"last_message": whatsapp_message_preview(last_message),
+				"last_message_type": last_message.get("type"),
+				"last_at": row["last_at"],
+				"message_count": row["message_count"],
+			}
+		)
+
+	conversations.sort(key=lambda conversation: conversation["last_at"], reverse=True)
+	return conversations
+
+
+def get_conversation_aggregates() -> list[dict]:
+	"""One GROUP BY over WhatsApp Message: message count and last timestamp per conversation.
+
+	Reactions are excluded because the thread view hides them too, so counting
+	them would make the inbox disagree with the conversation it opens.
+	"""
+	Message = frappe.qb.DocType("WhatsApp Message")
+	return (
+		frappe.qb.from_(Message)
+		.select(
+			Message.reference_doctype,
+			Message.reference_name,
+			Count(Message.name).as_("message_count"),
+			Max(Message.creation).as_("last_at"),
+		)
+		.where(
+			Message.reference_doctype.isin(list(CONVERSATION_DOCTYPES))
+			& (Coalesce(Message.reference_name, "") != "")
+			& (Coalesce(Message.content_type, "text") != "reaction")
+		)
+		.groupby(Message.reference_doctype, Message.reference_name)
+		.run(as_dict=True)
+	)
+
+
+def get_last_conversation_messages(aggregates: list[dict]) -> dict[tuple, dict]:
+	"""Fetch the newest message of every conversation in a single query."""
+	reference_names = sorted({row["reference_name"] for row in aggregates if row["reference_name"]})
+	if not reference_names:
+		return {}
+
+	rows = frappe.get_all(
+		"WhatsApp Message",
+		filters={
+			"reference_doctype": ["in", list(CONVERSATION_DOCTYPES)],
+			"reference_name": ["in", reference_names],
+			"creation": ["in", [row["last_at"] for row in aggregates]],
+		},
+		fields=[
+			"reference_doctype",
+			"reference_name",
+			"type",
+			"message",
+			"message_type",
+			"content_type",
+			"attach",
+			"creation",
+			"from",
+			"to",
+		],
+		order_by="creation asc",
+	)
+
+	# The `creation in (...)` filter can match a sibling conversation that happens
+	# to share a timestamp, so keep only rows on their own conversation's last_at.
+	wanted = {(row["reference_doctype"], row["reference_name"]): row["last_at"] for row in aggregates}
+	last_messages = {}
+	for row in rows:
+		key = (row["reference_doctype"], row["reference_name"])
+		if wanted.get(key) == row["creation"]:
+			last_messages[key] = row
+
+	return last_messages
+
+
+def get_conversation_references(aggregates: list[dict]) -> dict[tuple, dict]:
+	"""Resolve display name and phone for each linked Lead/Deal, honouring read permissions."""
+	names = {doctype: [] for doctype in CONVERSATION_DOCTYPES}
+	for row in aggregates:
+		if row["reference_doctype"] in names and row["reference_name"]:
+			names[row["reference_doctype"]].append(row["reference_name"])
+
+	references = {}
+
+	if names["CRM Lead"]:
+		leads = frappe.get_list(
+			"CRM Lead",
+			filters={"name": ["in", names["CRM Lead"]]},
+			fields=["name", "lead_name", "first_name", "last_name", "organization", "mobile_no"],
+			limit_page_length=0,
+		)
+		for lead in leads:
+			full_name = " ".join(part for part in [lead.first_name, lead.last_name] if part)
+			references[("CRM Lead", lead.name)] = {
+				"display_name": lead.lead_name or full_name or lead.organization or lead.name,
+				"phone": lead.mobile_no or "",
+			}
+
+	if names["CRM Deal"]:
+		deals = frappe.get_list(
+			"CRM Deal",
+			filters={"name": ["in", names["CRM Deal"]]},
+			fields=["name", "organization", "lead_name", "mobile_no"],
+			limit_page_length=0,
+		)
+		for deal in deals:
+			references[("CRM Deal", deal.name)] = {
+				"display_name": deal.organization or deal.lead_name or deal.name,
+				"phone": deal.mobile_no or "",
+			}
+
+	return references
+
+
+def get_counterpart_number(message: dict) -> str:
+	"""Return the customer side of a message: the sender when incoming, the recipient when outgoing."""
+	if not message:
+		return ""
+
+	raw_number = message.get("from") if message.get("type") == "Incoming" else message.get("to")
+	if not raw_number:
+		return ""
+
+	return normalize_whatsapp_number(raw_number)
+
+
+def whatsapp_message_preview(message: dict) -> str:
+	"""Build a single-line, type-aware preview of a message for the conversation list."""
+	if not message:
+		return ""
+
+	text = frappe.utils.strip_html(frappe.utils.cstr(message.get("message"))).strip()
+	# Media messages without a caption store the file path in `message`.
+	if text and (text == frappe.utils.cstr(message.get("attach")) or text.startswith("/files/")):
+		text = ""
+
+	if frappe.utils.cstr(message.get("message_type")) == "Template":
+		return truncate_preview(f"📋 {_('Template message')}")
+
+	content_type = frappe.utils.cstr(message.get("content_type") or "text").lower()
+	label = MEDIA_PREVIEW_LABELS.get(content_type)
+	if not label:
+		return truncate_preview(text)
+
+	icon, name = label
+	prefix = f"{icon} {_(name)}"
+	return truncate_preview(f"{prefix} · {text}" if text else prefix)
+
+
+def truncate_preview(text: str, length: int = PREVIEW_MAX_LENGTH) -> str:
+	"""Collapse whitespace and clip a preview to a single readable line."""
+	text = " ".join(frappe.utils.cstr(text).split())
+	if len(text) <= length:
+		return text
+	return text[: length - 1].rstrip() + "…"
 
 
 @frappe.whitelist()
