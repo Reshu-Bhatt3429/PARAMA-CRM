@@ -5,8 +5,6 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import frappe
-from frappe.tests.utils import FrappeTestCase
-
 from crm.api.whatsapp import (
 	WHATSAPP_LEAD_SOURCE,
 	assign_whatsapp_lead,
@@ -14,8 +12,8 @@ from crm.api.whatsapp import (
 	compute_priority,
 	conversation_belongs_to,
 	create_lead_from_whatsapp_message,
-	get_conversation_references,
 	get_connected_whatsapp_account,
+	get_conversation_references,
 	get_counterpart_number,
 	get_last_conversation_messages,
 	get_whatsapp_conversations,
@@ -33,6 +31,7 @@ from crm.api.whatsapp_followups import (
 	create_followup_notification,
 	get_pending_conversations,
 )
+from frappe.tests.utils import FrappeTestCase
 
 
 class TestWhatsAppHooks(FrappeTestCase):
@@ -503,9 +502,7 @@ class TestWhatsAppConversations(FrappeTestCase):
 			patch("crm.api.whatsapp.frappe.db.exists", return_value=True),
 			patch("crm.api.whatsapp.resolve_conversation_scope", return_value="all"),
 			patch("crm.api.whatsapp.get_conversation_aggregates", return_value=aggregates),
-			patch(
-				"crm.api.whatsapp.get_last_conversation_messages", return_value={}
-			) as mock_last_messages,
+			patch("crm.api.whatsapp.get_last_conversation_messages", return_value={}) as mock_last_messages,
 			patch("crm.api.whatsapp.get_conversation_references", return_value={}),
 			patch("crm.api.whatsapp.get_unanswered_since", return_value={}),
 		):
@@ -516,9 +513,7 @@ class TestWhatsAppConversations(FrappeTestCase):
 
 	def test_conversations_require_a_sales_role(self):
 		with (
-			patch(
-				"crm.api.whatsapp.validate_access", side_effect=frappe.PermissionError
-			) as mock_validate,
+			patch("crm.api.whatsapp.validate_access", side_effect=frappe.PermissionError) as mock_validate,
 			patch("crm.api.whatsapp.get_conversation_aggregates") as mock_aggregates,
 		):
 			with self.assertRaises(frappe.PermissionError):
@@ -1080,9 +1075,7 @@ class TestConnectedWhatsAppAccount(FrappeTestCase):
 			patch("crm.api.whatsapp.frappe.db.get_value", return_value=row) as mock_get,
 		):
 			self.assertEqual(get_connected_whatsapp_account(), row)
-		mock_get.assert_called_once_with(
-			"WhatsApp Account", "BOTTOMSUP", ["name", "status"], as_dict=True
-		)
+		mock_get.assert_called_once_with("WhatsApp Account", "BOTTOMSUP", ["name", "status"], as_dict=True)
 
 	def test_requires_whatsapp_settings_doctype(self):
 		with (

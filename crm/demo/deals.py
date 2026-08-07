@@ -1,8 +1,6 @@
 from datetime import datetime, timedelta
 
 import frappe
-from frappe.query_builder import DocType
-
 from crm.demo.utils import (
 	backdate,
 	build_full_names,
@@ -12,6 +10,7 @@ from crm.demo.utils import (
 	insert_version,
 	resolve_owners,
 )
+from frappe.query_builder import DocType
 
 
 def _convert_to_deal(lead, deal):
@@ -25,9 +24,7 @@ def _convert_to_deal(lead, deal):
 	from crm.fcrm.doctype.crm_lead.crm_lead import convert_to_deal
 
 	deal.setdefault("expected_deal_value", deal.get("deal_value"))
-	deal.setdefault(
-		"expected_closure_date", frappe.utils.add_days(frappe.utils.nowdate(), 30)
-	)
+	deal.setdefault("expected_closure_date", frappe.utils.add_days(frappe.utils.nowdate(), 30))
 	return convert_to_deal(lead=lead, deal=deal)
 
 
