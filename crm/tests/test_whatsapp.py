@@ -15,6 +15,7 @@ from crm.api.whatsapp import (
 	conversation_belongs_to,
 	create_lead_from_whatsapp_message,
 	get_conversation_references,
+	get_connected_whatsapp_account,
 	get_counterpart_number,
 	get_last_conversation_messages,
 	get_whatsapp_conversations,
@@ -1056,3 +1057,36 @@ class TestWhatsAppFollowups(FrappeTestCase):
 		self.assertEqual(summary["needs_reply"], 0)
 		self.assertEqual(summary["overdue"], 0)
 		self.assertIsNone(summary["reference_doctype"])
+
+
+class TestConnectedWhatsAppAccount(FrappeTestCase):
+	def tearDown(self):
+		frappe.db.rollback()
+
+	def test_returns_none_when_no_default_account_is_set(self):
+		with (
+			patch("crm.api.whatsapp.validate_access"),
+			patch("crm.api.whatsapp.frappe.db.exists", return_value=True),
+			patch("crm.api.whatsapp.frappe.get_cached_value", return_value=None),
+		):
+			self.assertIsNone(get_connected_whatsapp_account())
+
+	def test_returns_the_default_outgoing_account_row(self):
+		row = {"name": "BOTTOMSUP", "status": "Active"}
+		with (
+			patch("crm.api.whatsapp.validate_access"),
+			patch("crm.api.whatsapp.frappe.db.exists", return_value=True),
+			patch("crm.api.whatsapp.frappe.get_cached_value", return_value="BOTTOMSUP"),
+			patch("crm.api.whatsapp.frappe.db.get_value", return_value=row) as mock_get,
+		):
+			self.assertEqual(get_connected_whatsapp_account(), row)
+		mock_get.assert_called_once_with(
+			"WhatsApp Account", "BOTTOMSUP", ["name", "status"], as_dict=True
+		)
+
+	def test_requires_whatsapp_settings_doctype(self):
+		with (
+			patch("crm.api.whatsapp.validate_access"),
+			patch("crm.api.whatsapp.frappe.db.exists", return_value=False),
+		):
+			self.assertIsNone(get_connected_whatsapp_account())

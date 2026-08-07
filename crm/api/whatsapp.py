@@ -366,6 +366,26 @@ def is_whatsapp_installed():
 
 
 @frappe.whitelist()
+def get_connected_whatsapp_account():
+	"""The WhatsApp Business account the inbox sends and receives through.
+
+	Returns the default outgoing account's name and status so the inbox can
+	show what is connected, or None when nothing is configured.
+	"""
+	validate_access()
+	if not frappe.db.exists("DocType", "WhatsApp Settings"):
+		return None
+	default_outgoing = frappe.get_cached_value(
+		"WhatsApp Settings", "WhatsApp Settings", "default_outgoing_account"
+	)
+	if not default_outgoing:
+		return None
+	return frappe.db.get_value(
+		"WhatsApp Account", default_outgoing, ["name", "status"], as_dict=True
+	)
+
+
+@frappe.whitelist()
 def get_whatsapp_messages(reference_doctype: str, reference_name: str):
 	reference_doc = validate_access(reference_doctype, reference_name)
 	# twilio integration app is not compatible with crm app

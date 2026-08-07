@@ -45,6 +45,26 @@
           </span>
         </div>
 
+        <div
+          v-if="connectedAccount.data"
+          class="mb-3 flex items-center gap-1.5 text-xs text-ink-gray-6"
+        >
+          <span class="size-1.5 rounded-full bg-[#25d366]" />
+          <span>
+            {{ __('Connected') }}:
+            <span class="font-medium text-ink-gray-8">{{
+              connectedAccount.data.name
+            }}</span>
+          </span>
+        </div>
+        <div
+          v-else-if="connectedAccount.fetched"
+          class="mb-3 flex items-center gap-1.5 text-xs text-ink-amber-9"
+        >
+          <span class="size-1.5 rounded-full bg-amber-500" />
+          {{ __('No WhatsApp account connected') }}
+        </div>
+
         <!-- Scope toggle as a segmented control. Managers only: the server
              answers "mine" to everyone else however they ask. -->
         <div
@@ -647,6 +667,12 @@ const showWhatsappTemplates = ref(false)
 
 // The composer reads `name` and `mobile_no` off its doc model to address the send.
 const activeDoc = ref({})
+
+const connectedAccount = createResource({
+  url: 'crm.api.whatsapp.get_connected_whatsapp_account',
+  cache: 'whatsapp_connected_account',
+  auto: true,
+})
 
 const conversations = createResource({
   url: 'crm.api.whatsapp.get_whatsapp_conversations',
