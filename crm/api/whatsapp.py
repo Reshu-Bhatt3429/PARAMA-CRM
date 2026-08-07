@@ -366,6 +366,24 @@ def is_whatsapp_installed():
 
 
 @frappe.whitelist()
+def get_connected_whatsapp_account():
+	"""The WhatsApp Business account the inbox sends and receives through.
+
+	Returns the default outgoing account's name and status so the inbox can
+	show what is connected, or None when nothing is configured.
+	"""
+	validate_access()
+	if not frappe.db.exists("DocType", "WhatsApp Settings"):
+		return None
+	default_outgoing = frappe.get_cached_value(
+		"WhatsApp Settings", "WhatsApp Settings", "default_outgoing_account"
+	)
+	if not default_outgoing:
+		return None
+	return frappe.db.get_value("WhatsApp Account", default_outgoing, ["name", "status"], as_dict=True)
+
+
+@frappe.whitelist()
 def get_whatsapp_messages(reference_doctype: str, reference_name: str):
 	reference_doc = validate_access(reference_doctype, reference_name)
 	# twilio integration app is not compatible with crm app
@@ -565,6 +583,10 @@ def get_whatsapp_conversations(limit: int = CONVERSATION_LIMIT, scope: str = "mi
 				"reference_name": row["reference_name"],
 				"display_name": reference["display_name"],
 				"phone": get_counterpart_number(last_message) or reference["phone"],
+				# Pipeline stage of the linked Lead/Deal, so the inbox can show a status
+				# pill without a second round trip. Free: it rides along on the reference
+				# query that already runs.
+				"status": reference.get("status") or "",
 				"last_message": whatsapp_message_preview(last_message),
 				"last_message_type": last_message.get("type"),
 				"last_at": row["last_at"],
@@ -801,7 +823,7 @@ def get_last_conversation_messages(aggregates: list[dict]) -> dict[tuple, dict]:
 
 
 def get_conversation_references(aggregates: list[dict]) -> dict[tuple, dict]:
-	"""Resolve display name, phone and assignment for each linked Lead/Deal.
+	"""Resolve display name, phone, pipeline status and assignment for each linked Lead/Deal.
 
 	`frappe.get_list` is permission aware, so a conversation the session user
 	cannot read simply never comes back. `_assign` and the owner field are what
@@ -825,6 +847,7 @@ def get_conversation_references(aggregates: list[dict]) -> dict[tuple, dict]:
 				"last_name",
 				"organization",
 				"mobile_no",
+				"status",
 				"lead_owner",
 				"_assign",
 			],
@@ -835,6 +858,7 @@ def get_conversation_references(aggregates: list[dict]) -> dict[tuple, dict]:
 			references[("CRM Lead", lead.name)] = {
 				"display_name": lead.lead_name or full_name or lead.organization or lead.name,
 				"phone": lead.mobile_no or "",
+				"status": lead.get("status") or "",
 				"owner_user": lead.get("lead_owner") or "",
 				"assigned_users": parse_assigned_users(lead.get("_assign")),
 			}
@@ -843,13 +867,14 @@ def get_conversation_references(aggregates: list[dict]) -> dict[tuple, dict]:
 		deals = frappe.get_list(
 			"CRM Deal",
 			filters={"name": ["in", names["CRM Deal"]]},
-			fields=["name", "organization", "lead_name", "mobile_no", "deal_owner", "_assign"],
+			fields=["name", "organization", "lead_name", "mobile_no", "status", "deal_owner", "_assign"],
 			limit_page_length=0,
 		)
 		for deal in deals:
 			references[("CRM Deal", deal.name)] = {
 				"display_name": deal.organization or deal.lead_name or deal.name,
 				"phone": deal.mobile_no or "",
+				"status": deal.get("status") or "",
 				"owner_user": deal.get("deal_owner") or "",
 				"assigned_users": parse_assigned_users(deal.get("_assign")),
 			}

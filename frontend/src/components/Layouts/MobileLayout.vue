@@ -1,7 +1,7 @@
 <template>
   <div class="flex h-screen w-screen">
     <MobileSidebar />
-    <div class="flex h-full flex-1 flex-col overflow-auto bg-surface-base">
+    <div class="flex h-full flex-1 flex-col overflow-auto app-canvas">
       <MobileAppHeader />
       <slot />
     </div>

@@ -1,7 +1,7 @@
 @import 'frappe-ui/style.css';
 
 /* ---------------------------------------------------------------------------
-   PARAMA-CRM theme: white + blue
+   PARAMA-CRM theme: lavender canvas + indigo primary
    ---------------------------------------------------------------------------
    frappe-ui ships its design tokens as CSS custom properties emitted from
    `frappe-ui/tailwind/plugin.js` into the Tailwind base layer, under two
@@ -27,106 +27,383 @@
      button, ~116 usages) is `text-ink-base bg-surface-gray-10
      hover:bg-surface-gray-9 active:bg-surface-gray-8`. The same three tokens
      back Switch (on state), Progress, Badge `variant="solid"`, Tabs indicator,
-     Tooltip/ShortcutTooltip and Toast. Repointing them at the blue-600 family
-     turns every "inverted" surface into the brand accent in one move.
-     White-on-blue contrast: 5.17 / 6.70 / 8.72 — all AA (was 17.9 on #171717). */
-  --surface-gray-10: oklch(0.546 0.215 262.88); /* #171717 -> #2563eb */
-  --surface-gray-9: oklch(0.488 0.217 264.38); /* #383838 -> #1d4ed8 */
-  --surface-gray-8: oklch(0.424 0.181 265.64); /* #525252 -> #1e40af */
+     Tooltip/ShortcutTooltip and Toast. Repointing them at the indigo-600
+     family turns every "inverted" surface into the brand accent in one move.
+     White-on-indigo contrast: 6.29 / 7.90 / 9.93 — all AA (was 17.9 on
+     #171717, and 5.17 / 6.70 / 8.72 under the previous blue-600 primary). */
+  --surface-gray-10: oklch(0.511 0.23 276.97); /* #2563eb -> #4f46e5 */
+  --surface-gray-9: oklch(0.457 0.215 277.02); /* #1d4ed8 -> #4338ca */
+  --surface-gray-8: oklch(0.398 0.177 277.37); /* #1e40af -> #3730a3 */
 
   /* --- Selected / active surface ------------------------------------------
      `--surface-elevation-3` is used exclusively for selection states in this
      stack (Sidebar active item, SettingsNavItem active, TabButtons active
      pill, RailItem active, UserDropdown active row) — never for popovers or
-     dialogs — so tinting it blue-100 gives the active nav item a light blue
-     chip instead of a white one. ink-gray-8 on it: 14.7 (AAA). */
-  --surface-elevation-3: oklch(0.932 0.032 255.59); /* #ffffff -> #dbeafe */
+     dialogs — so tinting it indigo-100 gives the active nav item a light
+     indigo chip instead of a white one. ink-gray-8 on it: 14.3 (AAA). */
+  --surface-elevation-3: oklch(0.93 0.033 272.79); /* #dbeafe -> #e0e7ff */
 
-  /* --- Cool (blue-tinted) neutral ramp ------------------------------------
+  /* --- Page canvas ---------------------------------------------------------
+     `--surface-base` is white and backs BOTH the app shell column and ~130
+     `bg-surface-base` cards, panels, dialogs and inputs — tinting it would
+     turn every card lavender. So the canvas gets its own token, consumed by
+     the `.app-canvas` class on the layout's content column (see below), and
+     cards stay pure white on top of it. */
+  --app-canvas: #f5f6fa;
+
+  /* --- Cool (lavender-tinted) neutral ramp --------------------------------
      Upstream grays are pure achromatic oklch(L 0 0). Same lightness, a little
-     chroma at hue 258 => the whole chrome reads cool without becoming baby
-     blue. Lightness is untouched, so every existing contrast ratio holds
+     chroma at hue 275 => the whole chrome reads lavender-cool without becoming
+     lilac. Lightness is untouched, so every existing contrast ratio holds
      (ink-gray-8 on white: 17.91 -> 17.97). `--surface-base` stays pure white. */
-  --surface-gray-1: oklch(0.979 0.005 258); /* #f8f8f8 -> #f6f8fc */
-  --surface-gray-2: oklch(0.964 0.007 258); /* #f3f3f3 -> #f0f3f8 */
-  --surface-gray-3: oklch(0.946 0.009 258); /* #ededed -> #e9edf3 */
-  --surface-gray-4: oklch(0.913 0.011 258); /* #e2e2e2 -> #dee3ea */
-  --surface-gray-5: oklch(0.83 0.013 258); /* #c7c7c7 -> #c2c8d0 */
-  --surface-gray-6: oklch(0.683 0.015 258); /* #999999 -> #949aa3 */
-  --surface-gray-7: oklch(0.586 0.016 258); /* #7c7c7c -> #767d86 */
-  --surface-sidebar: oklch(0.979 0.005 258); /* #f8f8f8 -> #f6f8fc */
+  --surface-gray-1: oklch(0.979 0.005 275); /* #f8f8f8 -> #f8f7fc */
+  --surface-gray-2: oklch(0.964 0.007 275); /* #f3f3f3 -> #f3f2f9 */
+  --surface-gray-3: oklch(0.946 0.009 275); /* #ededed -> #ebebf5 */
+  --surface-gray-4: oklch(0.913 0.011 275); /* #e2e2e2 -> #e0e0ec */
+  --surface-gray-5: oklch(0.83 0.013 275); /* #c7c7c7 -> #c4c4d1 */
+  --surface-gray-6: oklch(0.683 0.015 275); /* #999999 -> #96969f */
+  --surface-gray-7: oklch(0.586 0.016 275); /* #7c7c7c -> #787882 */
+  --surface-sidebar: oklch(0.979 0.005 275); /* #f8f8f8 -> #f8f7fc */
 
-  --ink-gray-1: oklch(0.946 0.008 258); /* #ededed -> #eaedf3 */
-  --ink-gray-2: oklch(0.913 0.01 258); /* #e2e2e2 -> #dee3e9 */
-  --ink-gray-3: oklch(0.83 0.012 258); /* #c7c7c7 -> #c3c8cf */
-  --ink-gray-4: oklch(0.683 0.014 258); /* #999999 -> #949aa2 */
-  --ink-gray-5: oklch(0.586 0.016 258); /* #7c7c7c -> #767d86 */
-  --ink-gray-6: oklch(0.439 0.018 258); /* #525252 -> #4c535c */
-  --ink-gray-7: oklch(0.341 0.02 258); /* #383838 -> #323943 */
-  --ink-gray-8: oklch(0.205 0.022 258); /* #171717 -> #111721 */
-  --ink-gray-9: oklch(0.168 0.024 258); /* #0f0f0f -> #080f19 */
+  --ink-gray-1: oklch(0.946 0.008 275); /* #ededed -> #ebebf3 */
+  --ink-gray-2: oklch(0.913 0.01 275); /* #e2e2e2 -> #e0e0eb */
+  --ink-gray-3: oklch(0.83 0.012 275); /* #c7c7c7 -> #c4c4d0 */
+  --ink-gray-4: oklch(0.683 0.014 275); /* #999999 -> #96969e */
+  --ink-gray-5: oklch(0.586 0.016 275); /* #7c7c7c -> #787882 */
+  --ink-gray-6: oklch(0.439 0.018 275); /* #525252 -> #4e4e5a */
+  --ink-gray-7: oklch(0.341 0.02 275); /* #383838 -> #353543 */
+  --ink-gray-8: oklch(0.205 0.022 275); /* #171717 -> #16162a */
+  --ink-gray-9: oklch(0.168 0.024 275); /* #0f0f0f -> #0e0e23 */
 
-  --outline-gray-1: oklch(0.946 0.01 258); /* #ededed -> #e9edf4 (border DEFAULT) */
-  --outline-gray-2: oklch(0.913 0.012 258); /* #e2e2e2 -> #dde3ea */
-  --outline-gray-3: oklch(0.83 0.014 258); /* #c7c7c7 -> #c2c8d1 */
+  /* Hairline card border of the reference design, #e8eaf2. */
+  --outline-gray-1: oklch(
+    0.938 0.011 275
+  ); /* #ededed -> #e8e8f3 (border DEFAULT) */
+  --outline-gray-2: oklch(0.913 0.012 275); /* #e2e2e2 -> #e0e0ec */
+  --outline-gray-3: oklch(0.83 0.014 275); /* #c7c7c7 -> #c4c4d1 */
 
   /* --- Blue family re-hued onto the primary ------------------------------
      Upstream blues sit at hue ~242-252 (cyan-leaning); the new primary is at
-     hue ~263. Re-hue the light blue ramp so tints, blue buttons and links all
-     read as one colour. This also fixes two pre-existing AA failures:
-     white on `--surface-blue-6` 3.37 -> 5.17, and `--ink-blue-link` on white
-     3.37 -> 5.17. */
-  --surface-blue-1: oklch(0.97 0.014 254.6); /* #f1f8fe -> #eff6ff */
-  --surface-blue-2: oklch(0.932 0.032 255.59); /* #e6f4ff -> #dbeafe */
-  --surface-blue-3: oklch(0.882 0.057 254.13); /* #d3ebff -> #bfdbfe */
-  --surface-blue-4: oklch(0.809 0.096 251.81); /* #bcdfff -> #93c5fd */
-  --surface-blue-5: oklch(0.714 0.143 254.62); /* #71c2fb -> #60a5fa */
-  --surface-blue-6: oklch(0.546 0.215 262.88); /* #0c8ef8 -> #2563eb */
-  --surface-blue-7: oklch(0.488 0.217 264.38); /* #077ddf -> #1d4ed8 */
-  --surface-blue-8: oklch(0.424 0.181 265.64); /* #0475d3 -> #1e40af */
+     hue ~277. Re-hue the light blue ramp so tints, blue buttons and links all
+     read as one colour. This also keeps two formerly-failing pairs above AA:
+     white on `--surface-blue-6` 3.37 -> 6.29, and `--ink-blue-link` on white
+     3.37 -> 6.29. */
+  --surface-blue-1: oklch(0.962 0.018 272.31); /* #f1f8fe -> #eef2ff */
+  --surface-blue-2: oklch(0.93 0.033 272.79); /* #e6f4ff -> #e0e7ff */
+  --surface-blue-3: oklch(0.87 0.062 274.04); /* #d3ebff -> #c7d2fe */
+  --surface-blue-4: oklch(0.785 0.104 274.71); /* #bcdfff -> #a5b4fc */
+  --surface-blue-5: oklch(0.68 0.158 276.93); /* #71c2fb -> #818cf8 */
+  --surface-blue-6: oklch(0.511 0.23 276.97); /* #0c8ef8 -> #4f46e5 */
+  --surface-blue-7: oklch(0.457 0.215 277.02); /* #077ddf -> #4338ca */
+  --surface-blue-8: oklch(0.398 0.177 277.37); /* #0475d3 -> #3730a3 */
 
-  --ink-blue-5: oklch(0.546 0.215 262.88); /* #71c2fb -> #2563eb (checkbox tick) */
-  --ink-blue-6: oklch(0.488 0.217 264.38); /* #0c8ef8 -> #1d4ed8 */
-  --ink-blue-link: oklch(0.546 0.215 262.88); /* #0c8ef8 -> #2563eb */
+  /* The whole ink-blue ramp, not just the mid steps: `text-ink-blue-8` on
+     `bg-surface-blue-2` is frappe-ui's subtle blue Badge, so leaving the text
+     steps cyan would print cyan text on an indigo chip. Contrast on the new
+     surface-blue-2: 9.27 (was 4.86 with the stock cyan on stock blue-100). */
+  --ink-blue-2: oklch(0.93 0.033 272.79); /* #e6f4ff -> #e0e7ff */
+  --ink-blue-3: oklch(0.87 0.062 274.04); /* #d1eaff -> #c7d2fe */
+  --ink-blue-4: oklch(0.785 0.104 274.71); /* #b5ddfd -> #a5b4fc */
+  --ink-blue-5: oklch(
+    0.511 0.23 276.97
+  ); /* #71c2fb -> #4f46e5 (checkbox tick) */
+  --ink-blue-6: oklch(0.457 0.215 277.02); /* #0c8ef8 -> #4338ca */
+  --ink-blue-7: oklch(0.398 0.177 277.37); /* #077ddf -> #3730a3 */
+  --ink-blue-8: oklch(0.359 0.135 278.7); /* #0375d3 -> #312e81 */
+  --ink-blue-9: oklch(0.257 0.086 281.29); /* #005cad -> #1e1b4b */
+  --ink-blue-link: oklch(0.511 0.23 276.97); /* #0c8ef8 -> #4f46e5 */
 
-  --outline-blue-1: oklch(0.932 0.032 255.59); /* #e6f4ff -> #dbeafe */
-  --outline-blue-2: oklch(0.882 0.057 254.13); /* #d3ebff -> #bfdbfe */
-  --outline-blue-3: oklch(0.809 0.096 251.81); /* #bcdfff -> #93c5fd */
-  --outline-blue-4: oklch(0.714 0.143 254.62); /* #71c2fb -> #60a5fa */
+  --outline-blue-1: oklch(0.93 0.033 272.79); /* #e6f4ff -> #e0e7ff */
+  --outline-blue-2: oklch(0.87 0.062 274.04); /* #d3ebff -> #c7d2fe */
+  --outline-blue-3: oklch(0.785 0.104 274.71); /* #bcdfff -> #a5b4fc */
+  --outline-blue-4: oklch(0.68 0.158 276.93); /* #71c2fb -> #818cf8 */
 
   /* --- Focus ring ---------------------------------------------------------
      `:focus-visible { outline: var(--focus-outline-default) }` is applied
      globally in frappe-ui's base layer; `--focus-*` is the box-shadow form
-     kept in sync by the plugin. Swap the neutral gray ring for blue-400. */
-  --focus-default: 0px 0px 0px 2px #60a5fae5;
-  --focus-outline-default: 2px solid #60a5fae5; /* was 2px solid #c9c9c9e5 */
-  --focus-blue: 0px 0px 0px 2px #60a5fae5;
-  --focus-outline-blue: 2px solid #60a5fae5; /* was 2px solid #65b9fce5 */
+     kept in sync by the plugin. Swap the neutral gray ring for indigo-400. */
+  --focus-default: 0px 0px 0px 2px #818cf8e5;
+  --focus-outline-default: 2px solid #818cf8e5; /* was 2px solid #c9c9c9e5 */
+  --focus-blue: 0px 0px 0px 2px #818cf8e5;
+  --focus-outline-blue: 2px solid #818cf8e5; /* was 2px solid #65b9fce5 */
 }
 
 /* Dark mode counterparts. Dark keeps frappe-ui's inverted logic — the
    "solid" surface is *light* and carries dark `--ink-base` text — so the
-   primary ramp is expressed as light blues, not the blue-600 family, to keep
-   dark text on it readable (14.7 / 12.6 / 9.9, vs 16.9 / 12.7 / 8.2 stock).
-   The neutral ramp only gains chroma; lightness is unchanged. */
+   primary ramp is expressed as light indigos, not the indigo-600 family, to
+   keep dark text on it readable (14.6 / 12.0 / 9.0, vs 16.9 / 12.7 / 8.2
+   stock). The neutral ramp only gains chroma; lightness is unchanged. */
 [data-theme='dark'] {
-  --surface-gray-10: oklch(0.932 0.032 255.59); /* #f8f8f8 -> #dbeafe */
-  --surface-gray-9: oklch(0.882 0.057 254.13); /* #d9d9d9 -> #bfdbfe */
-  --surface-gray-8: oklch(0.809 0.096 251.81); /* #afafaf -> #93c5fd */
+  --surface-gray-10: oklch(0.93 0.033 272.79); /* #f8f8f8 -> #e0e7ff */
+  --surface-gray-9: oklch(0.87 0.062 274.04); /* #d9d9d9 -> #c7d2fe */
+  --surface-gray-8: oklch(0.785 0.104 274.71); /* #afafaf -> #a5b4fc */
 
-  --surface-base: oklch(0.205 0.008 258); /* #171717 -> #15171b */
-  --surface-gray-1: oklch(0.239 0.009 258); /* #1f1f1f -> #1c1f23 */
-  --surface-gray-2: oklch(0.281 0.01 258); /* #292929 -> #26292e */
-  --surface-gray-3: oklch(0.341 0.011 258); /* #383838 -> #35383e */
+  --surface-base: oklch(0.205 0.008 275); /* #171717 -> #16171b */
+  --surface-gray-1: oklch(0.239 0.009 275); /* #1f1f1f -> #1d1e24 */
+  --surface-gray-2: oklch(0.281 0.01 275); /* #292929 -> #27282f */
+  --surface-gray-3: oklch(0.341 0.011 275); /* #383838 -> #36373f */
 
-  --surface-elevation-3: oklch(0.341 0.055 258); /* #383838 -> #263955 (active nav) */
+  --surface-elevation-3: oklch(
+    0.341 0.055 275
+  ); /* #383838 -> #303655 (active nav) */
 
-  --ink-blue-link: oklch(0.714 0.143 254.62); /* #1c6ec4 -> #60a5fa, 3.48 -> ~6.4 on the dark base */
+  /* Dark's canvas stays the dark base: a light-lavender wash would blow out
+     the whole shell. Only the hue follows the light theme. */
+  --app-canvas: oklch(0.205 0.008 275);
 
-  --focus-default: 0px 0px 0px 3px #1e40afcc;
-  --focus-outline-default: 3px solid #1e40afcc; /* was 3px solid #464646cc */
-  --focus-blue: 0px 0px 0px 3px #1e40afcc;
-  --focus-outline-blue: 3px solid #1e40afcc; /* was 3px solid #0e3d62cc */
+  /* Dark's blue tint ramp, re-hued from ~250 to 277 at unchanged lightness and
+     chroma, so subtle blue chips (Badge, the inbox's info pills, alerts) read
+     as the same indigo family the light theme uses. ink-blue-8 on
+     surface-blue-2: 6.64. */
+  --surface-blue-1: oklch(0.255 0.056 277); /* #0f233d -> #1c1f3d */
+  --surface-blue-2: oklch(0.305 0.092 277); /* #0a2e5c -> #25285c */
+  --surface-blue-3: oklch(0.327 0.098 277); /* #063465 -> #292d65 */
+  --surface-blue-4: oklch(0.397 0.117 277); /* #074783 -> #393d84 */
+
+  --ink-blue-7: oklch(0.671 0.155 277); /* #349bef -> #7f89f3 */
+  --ink-blue-8: oklch(0.777 0.112 277); /* #76bef9 -> #a4b0fd */
+  --ink-blue-9: oklch(0.849 0.063 277); /* #add2f5 -> #c2caf7 */
+
+  --outline-blue-1: oklch(0.305 0.092 277); /* #0a2e5c -> #25285c */
+  --outline-blue-2: oklch(0.327 0.098 277); /* #063465 -> #292d65 */
+  --outline-blue-3: oklch(0.397 0.117 277); /* #074783 -> #393d84 */
+
+  --ink-blue-link: oklch(
+    0.68 0.158 276.93
+  ); /* #1c6ec4 -> #818cf8, 3.48 -> 6.00 on the dark base */
+
+  --focus-default: 0px 0px 0px 3px #3730a3cc;
+  --focus-outline-default: 3px solid #3730a3cc; /* was 3px solid #464646cc */
+  --focus-blue: 0px 0px 0px 3px #3730a3cc;
+  --focus-outline-blue: 3px solid #3730a3cc; /* was 3px solid #0e3d62cc */
+}
+
+/* The app shell's content column. `bg-surface-base` there would repaint the
+   canvas white, so DesktopLayout wears this class instead. */
+.app-canvas {
+  background-color: var(--app-canvas);
+}
+
+/* The chat thread's backdrop. Distinctly darker than the page canvas so white
+   panes, bubbles and the composer card visibly float on it — the layering the
+   reference design gets its depth from. */
+.crm-thread-canvas {
+  background-color: #edeff5;
+}
+
+:root[data-theme='dark'] .crm-thread-canvas,
+[data-theme='dark'] .crm-thread-canvas {
+  background-color: #101116;
+}
+
+/* ---------------------------------------------------------------------------
+   Chat bubbles in the WhatsApp inbox thread
+   ---------------------------------------------------------------------------
+   WhatsAppArea is shared with the Lead/Deal activity tabs and must not be
+   forked, so the inbox restyles it from its own container instead. The bubble
+   is `.activity > div[id]` — the only id-bearing child; the reaction picker
+   beside it carries none. Direction lives on the wrapper as `flex-row-reverse`.
+
+   The outgoing bubble redefines the ink tokens locally rather than forcing
+   `color`, so the timestamp, read receipts and the quoted-reply block inside it
+   all follow, and nothing outside the bubble is touched. Contrast on indigo:
+   white 6.3, the muted caption tint 4.6.
+   --------------------------------------------------------------------------- */
+.crm-chat .activity > div[id] {
+  border-radius: 18px;
+  max-width: 68%;
+  padding: 8px 12px 6px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+}
+
+/* The bubble's inner row is `flex gap-2 justify-between` with the timestamp
+   inline after the text, which jams "06:10 pm ✓✓" against the last line.
+   Stack them instead: content on top, timestamp on its own right-aligned
+   line — the WhatsApp Web treatment. The hover menu and reactions are
+   absolutely positioned and unaffected. */
+.crm-chat .activity > div[id] > .justify-between {
+  flex-direction: column;
+  gap: 2px;
+}
+
+.crm-chat .activity > div[id] > .justify-between > div:last-child {
+  align-self: flex-end;
+  margin-bottom: 0;
+}
+
+/* Direction-aware corner, like a speech tail. */
+.crm-chat .activity:not(.flex-row-reverse) > div[id] {
+  background-color: var(--surface-base);
+  border: 1px solid var(--outline-gray-2);
+  border-bottom-left-radius: 6px;
+}
+
+.crm-chat .activity.flex-row-reverse > div[id] {
+  border-bottom-right-radius: 6px;
+}
+
+/* Breathing room between messages: the component's own mb-3 stays, this adds
+   air around the whole run without touching the shared component. */
+.crm-chat .activity {
+  margin-bottom: 10px;
+}
+
+/* Attachment rows (document icon + label) inside the indigo bubble read as a
+   solid blob by default; give them a translucent card treatment. */
+.crm-chat .activity.flex-row-reverse > div[id] .flex.items-center.gap-2 {
+  border-radius: 10px;
+  background-color: rgba(255, 255, 255, 0.16);
+  padding: 8px 12px;
+}
+
+.crm-chat .activity.flex-row-reverse > div[id] .flex.items-center.gap-2 svg {
+  color: #e0e7ff;
+}
+
+.crm-chat .activity.flex-row-reverse > div[id] {
+  /* Literal indigo-600, not `var(--surface-blue-6)`: the outgoing bubble is a
+     brand surface that stays the same in both themes, like WhatsApp's own
+     green one. The dark theme's blue-6 is a mid blue that white text would
+     sit on at 4.1. */
+  background-color: #4f46e5;
+
+  --ink-gray-9: #ffffff;
+  --ink-gray-8: #ffffff;
+  --ink-gray-5: #c7d2fe;
+  --ink-gray-4: #c7d2fe;
+  --ink-gray-3: #a5b4fc;
+  --ink-blue-5: #ffffff; /* the "read" double check */
+  --ink-blue-link: #c7d2fe;
+  --ink-green-5: #bbf7d0;
+  --surface-gray-3: #4338ca; /* quoted reply block */
+}
+
+/* ---------------------------------------------------------------------------
+   Dark navy sidebar (both themes, like the reference design)
+   ---------------------------------------------------------------------------
+   The tokens are redefined *locally* on the <Sidebar> element rather than
+   globally, so only its subtree turns dark. Two consequences are load-bearing:
+
+   1. `Notifications` is a sibling of <Sidebar> inside `.crm-sidebar-shell`, so
+      it must NOT inherit these values — hence the shell only paints a
+      background colour and the token block sits one level in, on `.crm-sidebar`.
+   2. UserDropdown's menu, item tooltips and every other popover portal to
+      <body>, outside this subtree, so they keep the global light/dark tokens
+      and stay readable. Nothing here can produce white-on-white.
+
+   Every value below is AA or better against the surface it lands on:
+   ink-gray-6 8.3, ink-gray-7 11.0, ink-gray-5 5.8, active white 15.0,
+   badge white-on-indigo 6.3.
+   --------------------------------------------------------------------------- */
+.crm-sidebar-shell {
+  background-color: #12111c;
+}
+
+.crm-sidebar {
+  /* Sidebar's own surface + the ring colour of the collapsed unread dot. */
+  --surface-sidebar: #12111c;
+  --surface-gray-1: #12111c;
+  --surface-gray-2: #1e1d2b; /* row hover */
+  --surface-gray-3: #2a2939;
+  /* Active nav pill (SidebarItem active, UserDropdown open row). */
+  --surface-elevation-3: #262538;
+  /* Onboarding / trial / signup banner cards at the sidebar foot. */
+  --surface-elevation-1: #1c1b28;
+  --surface-elevation-2: #1c1b28;
+  /* Collapsed unread dot, which is bg-surface-gray-9 on the dark surface. */
+  --surface-gray-9: #818cf8;
+
+  --ink-gray-3: #3a3a4d; /* collapsed section divider */
+  --ink-gray-4: #7a7d94;
+  --ink-gray-5: #8b8ea6; /* section labels */
+  --ink-gray-6: #a8abc2; /* inactive row text */
+  --ink-gray-7: #c3c6d8; /* icons */
+  --ink-gray-8: #ffffff; /* active row text */
+  --ink-gray-9: #ffffff; /* brand name, section chevron */
+
+  --outline-gray-1: #23222f;
+  --outline-gray-2: #2a2939;
+
+  /* "Clear Demo Data" is `!text-ink-red-6 hover:!bg-surface-red-2`; the stock
+     pale red hover surface would carry pale red text. Invert both. */
+  --ink-red-6: #fca5a5;
+  --surface-red-2: #3a1a24;
+}
+
+/* Active row: lighter pill plus the reference's indigo accent bar. The inset
+   shadow replaces frappe-ui's `shadow-sm` (0,1,0) — this selector is (0,3,0). */
+.crm-sidebar [data-slot='sidebar-item'][data-state='active'] {
+  box-shadow: inset 3px 0 0 0 #818cf8;
+}
+
+/* Small uppercase section labels ("COMMAND", "CRM", "SCALE" in the reference). */
+.crm-sidebar [data-slot='sidebar-label'] h3 {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Indigo unread count, in place of the stock gray subtle Badge. */
+.crm-sidebar-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.375rem;
+  border-radius: 9999px;
+  background-color: #4f46e5;
+  color: #ffffff;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   App-wide finishing details
+   --------------------------------------------------------------------------- */
+
+/* Slim, quiet scrollbars everywhere. The stock chunky bars read as unfinished,
+   especially the horizontal one under wide list views. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--outline-gray-3) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--outline-gray-3);
+  border-radius: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+/* List pages (Leads, Deals, Contacts, …): replace the solid gray header band
+   with a quiet bordered row of small uppercase labels, the treatment every
+   modern table uses. Selector matches frappe-ui's ListHeader root. */
+.mb-2.grid.items-center.gap-4.rounded.bg-surface-gray-2.p-2 {
+  background-color: transparent;
+  border-bottom: 1px solid var(--outline-gray-1);
+  border-radius: 0;
+  margin-bottom: 4px;
+  padding-top: 6px;
+  padding-bottom: 10px;
+}
+
+.mb-2.grid.items-center.gap-4.rounded.bg-surface-gray-2.p-2
+  .text-sm.text-ink-gray-5 {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-gray-4);
 }
 
 @layer components {

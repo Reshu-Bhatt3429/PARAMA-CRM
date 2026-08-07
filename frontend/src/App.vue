@@ -23,10 +23,11 @@ import { computed, defineAsyncComponent, provide } from 'vue'
 const session = sessionStore()
 provide('session', session)
 
+// The product is designed light-first: boot into light regardless of any
+// stored or OS preference. The in-session ThemeSwitcher still works, but
+// every reload returns to the light theme.
 const { setTheme } = useTheme()
-if (!localStorage.getItem('theme')) {
-  setTheme('light')
-}
+setTheme('light')
 
 const MobileLayout = defineAsyncComponent(
   () => import('./components/Layouts/MobileLayout.vue'),

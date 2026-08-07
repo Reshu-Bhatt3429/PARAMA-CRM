@@ -14,36 +14,50 @@ from crm.demo.utils import (
 )
 
 
+def _convert_to_deal(lead, deal):
+	"""convert_to_deal with the forecasting fields defaulted.
+
+	Deal validation requires expected_deal_value and expected_closure_date
+	whenever FCRM Settings.enable_forecasting is on (the default), but the
+	demo dicts predate those fields and only carry deal_value — which made
+	the setup wizard fail with "Expected deal value is required.".
+	"""
+	from crm.fcrm.doctype.crm_lead.crm_lead import convert_to_deal
+
+	deal.setdefault("expected_deal_value", deal.get("deal_value"))
+	deal.setdefault("expected_closure_date", frappe.utils.add_days(frappe.utils.nowdate(), 30))
+	return convert_to_deal(lead=lead, deal=deal)
+
+
 def create_demo_deals(lead_names, demo_users):
 	"""Convert seven leads into deals and add deal-specific activity."""
-	from crm.fcrm.doctype.crm_lead.crm_lead import convert_to_deal
 
 	session_user, owner_1, owner_2, _ = resolve_owners(demo_users)
 	_full_names = build_full_names(session_user)
 
 	# leads[0] Alice, [3] David, [7] Henry, [8] Iris, [9] Jack → 5 active/won deals
 	# leads[10] Karen, [11] Leo → 2 lost deals
-	d_alice = convert_to_deal(
+	d_alice = _convert_to_deal(
 		lead=lead_names[0],
 		deal={"status": "Demo/Making", "deal_value": 120000, "probability": 50, "deal_owner": session_user},
 	)
-	d_david = convert_to_deal(
+	d_david = _convert_to_deal(
 		lead=lead_names[3],
 		deal={"status": "Proposal/Quotation", "deal_value": 45000, "probability": 70, "deal_owner": owner_1},
 	)
-	d_henry = convert_to_deal(
+	d_henry = _convert_to_deal(
 		lead=lead_names[7],
 		deal={"status": "Negotiation", "deal_value": 85000, "probability": 60, "deal_owner": owner_2},
 	)
-	d_iris = convert_to_deal(
+	d_iris = _convert_to_deal(
 		lead=lead_names[8],
 		deal={"status": "Qualification", "deal_value": 60000, "probability": 35, "deal_owner": session_user},
 	)
-	d_jack = convert_to_deal(
+	d_jack = _convert_to_deal(
 		lead=lead_names[9],
 		deal={"status": "Won", "deal_value": 175000, "probability": 100, "deal_owner": owner_1},
 	)
-	d_karen = convert_to_deal(
+	d_karen = _convert_to_deal(
 		lead=lead_names[10],
 		deal={
 			"status": "Lost",
@@ -54,7 +68,7 @@ def create_demo_deals(lead_names, demo_users):
 			"lost_notes": "Prospect chose a competitor offering deeper BI integrations out of the box. Price was not the issue — feature parity was.",
 		},
 	)
-	d_leo = convert_to_deal(
+	d_leo = _convert_to_deal(
 		lead=lead_names[11],
 		deal={
 			"status": "Lost",
