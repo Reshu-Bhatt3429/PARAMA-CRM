@@ -5,6 +5,8 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import frappe
+from frappe.tests.utils import FrappeTestCase
+
 from crm.api.whatsapp import (
 	WHATSAPP_LEAD_SOURCE,
 	assign_whatsapp_lead,
@@ -31,7 +33,6 @@ from crm.api.whatsapp_followups import (
 	create_followup_notification,
 	get_pending_conversations,
 )
-from frappe.tests.utils import FrappeTestCase
 
 
 class TestWhatsAppHooks(FrappeTestCase):

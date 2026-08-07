@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
 
 import frappe
+from frappe.query_builder import DocType
+
 from crm.demo.utils import (
 	backdate,
 	build_full_names,
@@ -10,7 +12,6 @@ from crm.demo.utils import (
 	insert_version,
 	resolve_owners,
 )
-from frappe.query_builder import DocType
 
 
 def _convert_to_deal(lead, deal):

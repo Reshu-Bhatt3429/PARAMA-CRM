@@ -1,15 +1,16 @@
 import json
 
 import frappe
-from crm.api.doc import get_assigned_users
-from crm.fcrm.doctype.crm_notification.crm_notification import notify_user
-from crm.integrations.api import get_contact_lead_or_deal_from_number
-from crm.utils import parse_phone_number
 from frappe import _
 from frappe.desk.form.assign_to import _add as assign
 from frappe.permissions import add_permission, update_permission_property
 from frappe.query_builder import Case
 from frappe.query_builder.functions import Coalesce, Count, Max, Sum
+
+from crm.api.doc import get_assigned_users
+from crm.fcrm.doctype.crm_notification.crm_notification import notify_user
+from crm.integrations.api import get_contact_lead_or_deal_from_number
+from crm.utils import parse_phone_number
 
 ALLOWED_WHATSAPP_ROLES = ["System Manager", "Sales Manager", "Sales User"]
 WHATSAPP_LEAD_SOURCE = "WhatsApp"
