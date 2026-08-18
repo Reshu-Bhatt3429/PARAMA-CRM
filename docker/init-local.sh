@@ -9,6 +9,27 @@ set -e
 if [ -d "/home/frappe/frappe-bench/apps/frappe" ]; then
     echo "Bench already exists, skipping init"
     cd frappe-bench
+
+    # A first init that died after `bench init` but before `bench new-site`
+    # leaves apps/frappe present and no site. The branch above would then serve
+    # a bench with nothing in it, and the compose restart policy would keep that
+    # container up forever, healthy-looking and useless. Fail loudly instead.
+    if [ ! -f "sites/crm.localhost/site_config.json" ]; then
+        echo "FATAL: the bench volume holds a partial init." >&2
+        echo "       apps/frappe exists but sites/crm.localhost/site_config.json does not," >&2
+        echo "       so this bench has no site to serve." >&2
+        echo >&2
+        echo "       Do NOT restart this container; it cannot repair itself." >&2
+        echo "       Wipe the bench volume and let the init run again:" >&2
+        echo >&2
+        echo "         docker-compose -f docker/docker-compose.local.yml down" >&2
+        echo "         docker volume rm crm-local_bench-data" >&2
+        echo "         docker-compose -f docker/docker-compose.local.yml up -d" >&2
+        echo >&2
+        echo "       The mariadb-data volume is separate and is NOT touched by this." >&2
+        exit 1
+    fi
+
     exec bench start
 fi
 

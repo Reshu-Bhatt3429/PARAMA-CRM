@@ -6,6 +6,10 @@ import { getMeta } from '@/stores/meta'
 import { gemoji } from 'gemoji'
 import DOMPurify from 'dompurify'
 import { toast, dayjsLocal, dayjs, getConfig, FeatherIcon } from 'frappe-ui'
+// Same package and same default store that frappe-ui writes its resource cache
+// into, so this clears exactly what it wrote. It ships as a frappe-ui
+// dependency; `clear` is aliased because `clearCache` already owns that name.
+import { clear as clearIdbStore } from 'idb-keyval'
 import { h } from 'vue'
 
 export function formatTime(seconds) {
@@ -872,23 +876,49 @@ export function getGridTemplateColumnsForTable(columns) {
 }
 
 export function clearCache() {
-  ;[
-    '_last_load',
-    '_version_number',
-    'metadata_version',
-    'page_info',
-    'last_visited',
-  ].forEach((key) => localStorage.removeItem(key))
+  try {
+    ;[
+      '_last_load',
+      '_version_number',
+      'metadata_version',
+      'page_info',
+      'last_visited',
+      // Holds the broadcast payloads delivered to the previous user
+      // (composables/useBroadcast.js).
+      'app_broadcasts',
+      // Marks the onboarding persona step as done, so the next user would skip
+      // it and inherit someone else's answer (router.js PERSONA_DONE_KEY).
+      'crm_persona_captured',
+    ].forEach((key) => localStorage.removeItem(key))
 
-  for (let key in localStorage) {
-    if (
-      key.startsWith('_page:') ||
-      key.startsWith('_doctype:') ||
-      key.startsWith('preferred_breadcrumbs:')
-    ) {
-      localStorage.removeItem(key)
+    for (let key in localStorage) {
+      if (
+        key.startsWith('_page:') ||
+        key.startsWith('_doctype:') ||
+        key.startsWith('preferred_breadcrumbs:')
+      ) {
+        localStorage.removeItem(key)
+      }
     }
+  } catch (error) {
+    // Blocked storage must not stop the IndexedDB clear below, which holds the
+    // larger leak.
+    console.warn('[crm] Could not clear localStorage cache keys.', error)
   }
+
+  return clearResourceCache()
+}
+
+// Every `createResource({ cache: ... })` value is persisted to IndexedDB by
+// frappe-ui (see frappe-ui/src/resources/local.ts, which uses idb-keyval's
+// default store). Those entries outlive a logout, so without this the next user
+// on the same browser is served the previous user's WhatsApp account, template
+// list and activity feed until each resource refetches.
+export function clearResourceCache() {
+  if (typeof indexedDB === 'undefined') return Promise.resolve()
+  // Clearing the store beats deleteDatabase: idb-keyval keeps its connection
+  // open, so a delete would block until every tab closes.
+  return clearIdbStore().catch(() => {})
 }
 
 export function isTranslatable(doctype) {

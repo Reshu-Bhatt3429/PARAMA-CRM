@@ -3,6 +3,9 @@ name: crm-local
 services:
   mariadb:
     image: mariadb:10.8
+    # Without a restart policy the stack never comes back after a host reboot,
+    # which reads to the user as "the CRM lost my data".
+    restart: unless-stopped
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -15,9 +18,16 @@ services:
 
   redis:
     image: redis:alpine
+    restart: unless-stopped
+    # Redis holds the RQ queues and the scheduler state. Without AOF on a named
+    # volume, every redis restart silently drops queued background jobs.
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
 
   frappe:
     image: frappe/bench:latest
+    restart: unless-stopped
     command: bash /workspace/app/docker/init-local.sh
     environment:
       - SHELL=/bin/bash
@@ -25,10 +35,15 @@ services:
     volumes:
       - ..:/workspace/app
       - bench-data:/home/frappe
+    # Loopback only. `restart: unless-stopped` now brings this site up on every
+    # boot, and it holds a live Administrator account, so it must not be offered
+    # to the LAN by default. Change to "8000:8000" / "9000:9000" only
+    # deliberately, for a LAN demo, on a trusted network.
     ports:
-      - 8000:8000
-      - 9000:9000
+      - 127.0.0.1:8000:8000
+      - 127.0.0.1:9000:9000
 
 volumes:
   mariadb-data:
+  redis-data:
   bench-data:

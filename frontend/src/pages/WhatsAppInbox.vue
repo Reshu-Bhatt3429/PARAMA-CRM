@@ -695,8 +695,13 @@
     </aside>
   </div>
 
+  <!-- The modal reads `doctype` once, at setup, for both its cache key and its
+       `for_doctype` filter. Without this key the instance survives a lead to
+       deal switch and then refreshes the wrong doctype's template list over
+       the other one's cache entry. -->
   <WhatsappTemplateSelectorModal
     v-if="whatsappEnabled && selected"
+    :key="selected.reference_doctype"
     v-model="showWhatsappTemplates"
     :doctype="selected.reference_doctype"
     @send="(template) => sendTemplate(template)"
@@ -738,6 +743,7 @@ import {
   TextInput,
   Tooltip,
   createResource,
+  debounce,
   toast,
   usePageMeta,
 } from 'frappe-ui'
@@ -955,6 +961,8 @@ function selectConversation(conversation) {
   }
   // A freshly opened thread always opens at its newest message.
   stickToBottom = true
+  // A reload left pending by the previous thread would otherwise re-fire here.
+  reloadMessagesSoon.cancel()
   messages.reset()
   messages.fetch()
 
@@ -1053,21 +1061,75 @@ function scrollThreadToBottom() {
   })
 }
 
+// One outbound message emits the message event plus a sent / delivered / read
+// status event, and every one of them used to fire an undebounced reload. The
+// trailing debounce collapses that burst into a single request, the same way
+// the `conversations` resource does with its own `debounce: 500`.
+// It is deliberately NOT the resource's own `debounce` option: that one also
+// delays `messages.fetch()`, which would add half a second to opening a thread.
+const reloadMessagesSoon = debounce(() => {
+  if (!selected.value) return
+  // Read the scroll position here, at fire time, not when the event arrived.
+  // A reader who scrolls up during the debounce window would otherwise be
+  // yanked back to the newest message by the reload they did not ask for.
+  stickToBottom = isThreadNearBottom()
+  messages.reload()
+}, 400)
+
 function onWhatsAppMessage(data) {
   conversations.reload()
   if (isSameConversation(selected.value, data)) {
-    // Decide before the reload replaces the thread's content.
-    stickToBottom = isThreadNearBottom()
-    messages.reload()
+    reloadMessagesSoon()
   }
 }
 
+// Events that arrive while the socket is down are lost, so reconnecting has to
+// re-read the state rather than wait for the next message.
+let wasDisconnected = false
+
+function catchUp() {
+  conversations.reload()
+  if (selected.value) reloadMessagesSoon()
+}
+
+function onSocketDisconnect() {
+  wasDisconnected = true
+}
+
+function onSocketConnect() {
+  // `wasDisconnected` is seeded from the live socket state in `onMounted`, so a
+  // page that opens while the link is already down DOES catch up on its first
+  // connect. Only a connect with no preceding gap is skipped, because the
+  // resources have just auto-fetched anyway.
+  if (!wasDisconnected) return
+  wasDisconnected = false
+  catchUp()
+}
+
+// A backgrounded tab is throttled and may miss events even without a visible
+// disconnect, so returning to it re-reads whenever the link is not known good.
+function onVisibilityChange() {
+  if (document.visibilityState !== 'visible') return
+  if ($socket.connected && !wasDisconnected) return
+  catchUp()
+}
+
 onMounted(() => {
+  // The page can open while the socket is already down. Recording that here
+  // makes the next `connect` count as a recovery rather than a first connect.
+  wasDisconnected = !$socket.connected
   $socket.on('whatsapp_message', onWhatsAppMessage)
+  $socket.on('connect', onSocketConnect)
+  $socket.on('disconnect', onSocketDisconnect)
+  document.addEventListener('visibilitychange', onVisibilityChange)
 })
 
 onBeforeUnmount(() => {
   $socket.off('whatsapp_message', onWhatsAppMessage)
+  $socket.off('connect', onSocketConnect)
+  $socket.off('disconnect', onSocketDisconnect)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  reloadMessagesSoon.cancel()
 })
 
 usePageMeta(() => ({ title: __('WhatsApp') }))
