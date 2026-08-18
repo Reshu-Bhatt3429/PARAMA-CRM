@@ -3,7 +3,10 @@
     class="relative mx-auto w-full max-w-2xl rounded-2xl bg-surface-base p-4"
   >
     <div class="flex flex-col">
-      <CRMLogo class="size-8" />
+      <div class="flex items-center gap-2.5 text-ink-gray-9">
+        <CRMLogo class="size-8 shrink-0" />
+        <ParamaWordmark class="h-3.5 w-auto" />
+      </div>
       <Transition name="q-fade" mode="out-in" @after-enter="focusQuestion">
         <fieldset
           :key="question.key"

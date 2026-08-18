@@ -4,8 +4,8 @@
       <div class="p-4 pt-5">
         <div class="flex justify-center">
           <div class="flex flex-col items-center">
-            <CRMLogo class="mb-3 size-12" />
-            <h3 class="text-2xl-semibold text-ink-gray-9">Frappe CRM</h3>
+            <CRMLogo class="mb-3 size-12 text-ink-gray-9" />
+            <h3 class="text-2xl-semibold text-ink-gray-9">PARAMA CRM</h3>
           </div>
         </div>
         <hr class="border-t my-3 mx-2" />
@@ -28,7 +28,19 @@
           </a>
         </div>
         <hr class="border-t my-3 mx-2" />
+        <!-- AGPLv3 attribution: this product is a fork of Frappe CRM. Keep this
+             line and the upstream copyright below it. -->
         <p class="text-sm text-ink-gray-6 px-2 mt-2">
+          {{ __('Built on Frappe CRM (AGPLv3)') }} —
+          <a
+            class="underline"
+            target="_blank"
+            href="https://github.com/frappe/crm"
+          >
+            github.com/frappe/crm
+          </a>
+        </p>
+        <p class="text-sm text-ink-gray-6 px-2 mt-1">
           © Frappe Technologies Pvt. Ltd. and contributors
         </p>
       </div>

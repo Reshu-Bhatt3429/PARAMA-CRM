@@ -1,0 +1,20 @@
+<!--
+  PARAMA brand mark — abstract travel glyph (paper plane), two strokes, no fill,
+  no gradient. Drawn in `currentColor` so it reads on light and dark surfaces.
+
+  This file is the design source. The app renders the same geometry from
+  frontend/src/components/Icons/ParamaMark.vue — keep the two in sync, or swap
+  both when a real logo arrives (see demo-package/specs/branding-notes.md).
+-->
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 48 48"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="4"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M5 19 L43 5 L30 43 L22 27 Z" />
+  <path d="M43 5 L22 27" />
+</svg>

@@ -28,7 +28,7 @@
           </div>
           <ThemeSwitcher
             :logo="brand.logo || CRMLogo"
-            :name="brand.name || 'CRM'"
+            :name="brand.name || 'PARAMA CRM'"
           />
         </div>
         <div class="flex items-center justify-between">

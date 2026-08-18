@@ -1,25 +1,12 @@
 <template>
-  <svg
-    width="300"
-    height="300"
-    viewBox="0 0 300 300"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <defs>
-      <linearGradient id="crm-logo-grad" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#6366f1" />
-        <stop offset="1" stop-color="#4338ca" />
-      </linearGradient>
-    </defs>
-    <rect width="300" height="300" rx="76" fill="url(#crm-logo-grad)" />
-    <path
-      d="M112 234 V80 h48 a52 52 0 0 1 0 104 h-48"
-      stroke="#ffffff"
-      stroke-width="34"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      fill="none"
-    />
-  </svg>
+  <!-- Brand-mark alias. Every call site imports CRMLogo, so this file is the
+       single place to swap the app-wide mark — point it at another icon
+       component and the sidebar, the About modal, the onboarding card and the
+       theme switcher all follow.
+       See demo-package/specs/branding-notes.md. -->
+  <ParamaMark />
 </template>
+
+<script setup>
+import ParamaMark from '@/components/Icons/ParamaMark.vue'
+</script>
