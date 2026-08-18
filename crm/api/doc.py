@@ -206,6 +206,9 @@ def get_quick_filters(doctype: str, cached: bool = True):
 
 @frappe.whitelist()
 def update_quick_filters(quick_filters: str, old_filters: str, doctype: str):
+	# writes site-wide CRM Global Settings and Property Setters
+	frappe.only_for(["Sales Manager", "System Manager"], True)
+
 	quick_filters = json.loads(quick_filters)
 	old_filters = json.loads(old_filters)
 
@@ -588,7 +591,7 @@ def get_records_based_on_order(doctype, rows, filters, page_length, order):
 
 
 @frappe.whitelist()
-def remove_assignments(doctype: str, name: str, assignees: str | list, ignore_permissions: bool = False):
+def remove_assignments(doctype: str, name: str, assignees: str | list):
 	assignees = frappe.parse_json(assignees)
 
 	if not assignees:
@@ -601,12 +604,18 @@ def remove_assignments(doctype: str, name: str, assignees: str | list, ignore_pe
 			todo=None,
 			assign_to=assign_to,
 			status="Cancelled",
-			ignore_permissions=ignore_permissions,
+			ignore_permissions=False,
 		)
 
 
 @frappe.whitelist()
 def get_assigned_users(doctype: str, name: str | int, default_assigned_to: str | None = None):
+	# `@frappe.whitelist()` already rejects Guest, so a Guest session here is an
+	# internal server-side call (e.g. the WhatsApp webhook hook in
+	# `crm.api.whatsapp.notify_agent`), never an HTTP request to this endpoint.
+	if frappe.session.user != "Guest":
+		frappe.has_permission(doctype, "read", name, throw=True)
+
 	assigned_users = frappe.get_all(
 		"ToDo",
 		fields=["allocated_to"],
@@ -677,6 +686,8 @@ def getCounts(d, doctype):
 
 @frappe.whitelist()
 def get_linked_docs_of_document(doctype: str, docname: str):
+	frappe.has_permission(doctype, "read", docname, throw=True)
+
 	try:
 		doc = frappe.get_doc(doctype, docname)
 	except frappe.DoesNotExistError:
@@ -696,6 +707,10 @@ def get_linked_docs_of_document(doctype: str, docname: str):
 		try:
 			data = frappe.get_doc(doc["reference_doctype"], doc["reference_docname"])
 		except (frappe.DoesNotExistError, frappe.ValidationError):
+			continue
+
+		# never expose the title of a linked doc the caller cannot read
+		if not frappe.has_permission(doc["reference_doctype"], "read", data):
 			continue
 
 		title = data.get("title")

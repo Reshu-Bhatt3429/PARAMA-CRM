@@ -55,6 +55,7 @@ import { getSettings } from '@/stores/settings'
 import { showSettings, isMobileView } from '@/composables/settings'
 import { showAboutModal } from '@/composables/modals'
 import { confirmLoginToFrappeCloud } from '@/composables/frappecloud'
+import { sanitizeHTML } from '@/utils'
 import { createResource, Dropdown } from 'frappe-ui'
 import { computed, h, markRaw } from 'vue'
 
@@ -110,7 +111,9 @@ function dropdownItemObj(item) {
   let _item = JSON.parse(JSON.stringify(item))
   let icon = _item.icon || 'external-link'
   if (typeof icon === 'string' && icon.startsWith('<svg')) {
-    icon = markRaw(h('div', { innerHTML: icon }))
+    // The icon markup comes from a doc field, so it is sanitized before it is
+    // injected: `startsWith('<svg')` alone lets scripted SVG attributes through.
+    icon = markRaw(h('div', { innerHTML: sanitizeHTML(icon) }))
   }
   _item.icon = icon
 

@@ -135,10 +135,13 @@ const STATUS_TINTS = {
   nurture: 'amber',
   negotiation: 'amber',
   demo: 'amber',
+  'demo/making': 'amber',
   qualified: 'purple',
+  qualification: 'indigo',
   'proposal sent': 'purple',
   'proposal/quotation': 'purple',
   ready: 'purple',
+  'ready to close': 'purple',
   converted: 'green',
   booked: 'green',
   won: 'green',
@@ -233,6 +236,12 @@ export function humanizeAge(timestamp, now = new Date()) {
 /**
  * Frappe sends naive `YYYY-MM-DD HH:MM:SS` strings in the site's timezone. The
  * `T` makes the string parse the same way in every engine, still as local time.
+ *
+ * This mirrors `dayjsLocal` (used by `formatDate` / `prettyDate`) as long as no
+ * `systemTimezone` is configured, which is the case in this app: `setConfig` is
+ * only called for `resourceFetcher` in `src/main.js`. This module stays free of
+ * frappe-ui imports on purpose — it is a pure helper module with a unit suite
+ * (`tests/unit/whatsappInbox.test.js`) that cannot load the frappe-ui bundle.
  */
 function parseServerDatetime(value) {
   if (!value) return null
@@ -295,9 +304,10 @@ export function dayLabel(date, now = new Date()) {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const diffDays = Math.round((today - day) / 86400000)
 
-  if (diffDays <= 0) return 'Today'
+  if (diffDays === 0) return 'Today'
   if (diffDays === 1) return 'Yesterday'
 
+  // A future timestamp (diffDays < 0) is not "Today": fall through to the date.
   const options = { day: 'numeric', month: 'short' }
   if (day.getFullYear() !== today.getFullYear()) options.year = 'numeric'
   return day.toLocaleDateString(undefined, options)

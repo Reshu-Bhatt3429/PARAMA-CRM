@@ -565,8 +565,19 @@ watch(
   { immediate: true },
 )
 
+// Kept in a named handler: `$socket.off('whatsapp_message')` without one would
+// also drop the listener the WhatsApp inbox registered on the same event.
+function handleWhatsappMessage(data) {
+  if (
+    data.reference_doctype === props.doctype &&
+    data.reference_name === props.docname
+  ) {
+    whatsappMessages.reload()
+  }
+}
+
 onBeforeUnmount(() => {
-  $socket.off('whatsapp_message')
+  $socket.off('whatsapp_message', handleWhatsappMessage)
   $socket.off('docinfo_update', handleDocinfoUpdate)
   $socket.emit('doc_unsubscribe', props.doctype, props.docname)
 })
@@ -574,14 +585,7 @@ onBeforeUnmount(() => {
 onMounted(() => {
   $socket.emit('doc_subscribe', props.doctype, props.docname)
   $socket.on('docinfo_update', handleDocinfoUpdate)
-  $socket.on('whatsapp_message', (data) => {
-    if (
-      data.reference_doctype === props.doctype &&
-      data.reference_name === props.docname
-    ) {
-      whatsappMessages.reload()
-    }
-  })
+  $socket.on('whatsapp_message', handleWhatsappMessage)
 
   nextTick(() => {
     const hash = route.hash.slice(1) || null

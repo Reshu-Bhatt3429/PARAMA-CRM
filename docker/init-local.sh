@@ -34,19 +34,25 @@ sed -i '/watch/d' ./Procfile
 
 # Install the local fork (clones committed state of the mounted repo)
 bench get-app /workspace/app
+# Unpinned: this tracks whatever frappe_whatsapp's default branch holds today.
+# Add --branch <tag-or-branch> to pin it before using this on a client box.
 bench get-app https://github.com/shridarpatil/frappe_whatsapp.git
 
+# Set ADMIN_PASSWORD in the environment before running this on any box someone
+# else can reach. The fallback below is a demo-only credential.
 bench new-site crm.localhost \
     --force \
     --mariadb-root-password 123 \
-    --admin-password admin \
+    --admin-password "${ADMIN_PASSWORD:-admin}" \
     --no-mariadb-socket
 
 bench --site crm.localhost install-app crm
 bench --site crm.localhost install-app frappe_whatsapp
-bench --site crm.localhost set-config developer_mode 1
+# developer_mode leaks the doctype metadata to guests; server_script_enabled lets
+# a System Manager run arbitrary Python. Both stay off.
+bench --site crm.localhost set-config developer_mode 0
 bench --site crm.localhost set-config mute_emails 1
-bench --site crm.localhost set-config server_script_enabled 1
+bench --site crm.localhost set-config server_script_enabled 0
 bench --site crm.localhost clear-cache
 bench use crm.localhost
 

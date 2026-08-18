@@ -1,13 +1,18 @@
 <template>
+  <!-- The body of a received email is untrusted markup. It is sanitized before
+       it reaches the srcdoc, and the frame is sandboxed without
+       `allow-scripts` and without `allow-same-origin`, so nothing in it can
+       run or reach the app's origin. -->
   <iframe
-    ref="iframeRef"
+    sandbox
     :srcdoc="htmlContent"
-    class="prose-f block h-10 max-h-[500px] w-full"
+    class="prose-f block h-[500px] max-h-[500px] w-full"
   />
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { sanitizeHTML } from '@/utils'
+import { ref } from 'vue'
 
 const props = defineProps({
   content: { type: String, required: true },
@@ -19,8 +24,11 @@ const files = import.meta.glob('/src/index.css', {
 })
 const css = files['/src/index.css'].default
 
-const iframeRef = ref(null)
 const _content = ref(props.content)
+
+// The frame cannot be scripted or read from the parent any more, so the theme
+// is stamped into the document instead of being set on load.
+const theme = document.documentElement.getAttribute('data-theme') || 'light'
 
 const parser = new DOMParser()
 const doc = parser.parseFromString(_content.value, 'text/html')
@@ -107,7 +115,7 @@ function replaceReplyToContent(replyToContentElement, forGmail) {
 
 const htmlContent = `
 <!DOCTYPE html>
-<html>
+<html data-theme="${theme}">
 <head>
   <style>
     ${css}
@@ -224,32 +232,8 @@ const htmlContent = `
   </style>
 </head>
 <body>
-    <div ref="emailContentRef" class="email-content prose-f">${_content.value}</div>
+    <div class="email-content prose-f">${sanitizeHTML(_content.value)}</div>
 </body>
 </html>
 `
-
-watch(iframeRef, (iframe) => {
-  if (iframe) {
-    iframe.onload = () => {
-      const emailContent =
-        iframe.contentWindow.document.querySelector('.email-content')
-      let parent = emailContent.closest('html')
-
-      let theme = document.documentElement.getAttribute('data-theme')
-      parent.setAttribute('data-theme', theme)
-
-      iframe.style.height = parent.offsetHeight + 1 + 'px'
-
-      let replyCollapsers = emailContent.querySelectorAll('.replyCollapser')
-      if (replyCollapsers.length) {
-        replyCollapsers.forEach((replyCollapser) => {
-          replyCollapser.addEventListener('change', () => {
-            iframe.style.height = parent.offsetHeight + 1 + 'px'
-          })
-        })
-      }
-    }
-  }
-})
 </script>

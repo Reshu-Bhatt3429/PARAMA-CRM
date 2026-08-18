@@ -111,6 +111,23 @@ const routes = [
     path: '/whatsapp',
     name: 'WhatsApp',
     component: () => import('@/pages/WhatsAppInbox.vue'),
+    // The sidebar hides the link without `frappe_whatsapp`, but the URL stayed
+    // reachable. The composable is imported lazily on purpose: at module scope
+    // its `auto` resources would fire before `main.js` sets the resourceFetcher.
+    beforeEnter: async () => {
+      const { isWhatsappInstalled } = await import('@/composables/whatsapp')
+      if (isWhatsappInstalled.value) return true
+
+      // The flag may simply not have arrived yet on a direct URL load, so ask
+      // before redirecting rather than bouncing a legitimate visit.
+      try {
+        const installed = await call('crm.api.whatsapp.is_whatsapp_installed')
+        isWhatsappInstalled.value = Boolean(installed)
+      } catch {
+        return { name: 'Home' }
+      }
+      return isWhatsappInstalled.value ? true : { name: 'Home' }
+    },
   },
   {
     path: '/data-import',

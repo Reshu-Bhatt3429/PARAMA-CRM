@@ -59,22 +59,34 @@ def validate_access(reference_doctype=None, reference_name=None, permtype="read"
 		frappe.throw(_("Only sales users can access WhatsApp features."), frappe.PermissionError)
 
 	if reference_doctype and reference_name:
+		# A missing document and a forbidden one fail identically on purpose: a
+		# distinct "does not exist" error would let any sales user probe which
+		# record ids are real.
+		not_permitted = _("Not permitted to access reference document {0} {1}.").format(
+			reference_doctype, reference_name
+		)
 		if not frappe.db.exists(reference_doctype, reference_name):
-			frappe.throw(
-				_("Reference document {0} {1} does not exist.").format(reference_doctype, reference_name),
-				frappe.DoesNotExistError,
-			)
+			frappe.throw(not_permitted, frappe.PermissionError)
 		reference_doc = frappe.get_doc(reference_doctype, reference_name)
 		if not reference_doc.has_permission(permtype):
-			frappe.throw(
-				_("Not permitted to access reference document {0} {1}.").format(
-					reference_doctype, reference_name
-				),
-				frappe.PermissionError,
-			)
+			frappe.throw(not_permitted, frappe.PermissionError)
 		return reference_doc
 
 	return None
+
+
+def can_read_reference(reference_doctype: str, reference_name: str) -> bool:
+	"""True when the session user may read the linked document.
+
+	The quiet counterpart of `validate_access`, for the call sites that skip
+	unreadable data instead of refusing the whole request.
+	"""
+	if not reference_doctype or not reference_name:
+		return False
+	if not frappe.db.exists(reference_doctype, reference_name):
+		return False
+
+	return bool(frappe.has_permission(reference_doctype, "read", reference_name))
 
 
 def validate(doc, method):
@@ -125,7 +137,11 @@ def create_lead_from_whatsapp_message(doc, phone_number: str) -> tuple[str | Non
 
 	lock_key = f"crm:whatsapp-lead:{phone_number}"
 	lock = frappe.cache.lock(lock_key, timeout=60, blocking_timeout=15)
-	lock.acquire(blocking=True)
+	if not lock.acquire(blocking=True):
+		# Another worker still holds the lock after the blocking timeout. Creating
+		# the lead unlocked would duplicate the lead this worker is waiting for.
+		return None, None
+
 	release_immediately = True
 
 	try:
@@ -302,13 +318,28 @@ def backfill_unlinked_whatsapp_messages() -> dict:
 
 
 def on_update(doc, method):
-	frappe.publish_realtime(
-		"whatsapp_message",
-		{
-			"reference_doctype": doc.reference_doctype,
-			"reference_name": doc.reference_name,
-		},
-	)
+	# after_commit: without it a client reloads the thread before the row is
+	# committed and shows a stale conversation.
+	# Deliver the inbox refresh only to users who can see this conversation:
+	# the assigned agents plus inbox managers. This avoids broadcasting the
+	# lead/deal name to every Desk session and picks explicit rooms.
+	recipients = set()
+	if doc.reference_doctype and doc.reference_name:
+		assigned = frappe.db.get_value(doc.reference_doctype, doc.reference_name, "_assign")
+		recipients.update(parse_assigned_users(assigned))
+	recipients.update(get_inbox_manager_users())
+
+	payload = {
+		"reference_doctype": doc.reference_doctype,
+		"reference_name": doc.reference_name,
+	}
+	for user in recipients:
+		frappe.publish_realtime(
+			"whatsapp_message",
+			payload,
+			user=user,
+			after_commit=True,
+		)
 
 	notify_agent(doc)
 
@@ -396,8 +427,10 @@ def get_whatsapp_messages(reference_doctype: str, reference_name: str):
 
 	if reference_doctype == "CRM Deal":
 		lead = reference_doc.get("lead")
-		if lead:
-			validate_access("CRM Lead", lead)
+		# An agent can own the converted Deal without being able to read the Lead
+		# it came from. Omit that older half of the thread instead of failing the
+		# whole request.
+		if lead and can_read_reference("CRM Lead", lead):
 			messages = frappe.get_all(
 				"WhatsApp Message",
 				filters={
@@ -557,7 +590,8 @@ def get_whatsapp_conversations(limit: int = CONVERSATION_LIMIT, scope: str = "mi
 	# Scope filtering happens after the trim, so "mine" is the session user's
 	# share of the most recent `limit` conversations rather than an unbounded scan.
 	aggregates.sort(key=lambda row: row["last_at"], reverse=True)
-	limit = frappe.utils.cint(limit) or CONVERSATION_LIMIT
+	# Clamp first: a negative limit would slice from the wrong end of the list.
+	limit = max(frappe.utils.cint(limit), 0) or CONVERSATION_LIMIT
 	aggregates = aggregates[:limit]
 
 	last_messages = get_last_conversation_messages(aggregates)
@@ -882,6 +916,28 @@ def get_conversation_references(aggregates: list[dict]) -> dict[tuple, dict]:
 	return references
 
 
+def get_inbox_manager_users() -> list[str]:
+	"""Enabled users who can view all WhatsApp conversations (inbox managers)."""
+	rows = frappe.get_all(
+		"Has Role",
+		filters={"role": ["in", list(INBOX_MANAGER_ROLES)], "parenttype": "User"},
+		distinct=True,
+		pluck="parent",
+	)
+	if not rows:
+		return []
+
+	return frappe.get_all(
+		"User",
+		filters=[
+			["name", "in", rows],
+			["name", "!=", "Guest"],
+			["enabled", "=", 1],
+		],
+		pluck="name",
+	)
+
+
 def parse_assigned_users(value) -> list[str]:
 	"""`_assign` is stored as a JSON list; anything unreadable counts as unassigned."""
 	if not value:
@@ -943,6 +999,41 @@ def truncate_preview(text: str, length: int = PREVIEW_MAX_LENGTH) -> str:
 	return text[: length - 1].rstrip() + "…"
 
 
+def get_reference_whatsapp_numbers(reference_doc) -> set[str]:
+	"""Every normalized number the linked Lead or Deal stores.
+
+	A Lead or Deal holds the primary pair, and a Deal also carries one row per
+	linked contact, so a reply to a secondary contact stays allowed.
+	"""
+	raw_numbers = [reference_doc.get("mobile_no"), reference_doc.get("phone")]
+	for contact in reference_doc.get("contacts") or []:
+		raw_numbers.extend([contact.get("mobile_no"), contact.get("phone")])
+
+	return {normalize_whatsapp_number(number) for number in raw_numbers if number}
+
+
+def validate_recipient(reference_doc, to: str):
+	"""Refuse to send to a number the reference document does not hold.
+
+	Without this the endpoint is an open relay: access to one Lead lets a caller
+	message any number on the company's WhatsApp account and file the result
+	under that Lead.
+	"""
+	if not reference_doc:
+		frappe.throw(
+			_("A WhatsApp message needs a reference document."),
+			frappe.PermissionError,
+		)
+
+	if normalize_whatsapp_number(to) not in get_reference_whatsapp_numbers(reference_doc):
+		frappe.throw(
+			_("Not permitted to send a WhatsApp message to {0}.").format(
+				frappe.utils.escape_html(frappe.utils.cstr(to))
+			),
+			frappe.PermissionError,
+		)
+
+
 @frappe.whitelist()
 def create_whatsapp_message(
 	reference_doctype: str,
@@ -953,7 +1044,10 @@ def create_whatsapp_message(
 	reply_to: str,
 	content_type: str = "text",
 ):
-	validate_access(reference_doctype, reference_name)
+	# An outbound message writes to the reference document's timeline, so read
+	# access is not enough.
+	reference_doc = validate_access(reference_doctype, reference_name, permtype="write")
+	validate_recipient(reference_doc, to)
 	doc = frappe.new_doc("WhatsApp Message")
 
 	if reply_to:
@@ -988,7 +1082,10 @@ def create_whatsapp_message(
 
 @frappe.whitelist()
 def send_whatsapp_template(reference_doctype: str, reference_name: str, template: str, to: str):
-	validate_access(reference_doctype, reference_name)
+	# Same contract as create_whatsapp_message: a template send is outbound, so it
+	# needs write access, and it may only go to a number the reference holds.
+	reference_doc = validate_access(reference_doctype, reference_name, permtype="write")
+	validate_recipient(reference_doc, to)
 	doc = frappe.new_doc("WhatsApp Message")
 	doc.update(
 		{

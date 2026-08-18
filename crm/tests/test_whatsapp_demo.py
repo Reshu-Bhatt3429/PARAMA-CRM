@@ -246,15 +246,25 @@ class TestWhatsAppDemoUsersAndAssignment(FrappeTestCase):
 		mock_get_doc.assert_not_called()
 		self.assertEqual(existing, [data["email"] for data in DEMO_SALES_USERS])
 
-	def test_demo_leads_are_shared_with_the_live_assignment_helper(self):
+	def test_demo_leads_are_shared_directly_between_the_two_demo_users(self):
 		leads = [{"name": "CRM-LEAD-2026-00001"}, {"name": "CRM-LEAD-2026-00002"}]
+		first_user = DEMO_SALES_USERS[0]["email"]
 
-		with patch(
-			"crm.demo.whatsapp_demo.assign_whatsapp_lead",
-			side_effect=["priya@demo.crm", None],
-		) as mock_assign:
+		# The first lead is unassigned; the second already carries an open
+		# assignment and must be left alone (idempotency).
+		with (
+			patch(
+				"crm.demo.whatsapp_demo.get_assigned_users",
+				side_effect=[[], ["someone@demo.crm"]],
+			),
+			patch("crm.demo.whatsapp_demo.assign") as mock_assign,
+		):
 			assignments = assign_demo_leads(leads)
 
-		self.assertEqual(mock_assign.call_count, 2)
-		# An already-assigned lead returns None and is left out of the report.
-		self.assertEqual(assignments, {"CRM-LEAD-2026-00001": "priya@demo.crm"})
+		# assign() is called only for the unassigned lead, with a demo user.
+		mock_assign.assert_called_once()
+		call_kwargs = mock_assign.call_args[0][0]
+		self.assertEqual(call_kwargs["assign_to"], [first_user])
+		self.assertEqual(call_kwargs["name"], "CRM-LEAD-2026-00001")
+		# Only the newly assigned lead appears in the report.
+		self.assertEqual(assignments, {"CRM-LEAD-2026-00001": first_user})

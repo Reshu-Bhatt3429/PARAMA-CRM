@@ -56,7 +56,7 @@
             class="absolute -right-0.5 -top-0.5 flex cursor-pointer gap-1 rounded-full bg-surface-base pb-2 pl-2 pr-1.5 pt-1.5 opacity-0 group-hover/message:opacity-100"
             :style="{
               background:
-                'radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 1) 35%, rgba(238, 130, 238, 0) 100%)',
+                'radial-gradient(circle at 50% 50%, var(--surface-base) 0%, var(--surface-base) 35%, transparent 100%)',
             }"
           >
             <Dropdown :options="messageOptions(whatsapp)">
@@ -99,9 +99,10 @@
               :src="whatsapp.attach"
               class="h-40 cursor-pointer rounded-md"
               @click="() => openFileInAnotherTab(whatsapp.attach)"
+              @load="emit('mediaLoad')"
             />
             <div
-              v-if="!whatsapp.message.startsWith('/files/')"
+              v-if="!(whatsapp.message || '').startsWith('/files/')"
               class="mt-1.5"
               v-html="formatWhatsAppMessage(whatsapp.message)"
             />
@@ -130,9 +131,10 @@
               :src="whatsapp.attach"
               controls
               class="h-40 cursor-pointer rounded-md"
+              @loadeddata="emit('mediaLoad')"
             />
             <div
-              v-if="!whatsapp.message.startsWith('/files/')"
+              v-if="!(whatsapp.message || '').startsWith('/files/')"
               class="mt-1.5"
               v-html="formatWhatsAppMessage(whatsapp.message)"
             />
@@ -196,6 +198,10 @@ defineProps({
   messages: { type: Array, default: () => [] },
 })
 
+// `mediaLoad` lets the thread re-anchor itself once an image or video has its
+// real height; the parent decides whether the reader is still at the bottom.
+const emit = defineEmits(['mediaLoad'])
+
 const list = defineModel({ type: Object })
 
 const { capture } = useTelemetry()
@@ -204,7 +210,32 @@ function openFileInAnotherTab(url) {
   window.open(url, '_blank')
 }
 
+// An inbound message is attacker-controlled text, never markup. Escaping it
+// before the WhatsApp markdown rules run is what keeps a raw <a> or <img> in
+// the payload from surviving as a live tag; sanitizeHTML then only has to vet
+// the tags this function itself produced.
+function escapeHTML(text) {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 function formatWhatsAppMessage(message) {
+  message = escapeHTML(String(message ?? ''))
+
+  // if message contains > text, make it a blockquote ('>' is escaped by now)
+  message = message.replace(/^&gt; (.*)$/gm, '<blockquote>$1</blockquote>')
+  // The list rules run before the emphasis rules, otherwise the bold rule has
+  // already turned the `*` of a `* item` bullet into a tag and leaves a stray
+  // <li>. They are anchored to the start of a line, which is the only place a
+  // bullet can be, so `*bold* text` keeps its bold instead of opening a list.
+  // if a line starts with *<space>text, make it a bullet point
+  message = message.replace(/^\* (.*)$/gm, '<li>$1</li>')
+  message = message.replace(/^- (.*)$/gm, '<li>$1</li>')
+  message = message.replace(/^\d+\. (.*)$/gm, '<li>$1</li>')
   // if message contains _text_, make it italic
   message = message.replace(/_(.*?)_/g, '<i>$1</i>')
   // if message contains *text*, make it bold
@@ -215,14 +246,8 @@ function formatWhatsAppMessage(message) {
   message = message.replace(/```(.*?)```/g, '<code>$1</code>')
   // if message contains `text`, make it inline code
   message = message.replace(/`(.*?)`/g, '<code>$1</code>')
-  // if message contains > text, make it a blockquote
-  message = message.replace(/^> (.*)$/gm, '<blockquote>$1</blockquote>')
   // if contain /n, make it a new line
   message = message.replace(/\n/g, '<br>')
-  // if contains *<space>text, make it a bullet point
-  message = message.replace(/\* (.*?)(?=\s*\*|$)/g, '<li>$1</li>')
-  message = message.replace(/- (.*?)(?=\s*-|$)/g, '<li>$1</li>')
-  message = message.replace(/(\d+)\. (.*?)(?=\s*(\d+)\.|$)/g, '<li>$2</li>')
 
   return sanitizeHTML(message)
 }
@@ -278,6 +303,7 @@ function messageOptions(message) {
 
 function scrollToMessage(name) {
   const element = document.getElementById(name)
+  if (!element) return
   element.scrollIntoView({ behavior: 'smooth' })
 
   // Highlight the message

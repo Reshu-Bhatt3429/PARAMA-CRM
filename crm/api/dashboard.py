@@ -16,6 +16,37 @@ class TimestampDiff(Function):
 		super().__init__("TIMESTAMPDIFF", unit, start, end, **kwargs)
 
 
+# Only these chart names may be dispatched from a caller-supplied `name`.
+# Keep in sync with `frontend/src/components/Dashboard/AddChartModal.vue`.
+ALLOWED_CHARTS = {
+	"total_leads",
+	"ongoing_deals",
+	"average_ongoing_deal_value",
+	"won_deals",
+	"average_won_deal_value",
+	"average_deal_value",
+	"average_time_to_close_a_lead",
+	"average_time_to_close_a_deal",
+	"sales_trend",
+	"forecasted_revenue",
+	"funnel_conversion",
+	"deals_by_stage_axis",
+	"deals_by_stage_donut",
+	"lost_deal_reasons",
+	"leads_by_source",
+	"deals_by_source",
+	"deals_by_territory",
+	"deals_by_salesperson",
+}
+
+
+def get_chart_method(name: str):
+	"""Return the chart function for an allowed chart name, else None."""
+	if name not in ALLOWED_CHARTS:
+		return None
+	return globals().get(f"get_{name}")
+
+
 @frappe.whitelist()
 def reset_to_default():
 	frappe.only_for("System Manager", True)
@@ -51,12 +82,10 @@ def get_dashboard(from_date: str | None = None, to_date: str | None = None, user
 		layout = json.loads(frappe.db.get_value("CRM Dashboard", "Manager Dashboard", "layout") or "[]")
 
 	for l in layout:
-		method_name = f"get_{l['name']}"
-		if hasattr(frappe.get_attr("crm.api.dashboard"), method_name):
-			method = getattr(frappe.get_attr("crm.api.dashboard"), method_name)
-			l["data"] = method(from_date, to_date, user)
-		else:
-			l["data"] = None
+		# a layout may hold non-chart entries (e.g. "spacer"), so an unknown
+		# name stays data-less instead of raising
+		method = get_chart_method(l.get("name"))
+		l["data"] = method(from_date, to_date, user) if method else None
 
 	return layout
 
@@ -80,12 +109,13 @@ def get_chart(
 	if is_sales_user:
 		user = frappe.session.user
 
-	method_name = f"get_{name}"
-	if hasattr(frappe.get_attr("crm.api.dashboard"), method_name):
-		method = getattr(frappe.get_attr("crm.api.dashboard"), method_name)
-		return method(from_date, to_date, user)
-	else:
-		return {"error": _("Invalid chart name")}
+	method = get_chart_method(name)
+	if not method:
+		# Unknown/disallowed chart name: return an error instead of dispatching
+		# to an arbitrary attribute. The allowlist stays the security boundary.
+		return {"error": _("Invalid chart name: {0}").format(name)}
+
+	return method(from_date, to_date, user)
 
 
 def get_total_leads(from_date: str | None = None, to_date: str | None = None, user: str | None = None):

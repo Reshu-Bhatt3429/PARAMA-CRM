@@ -3,7 +3,7 @@ import frappe
 
 @frappe.whitelist()
 def get_first_lead():
-	lead = frappe.get_all(
+	lead = frappe.get_list(
 		"CRM Lead",
 		filters={"converted": 0},
 		fields=["name"],
@@ -15,7 +15,7 @@ def get_first_lead():
 
 @frappe.whitelist()
 def get_first_deal():
-	deal = frappe.get_all(
+	deal = frappe.get_list(
 		"CRM Deal",
 		fields=["name"],
 		order_by="creation",

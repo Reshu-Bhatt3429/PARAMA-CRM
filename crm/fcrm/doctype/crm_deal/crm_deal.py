@@ -472,8 +472,71 @@ def create_contact(doc):
 	return contact.name
 
 
+# layout only fieldtypes, they carry no data and must never be set from a request
+RESTRICTED_DEAL_FIELDTYPES = (
+	"Tab Break",
+	"Section Break",
+	"Column Break",
+	"HTML",
+	"Button",
+	"Attach",
+)
+
+# fields that the server owns, a request must never set them directly
+RESTRICTED_DEAL_FIELDS = (
+	"name",
+	"naming_series",
+	"owner",
+	"creation",
+	"modified",
+	"modified_by",
+	"idx",
+	"docstatus",
+	"doctype",
+	"parent",
+	"parenttype",
+	"parentfield",
+	"sla",
+	"sla_creation",
+	"sla_status",
+	"response_by",
+	"first_response_time",
+	"first_responded_on",
+	"last_response_time",
+	"last_responded_on",
+	"communication_status",
+	"status_change_log",
+	"rolling_responses",
+)
+
+
+def get_permitted_deal_fields(doc: dict) -> dict:
+	"""Reduce an API payload to the CRM Deal fields a caller may set."""
+	meta = frappe.get_meta("CRM Deal")
+	permitted = {}
+
+	for fieldname, value in doc.items():
+		if fieldname in RESTRICTED_DEAL_FIELDS:
+			continue
+
+		field = meta.get_field(fieldname)
+		if not field or field.fieldtype in RESTRICTED_DEAL_FIELDTYPES:
+			continue
+
+		permitted[fieldname] = value
+
+	return permitted
+
+
 @frappe.whitelist()
 def create_deal(doc: dict):
+	frappe.has_permission("CRM Deal", "create", throw=True)
+
+	deal_owner = doc.get("deal_owner")
+	if deal_owner and deal_owner != frappe.session.user:
+		# only a manager may create a deal on behalf of another agent
+		frappe.only_for(["System Manager", "Sales Manager"], True)
+
 	deal = frappe.new_doc("CRM Deal")
 
 	contact = doc.get("contact")
@@ -491,7 +554,7 @@ def create_deal(doc: dict):
 
 	doc.pop("organization", None)
 
-	deal.update(doc)
+	deal.update(get_permitted_deal_fields(doc))
 
-	deal.insert(ignore_permissions=True)
+	deal.insert()
 	return deal.name

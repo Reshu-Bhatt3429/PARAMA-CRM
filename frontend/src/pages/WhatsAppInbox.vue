@@ -37,24 +37,32 @@
           <h1 class="text-xl-semibold text-ink-gray-9">
             {{ __('Unified inbox') }}
           </h1>
+          <!-- Counts what the list shows, so it agrees with the search. -->
           <span
-            v-if="allConversations.length"
+            v-if="visibleConversations.length"
             class="rounded-full bg-surface-blue-2 px-2 py-0.5 text-xs-medium text-ink-blue-8"
           >
-            {{ allConversations.length }}
+            {{ visibleConversations.length }}
           </span>
         </div>
 
+        <!-- Green only for an Active account; any other status is a warning. -->
         <div
           v-if="connectedAccount.data"
-          class="mb-3 flex items-center gap-1.5 text-xs text-ink-gray-6"
+          class="mb-3 flex items-center gap-1.5 text-xs"
+          :class="accountActive ? 'text-ink-gray-6' : 'text-ink-amber-9'"
         >
-          <span class="size-1.5 rounded-full bg-[#25d366]" />
+          <span
+            class="size-1.5 rounded-full"
+            :class="accountActive ? 'bg-[#25d366]' : 'bg-amber-500'"
+          />
           <span>
-            {{ __('Connected') }}:
-            <span class="font-medium text-ink-gray-8">{{
-              connectedAccount.data.name
-            }}</span>
+            {{ accountActive ? __('Connected') : __('Connection issue') }}:
+            <span
+              class="font-medium"
+              :class="accountActive ? 'text-ink-gray-8' : 'text-ink-amber-9'"
+              >{{ connectedAccount.data.name }}</span
+            >
           </span>
         </div>
         <div
@@ -102,12 +110,41 @@
       </div>
 
       <FadedScrollableDiv class="flex flex-1 flex-col overflow-y-auto pb-3">
+        <!-- `!fetched` covers the debounce window before the first request. -->
         <div
-          v-if="conversations.loading && !allConversations.length"
+          v-if="
+            (conversations.loading || !conversations.fetched) &&
+            !allConversations.length &&
+            !conversationsError
+          "
           class="flex flex-1 flex-col items-center justify-center gap-2 text-ink-gray-4"
         >
           <LoadingIndicator class="size-5" />
           <span class="text-sm">{{ __('Loading...') }}</span>
+        </div>
+
+        <!-- A backend failure reads as an error, never as an empty inbox. -->
+        <div
+          v-else-if="conversationsError && !allConversations.length"
+          class="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center"
+        >
+          <span
+            class="grid size-12 place-items-center rounded-full bg-surface-red-2"
+          >
+            <span
+              class="lucide-triangle-alert size-6 text-ink-red-8"
+              aria-hidden="true"
+            />
+          </span>
+          <p class="text-base text-ink-gray-5">
+            {{ __('Could not load conversations') }}
+          </p>
+          <p class="text-sm text-ink-gray-4">{{ conversationsError }}</p>
+          <Button
+            :label="__('Try again')"
+            :loading="conversations.loading"
+            @click="conversations.reload({ scope: scope })"
+          />
         </div>
 
         <div
@@ -268,6 +305,15 @@
             <Tooltip :text="__('Call {0}', [selected.phone])">
               <Button icon="lucide-phone" @click="callNumber(selected.phone)" />
             </Tooltip>
+            <!-- Below xl the contact panel is out of the layout, so it needs a
+                 way back: this opens it as an overlay. -->
+            <Tooltip :text="__('Contact details')">
+              <Button
+                class="xl:hidden"
+                icon="lucide-panel-right"
+                @click="showContactPanel = true"
+              />
+            </Tooltip>
             <Tooltip :text="referenceLabel">
               <Button icon="lucide-arrow-up-right" @click="openReference()" />
             </Tooltip>
@@ -310,6 +356,32 @@
             <span class="text-sm">{{ __('Loading...') }}</span>
           </div>
 
+          <!-- A failed read must not read as an empty thread. -->
+          <div
+            v-else-if="messagesError && !messages.data?.length"
+            class="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center"
+          >
+            <span
+              class="grid size-14 place-items-center rounded-full bg-surface-red-2"
+            >
+              <span
+                class="lucide-triangle-alert size-7 text-ink-red-8"
+                aria-hidden="true"
+              />
+            </span>
+            <div class="flex flex-col gap-1">
+              <p class="text-base font-medium text-ink-gray-8">
+                {{ __('Could not load this conversation') }}
+              </p>
+              <p class="text-sm text-ink-gray-5">{{ messagesError }}</p>
+            </div>
+            <Button
+              :label="__('Try again')"
+              :loading="messages.loading"
+              @click="messages.reload()"
+            />
+          </div>
+
           <div
             v-else-if="messageGroups.length"
             class="mt-auto flex w-full max-w-[760px] flex-col self-center px-6 pb-2 pt-4 xl:px-8"
@@ -329,6 +401,7 @@
                 v-model="messages"
                 v-model:reply="replyMessage"
                 :messages="group.messages"
+                @mediaLoad="scrollThreadToBottom()"
               />
             </template>
           </div>
@@ -354,7 +427,10 @@
         </FadedScrollableDiv>
 
         <div class="crm-thread-canvas shrink-0 px-6 pb-5 pt-2">
+          <!-- Keyed per conversation: remounting drops a half-typed reply
+               instead of carrying it over to the next contact. -->
           <WhatsAppInboxComposer
+            :key="selectedKey"
             v-model="activeDoc"
             v-model:reply="replyMessage"
             v-model:whatsapp="messages"
@@ -362,7 +438,7 @@
             :doctype="selected.reference_doctype"
             :showTemplates="whatsappEnabled"
             @openTemplates="showWhatsappTemplates = true"
-            @sent="conversations.reload()"
+            @sent="onMessageSent()"
           />
         </div>
       </template>
@@ -391,12 +467,29 @@
       </div>
     </section>
 
-    <!-- RIGHT: contact panel. Three panes need ~1280px; below that the app
-         falls back to the two-pane list + thread. -->
+    <!-- Backdrop for the overlay form of the contact panel, below xl only. -->
+    <div
+      v-if="selected && showContactPanel"
+      class="fixed inset-0 z-10 bg-black/30 xl:hidden"
+      @click="showContactPanel = false"
+    />
+
+    <!-- RIGHT: contact panel. Three panes need ~1280px; below that it opens
+         over the thread from the header toggle instead of sitting inline. -->
     <aside
       v-if="selected"
-      class="hidden w-[300px] shrink-0 flex-col overflow-y-auto border-l border-outline-gray-1 xl:flex"
+      class="w-[300px] shrink-0 flex-col overflow-y-auto border-l border-outline-gray-1 bg-surface-base xl:flex"
+      :class="
+        showContactPanel
+          ? 'fixed inset-y-0 right-0 z-20 flex shadow-2xl xl:static xl:z-auto xl:shadow-none'
+          : 'hidden'
+      "
     >
+      <!-- Only reachable below xl, where the panel floats over the thread. -->
+      <div class="flex justify-end px-3 pt-3 xl:hidden">
+        <Button icon="lucide-x" @click="showContactPanel = false" />
+      </div>
+
       <div class="flex flex-col items-center gap-3 px-5 pb-5 pt-6 text-center">
         <span
           class="grid size-16 place-items-center rounded-2xl bg-surface-blue-2 text-lg-semibold uppercase text-ink-blue-8"
@@ -507,7 +600,7 @@
       </div>
 
       <div
-        v-if="travelRows.length"
+        v-if="travelRows.length || travelError"
         class="border-t border-outline-gray-1 px-5 py-4"
       >
         <p
@@ -516,7 +609,12 @@
           {{ __('Trip details') }}
         </p>
 
-        <dl class="flex flex-col gap-3">
+        <!-- Says the read failed rather than implying an empty trip. -->
+        <p v-if="travelError" class="text-sm text-ink-amber-9">
+          {{ __('Could not load the trip details') }}
+        </p>
+
+        <dl v-else class="flex flex-col gap-3">
           <div
             v-for="row in travelRows"
             :key="row.label"
@@ -654,7 +752,9 @@ const { capture } = useTelemetry()
 // Only a manager may look past their own conversations; the server enforces
 // this too and quietly answers "mine" to anyone else who asks for "all".
 const canSwitchScope = computed(() => isManager())
-const scope = ref('mine')
+// A manager owns few conversations personally, so "mine" would open on an empty
+// inbox. Start them on the team view and everyone else on their own.
+const scope = ref(isManager() ? 'all' : 'mine')
 const scopeButtons = [
   { label: __('My inbox'), value: 'mine' },
   { label: __('All conversations'), value: 'all' },
@@ -664,6 +764,9 @@ const search = ref('')
 const selected = ref(null)
 const replyMessage = ref({})
 const showWhatsappTemplates = ref(false)
+// Below `xl` the contact panel is not in the layout; the header toggle opens it
+// as an overlay instead so the trip details stay reachable on a laptop screen.
+const showContactPanel = ref(false)
 
 // The composer reads `name` and `mobile_no` off its doc model to address the send.
 const activeDoc = ref({})
@@ -672,17 +775,42 @@ const connectedAccount = createResource({
   url: 'crm.api.whatsapp.get_connected_whatsapp_account',
   cache: 'whatsapp_connected_account',
   auto: true,
+  onError: (error) => {
+    toast.error(
+      error.messages?.[0] ||
+        __('Could not read the connected WhatsApp account'),
+    )
+  },
 })
 
+// The account row carries a `status`; anything but `Active` still sends, but
+// the header must not claim a healthy connection.
+const accountActive = computed(() => connectedAccount.data?.status === 'Active')
+
+// No `cache` on purpose: a cached resource is shared, so `createResource` would
+// hand later callers the first instance (with its stale `scope` closure) and
+// IndexedDB would restore the previous user's conversations after a re-login.
 const conversations = createResource({
   url: 'crm.api.whatsapp.get_whatsapp_conversations',
-  cache: 'whatsapp_conversations',
+  // Reads the ref, so every fetch — including a debounced one — sends the
+  // scope that is selected when the request finally goes out.
   makeParams: () => ({ scope: scope.value }),
+  // A burst of inbound messages fires one reload per message otherwise.
+  debounce: 500,
   auto: true,
+  onError: (error) => {
+    toast.error(error.messages?.[0] || __('Could not load conversations'))
+  },
 })
 
+const conversationsError = computed(() =>
+  conversations.error
+    ? conversations.error.messages?.[0] || __('Could not load conversations')
+    : '',
+)
+
 watch(scope, (value) => {
-  conversations.reload()
+  conversations.reload({ scope: value })
   capture('whatsapp_inbox_switch_scope', { scope: value })
 })
 
@@ -704,6 +832,12 @@ watch(allConversations, (rows) => {
 
   const fresh = rows.find((row) => conversationKey(row) === selectedKey.value)
   if (fresh) selected.value = fresh
+
+  // The trip panel is fetched separately, so a realtime refresh has to ask for
+  // it again or the destination, dates and budget stay on the old read.
+  if (selected.value.reference_doctype === 'CRM Lead') {
+    travelDetails.fetch()
+  }
 })
 
 const isDeal = computed(() => selected.value?.reference_doctype === 'CRM Deal')
@@ -726,7 +860,16 @@ const messages = createResource({
   transform: (data) =>
     [...data].sort((a, b) => new Date(a.creation) - new Date(b.creation)),
   onSuccess: () => scrollThreadToBottom(),
+  onError: (error) => {
+    toast.error(error.messages?.[0] || __('Could not load this conversation'))
+  },
 })
+
+const messagesError = computed(() =>
+  messages.error
+    ? messages.error.messages?.[0] || __('Could not load this conversation')
+    : '',
+)
 
 const messageGroups = computed(() => groupMessagesByDay(messages.data || []))
 
@@ -748,7 +891,12 @@ const travelDetails = createResource({
     filters: { name: selected.value?.reference_name },
     fieldname: TRAVEL_FIELDS,
   }),
+  // A failed read must not read as "this lead has no trip details"; it also
+  // stops the rejection from reaching the global fallback error handler.
+  onError: () => {},
 })
+
+const travelError = computed(() => Boolean(travelDetails.error))
 
 const travelRows = computed(() => {
   const lead = travelDetails.data || {}
@@ -805,6 +953,8 @@ function selectConversation(conversation) {
     doctype: conversation.reference_doctype,
     mobile_no: conversation.phone,
   }
+  // A freshly opened thread always opens at its newest message.
+  stickToBottom = true
   messages.reset()
   messages.fetch()
 
@@ -814,6 +964,14 @@ function selectConversation(conversation) {
   }
 
   capture('whatsapp_inbox_open_conversation')
+}
+
+// The reader's own message always pulls the thread back to the bottom, even if
+// they were scrolled up in the history when they wrote it.
+function onMessageSent() {
+  stickToBottom = true
+  scrollThreadToBottom()
+  conversations.reload()
 }
 
 function openReference() {
@@ -827,6 +985,8 @@ function openReference() {
 }
 
 function callNumber(number) {
+  // `tel:` with nothing after it only makes the browser leave the page.
+  if (!number) return
   window.location.href = `tel:${number}`
 }
 
@@ -839,33 +999,56 @@ async function copyNumber(number) {
   }
 }
 
+// One resource for the page, submitted per template. Building it inside
+// `sendTemplate` leaked a new reactive resource on every send.
+const templateSender = createResource({
+  url: 'crm.api.whatsapp.send_whatsapp_template',
+  onError: (error) => {
+    toast.error(error.messages?.[0] || __('Failed to send WhatsApp template'))
+  },
+  onSuccess: () => {
+    messages.reload()
+    conversations.reload()
+  },
+})
+
 function sendTemplate(template) {
   showWhatsappTemplates.value = false
   capture('send_whatsapp_template', {
     doctype: selected.value.reference_doctype,
   })
-  createResource({
-    url: 'crm.api.whatsapp.send_whatsapp_template',
-    params: {
-      reference_doctype: selected.value.reference_doctype,
-      reference_name: selected.value.reference_name,
-      to: selected.value.phone,
-      template,
-    },
-    auto: true,
-    onError: (error) => {
-      toast.error(error.messages?.[0] || __('Failed to send WhatsApp template'))
-    },
-    onSuccess: () => {
-      messages.reload()
-      conversations.reload()
-    },
+  templateSender.submit({
+    reference_doctype: selected.value.reference_doctype,
+    reference_name: selected.value.reference_name,
+    to: selected.value.phone,
+    template,
   })
 }
 
+// How close to the end of the thread still counts as "reading the newest
+// message". A realtime reload only auto-scrolls from inside that band.
+const NEAR_BOTTOM_PX = 120
+let stickToBottom = true
+
+function threadElement() {
+  return document.querySelector('[data-whatsapp-thread]')
+}
+
+function isThreadNearBottom() {
+  const thread = threadElement()
+  if (!thread) return true
+  return (
+    thread.scrollHeight - thread.scrollTop - thread.clientHeight <=
+    NEAR_BOTTOM_PX
+  )
+}
+
 function scrollThreadToBottom() {
+  // Scrolling a reader who has moved up the history back to the newest message
+  // is the yank this guard prevents.
+  if (!stickToBottom) return
   requestAnimationFrame(() => {
-    const thread = document.querySelector('[data-whatsapp-thread]')
+    const thread = threadElement()
     thread?.scrollTo({ top: thread.scrollHeight })
   })
 }
@@ -873,6 +1056,8 @@ function scrollThreadToBottom() {
 function onWhatsAppMessage(data) {
   conversations.reload()
   if (isSameConversation(selected.value, data)) {
+    // Decide before the reload replaces the thread's content.
+    stickToBottom = isThreadNearBottom()
     messages.reload()
   }
 }
