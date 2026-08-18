@@ -652,14 +652,20 @@ class TestGuardrails(FollowupEngineTestCase):
 	QUIET: ClassVar[dict] = {"quiet_hours_start": "21:00:00", "quiet_hours_end": "09:00:00"}
 
 	def test_quiet_hours_defer_instead_of_cancel(self):
+		# The clock is injected, and the row's own timestamps are derived from the
+		# injected moment rather than from the wall clock. Deriving them from
+		# `self.now` made the test pass before 23:00 and fail after it: the row was
+		# not yet due relative to the frozen 23:00, so the sweep returned before it
+		# ever reached the quiet-hours branch this test is about.
+		settings = make_settings(**self.QUIET)
+		late_evening = datetime.combine(self.now.date(), datetime.min.time()) + timedelta(hours=23)
+
 		lead = self.make_lead()
 		followup = self.make_followup(
 			lead,
-			next_due=self.now - timedelta(minutes=1),
-			last_agency_message=self.now - timedelta(days=2),
+			next_due=late_evening - timedelta(minutes=1),
+			last_agency_message=late_evening - timedelta(days=2),
 		)
-		settings = make_settings(**self.QUIET)
-		late_evening = datetime.combine(self.now.date(), datetime.min.time()) + timedelta(hours=23)
 
 		with (
 			self.sending() as message_mock,
@@ -674,7 +680,8 @@ class TestGuardrails(FollowupEngineTestCase):
 		self.assertEqual(row.state, engine.STATE_ACTIVE)
 		self.assertEqual(
 			frappe.utils.get_datetime(row.next_due),
-			datetime.combine(self.now.date() + timedelta(days=1), datetime.min.time()) + timedelta(hours=9),
+			datetime.combine(late_evening.date() + timedelta(days=1), datetime.min.time())
+			+ timedelta(hours=9),
 		)
 
 	def test_quiet_window_wraps_midnight(self):
@@ -1475,9 +1482,21 @@ class TestAIClient(FrappeTestCase):
 		frappe.db.rollback()
 
 	def test_client_refuses_to_run_while_ai_is_disabled(self):
-		# CRM AI Settings ships disabled, so this is the out-of-the-box state.
-		self.assertRaises(ai_client.AIConfigurationError, ai_client.complete, "hello")
-		self.assertFalse(ai_client.is_configured())
+		# CRM AI Settings ships disabled, and this asserts the real guard on that
+		# state. The state is FORCED rather than assumed: on a site where the
+		# agency has already configured a key -- the demo site does -- the guard
+		# would not fire and the assertion below would send a real, paid request
+		# to the provider. `requests.post` is stubbed with a failure for the same
+		# reason: if the guard ever regresses, the test must fail loudly instead
+		# of quietly reaching the network.
+		frappe.db.set_single_value(ai_client.SETTINGS_DOCTYPE, "enabled", 0)
+		frappe.clear_document_cache(ai_client.SETTINGS_DOCTYPE, ai_client.SETTINGS_DOCTYPE)
+
+		with patch.object(
+			ai_client.requests, "post", side_effect=AssertionError("the disabled guard let a request out")
+		):
+			self.assertRaises(ai_client.AIConfigurationError, ai_client.complete, "hello")
+			self.assertFalse(ai_client.is_configured())
 
 	def test_anthropic_request_shape_and_text_extraction(self):
 		payload = {

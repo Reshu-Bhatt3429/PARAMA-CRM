@@ -45,6 +45,21 @@ Moving parts
 * `process_followups()` -- hourly scheduler entry point.
 * `handle_message_after_insert()` -- reacts to every WhatsApp Message insert.
 
+Where the machine lives
+-----------------------
+The enrolment loop, the sweep, the stage transitions and the claim/commit/send
+ordering described above are NOT in this file any more. They are in
+`crm.sequences.core`, which is channel-agnostic, and this module drives them
+through `crm.sequences.whatsapp.WhatsAppFollowupAdapter` -- the class that
+carries every Meta-specific rule listed below.
+
+Nothing about the behaviour changed with that move. The functions this module
+exported before still exist, still take the same arguments and still do the same
+thing; each one now states the decision and lets the core order it. The point of
+the split is that the email sequences in a later stage get this module's
+guarantees without a second copy of them, and that a bug fixed in the ordering is
+fixed for both channels at once.
+
 Consent
 -------
 CRM Lead carries no do-not-contact field, so the `Opted Out` state on the
@@ -66,8 +81,9 @@ manage. This mirrors `crm.api.whatsapp_followups`.
 
 import json
 import re
+import sys
 import unicodedata
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import frappe
 from frappe import _
@@ -85,6 +101,8 @@ from crm.permissions.org_hierarchy import (
 	get_lead_permission_query_conditions,
 	has_lead_permission,
 )
+from crm.sequences import core as sequence_core
+from crm.sequences.whatsapp import WhatsAppFollowupAdapter
 from crm.suppression import CHANNEL_WHATSAPP
 from crm.suppression import STATE_OPTED_OUT as LEDGER_OPTED_OUT
 from crm.suppression import suppress as suppress_address
@@ -192,6 +210,26 @@ def lock_followup(name: str):
 	return frappe.get_doc(FOLLOWUP_DOCTYPE, name, for_update=True)
 
 
+# --- the channel adapter ---------------------------------------------------
+
+
+_adapter = None
+
+
+def get_channel_adapter():
+	"""The WhatsApp adapter the sequence core drives this engine through.
+
+	Built once and held, because it is stateless: it carries a reference to this
+	module and nothing else, and every rule it applies is read off this module at
+	call time.
+	"""
+	global _adapter
+
+	if _adapter is None:
+		_adapter = WhatsAppFollowupAdapter(sys.modules[__name__])
+	return _adapter
+
+
 # --- scheduler entry point -------------------------------------------------
 
 
@@ -273,33 +311,11 @@ def enroll_conversations(settings, stages) -> int:
 	the sequence on would drain months of dormant conversations into the send
 	queue, one stage-1 message at a time, for as many days as the daily cap
 	needs to work through them.
+
+	The loop itself -- the per-lead savepoint that stops one unenrollable lead
+	from costing the whole hour its sweep -- is `crm.sequences.core.enroll`.
 	"""
-	created = 0
-	known = set(frappe.get_all(FOLLOWUP_DOCTYPE, pluck="lead"))
-	cutoff = enrolment_cutoff(settings)
-	keywords = get_stop_keywords(settings)
-
-	for row in get_conversation_aggregates():
-		if row.get("reference_doctype") != LEAD_DOCTYPE:
-			continue
-
-		lead = row.get("reference_name")
-		if not lead or lead in known:
-			continue
-
-		savepoint = f"enroll_{frappe.generate_hash(length=8)}"
-		frappe.db.savepoint(savepoint)
-		try:
-			if enroll_one(lead, row, stages, cutoff, keywords):
-				created += 1
-			known.add(lead)
-		except Exception:
-			# One unenrollable lead must not cost the whole hour its sweep.
-			frappe.db.rollback(save_point=savepoint)
-			frappe.log_error(frappe.get_traceback(), f"CRM follow-up engine: enrolment failed for {lead}")
-
-	commit()
-	return created
+	return sequence_core.enroll(get_channel_adapter(), settings, stages)
 
 
 def enroll_one(lead: str, aggregate: dict, stages, cutoff, keywords) -> bool:
@@ -363,11 +379,7 @@ def enrolment_cutoff(settings):
 	backlog guard off, so the shipped default is used instead. An explicit 0 is
 	still honoured and means "no bound".
 	"""
-	stored = settings.get("ignore_older_than_days")
-	days = DEFAULT_IDLE_BOUND_DAYS if stored is None else frappe.utils.cint(stored)
-	if days <= 0:
-		return None
-	return frappe.utils.add_to_date(frappe.utils.now_datetime(), days=-days)
+	return sequence_core.enrolment_cutoff(settings, DEFAULT_IDLE_BOUND_DAYS)
 
 
 def find_historic_optout(lead: str, keywords: list[str]) -> dict | None:
@@ -460,71 +472,24 @@ def sweep_due_followups(settings, stages) -> int:
 	"""Send one stage for every Active row whose next_due has passed.
 
 	Each row is processed in its own transaction, so one row's failure can never
-	roll back another row's committed -- and already paid for -- send.
+	roll back another row's committed -- and already paid for -- send. The loop
+	and that isolation are `crm.sequences.core.sweep`; the query that decides
+	which rows are due is the adapter's.
 	"""
-	due = frappe.get_all(
-		FOLLOWUP_DOCTYPE,
-		filters={
-			"state": STATE_ACTIVE,
-			"next_due": ["<=", frappe.utils.get_datetime_str(frappe.utils.now_datetime())],
-		},
-		pluck="name",
-		order_by="next_due asc",
-	)
-	if not due:
-		return 0
-
-	sent = 0
-	for name in due:
-		if not daily_budget_left(settings):
-			break
-
-		try:
-			if process_one(name, settings, stages):
-				sent += 1
-		except Exception:
-			rollback()
-			frappe.log_error(frappe.get_traceback(), f"CRM follow-up engine: send failed for {name}")
-
-	return sent
+	return sequence_core.sweep(get_channel_adapter(), settings, stages)
 
 
 def process_one(name: str, settings, stages) -> bool:
 	"""Decide what happens to one due follow-up. True when a message went out.
 
-	Everything below runs in a transaction that began after the previous row
-	committed, so the snapshot is current. That matters: MariaDB's REPEATABLE
-	READ would otherwise hide a reply the webhook worker committed while this
-	job was running, and we would message a customer who had already answered.
+	The decision -- locked re-read, reply check, quiet-hours deferral, then the
+	stage -- is `crm.sequences.core.process_row`. It runs in a transaction that
+	began after the previous row committed, so the snapshot is current. That
+	matters: MariaDB's REPEATABLE READ would otherwise hide a reply the webhook
+	worker committed while this job was running, and we would message a customer
+	who had already answered.
 	"""
-	# Recomputed per row, not once per sweep: a long sweep must not send past
-	# the start of quiet hours.
-	now = frappe.utils.now_datetime()
-
-	followup = lock_followup(name)
-	if followup.state != STATE_ACTIVE:
-		commit()
-		return False
-
-	if not followup.next_due or frappe.utils.get_datetime(followup.next_due) > now:
-		commit()
-		return False
-
-	latest_incoming = get_latest_incoming(followup.lead)
-	if latest_incoming and not agency_spoke_last(followup.last_agency_message, latest_incoming):
-		followup.db_set(
-			{"state": STATE_REPLIED, "last_customer_message": latest_incoming, "next_due": None},
-			update_modified=False,
-		)
-		commit()
-		return False
-
-	if in_quiet_hours(now, settings):
-		followup.db_set("next_due", quiet_hours_end_after(now, settings), update_modified=False)
-		commit()
-		return False
-
-	return send_stage(followup, settings, stages, followup.current_stage + 1, now)
+	return sequence_core.process_row(get_channel_adapter(), name, settings, stages)
 
 
 def agency_spoke_last(last_agency_message, latest_incoming) -> bool:
@@ -551,161 +516,44 @@ def daily_budget_left(settings) -> bool:
 # --- quiet hours -----------------------------------------------------------
 
 
-def in_quiet_hours(now, settings) -> bool:
-	"""True when `now` falls inside the configured quiet window."""
-	start = to_time(settings.quiet_hours_start)
-	end = to_time(settings.quiet_hours_end)
-	if not start or not end or start == end:
-		return False
+# Quiet hours are the same rule on every channel -- a customer asleep at 02:00 is
+# asleep for email too -- so the window arithmetic lives in the core and these
+# three names stay here as the engine's published surface.
 
-	moment = frappe.utils.get_datetime(now).time()
-	if start < end:
-		return start <= moment < end
-	# The window wraps midnight, which is the normal case (21:00 -> 09:00).
-	return moment >= start or moment < end
-
-
-def quiet_hours_end_after(now, settings):
-	"""The next moment the quiet window closes, at or after `now`."""
-	end = to_time(settings.quiet_hours_end)
-	now = frappe.utils.get_datetime(now)
-	if not end:
-		return now
-
-	candidate = datetime.combine(now.date(), end)
-	if candidate <= now:
-		candidate += timedelta(days=1)
-	return candidate
-
-
-def to_time(value):
-	if value in (None, ""):
-		return None
-	try:
-		return frappe.utils.get_time(value)
-	except Exception:
-		return None
+in_quiet_hours = sequence_core.in_quiet_hours
+quiet_hours_end_after = sequence_core.quiet_hours_end_after
+to_time = sequence_core.to_time
 
 
 # --- sending ---------------------------------------------------------------
 
 
 def send_stage(followup, settings, stages, stage_number: int, now) -> bool:
-	"""Send (or draft) one stage. True when a WhatsApp message was created."""
-	if followup.state in TERMINAL_STATES:
-		commit()
-		return False
+	"""Send (or draft) one stage. True when a WhatsApp message was created.
 
-	if stage_number > len(stages):
-		followup.db_set({"state": STATE_EXHAUSTED, "next_due": None}, update_modified=False)
-		commit()
-		return False
-
-	stage = stages[stage_number - 1]
-	template, problem = resolve_template(stage)
-	if problem:
-		park_followup(followup, problem)
-		commit()
-		return False
-
-	recipient = resolve_recipient(followup)
-	if not recipient:
-		park_followup(followup, _("No valid WhatsApp number on the lead."))
-		commit()
-		return False
-
-	names = template_variable_names(template)
-	params = build_params(followup, stage, template, names)
-
-	if settings.send_mode == SEND_MODE_DRAFT:
-		hold_for_approval(followup, stage_number, params)
-		commit()
-		return False
-
-	return deliver(followup, stage_number, template, params, stages, recipient, now)
+	`crm.sequences.core.send_stage` runs the checks in order -- terminal state,
+	sequence exhausted, an unsendable template, a missing number, draft mode --
+	and the adapter answers each one with the WhatsApp rule for it.
+	"""
+	return sequence_core.send_stage(get_channel_adapter(), followup, settings, stages, stage_number, now)
 
 
 def deliver(followup, stage_number: int, template, params: dict, stages, recipient: str, now) -> bool:
 	"""Claim the key, commit, then call Meta. See the module docstring.
 
 	Returns True only when the WhatsApp Message document was created, which is
-	the point at which frappe_whatsapp has already POSTed to Meta.
+	the point at which frappe_whatsapp has already POSTed to Meta. The ordering
+	that makes that at-most-once is `crm.sequences.core.deliver`; the claim it
+	commits is this channel's Send Log row.
 	"""
-	name = followup.name
-	key = dedup_key(followup.lead, followup.cycle, stage_number)
-
-	log = frappe.new_doc(SEND_LOG_DOCTYPE)
-	log.update(
-		{
-			"followup": name,
-			"lead": followup.lead,
-			"stage": stage_number,
-			"dedup_key": key,
-			"status": SEND_CLAIMED,
-			"sent_at": now,
-		}
+	return sequence_core.deliver(
+		get_channel_adapter(), followup, stage_number, template, params, stages, recipient, now
 	)
-
-	try:
-		log.insert(ignore_permissions=True)
-	except (frappe.UniqueValidationError, frappe.DuplicateEntryError):
-		# The key is already spent. Advance instead of retrying, or the row
-		# would collide on this key every hour for ever.
-		rollback()
-		advance_after_stage(lock_followup(name), stage_number, stages, now)
-		commit()
-		frappe.log_error(
-			f"Follow-up {name} stage {stage_number} was already claimed as {key}; stage skipped.",
-			"CRM follow-up engine: duplicate stage claim",
-		)
-		return False
-
-	# The commit boundary. After this the key is spent whatever happens next, so
-	# a crash can lose a send but can never repeat one.
-	commit()
-
-	try:
-		message = create_template_message(followup, template, params, recipient)
-	except Exception:
-		# Undo the half-written message, then record the failure durably. The
-		# stage is still consumed: we cannot know whether Meta received it.
-		rollback()
-		frappe.db.set_value(SEND_LOG_DOCTYPE, log.name, "status", SEND_FAILED, update_modified=False)
-		advance_after_stage(lock_followup(name), stage_number, stages, now)
-		commit()
-		frappe.log_error(frappe.get_traceback(), f"CRM follow-up engine: Meta send failed for {name}")
-		return False
-
-	frappe.db.set_value(
-		SEND_LOG_DOCTYPE,
-		log.name,
-		{"whatsapp_message": message.name, "status": SEND_SENT},
-		update_modified=False,
-	)
-	advance_after_stage(lock_followup(name), stage_number, stages, now, sent_at=now)
-	commit()
-	return True
 
 
 def advance_after_stage(followup, stage_number: int, stages, now, sent_at=None):
 	"""Move the state machine past a stage, sent or not."""
-	update = {
-		"current_stage": stage_number,
-		"pending_stage": 0,
-		"pending_params": None,
-		"blocked_reason": None,
-	}
-	if sent_at:
-		update["last_agency_message"] = sent_at
-
-	if stage_number >= len(stages):
-		update["state"] = STATE_EXHAUSTED
-		update["next_due"] = None
-	else:
-		update["state"] = STATE_ACTIVE
-		update["next_due"] = frappe.utils.add_to_date(now, days=stages[stage_number].silence_days)
-
-	followup.db_set(update, update_modified=False)
+	sequence_core.advance(get_channel_adapter(), followup, stage_number, stages, now, sent_at=sent_at)
 
 
 def park_followup(followup, reason: str):
@@ -754,7 +602,7 @@ def dedup_key(lead: str, cycle, stage_number: int) -> str:
 	The cycle is what lets a re-armed sequence send stage 1 again. Without it
 	the second run would collide with the first run's key on the unique index.
 	"""
-	return f"{lead}-cycle-{frappe.utils.cint(cycle) or 1}-stage-{stage_number}"
+	return sequence_core.sequence_key(lead, cycle, stage_number)
 
 
 def resolve_recipient(followup) -> str:

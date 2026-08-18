@@ -237,9 +237,12 @@ scheduler_events = {
 		"crm.api.whatsapp_followups.notify_pending_followups",
 		"crm.api.followup_engine.process_followups",
 		"crm.api.itinerary.cleanup_public_itinerary_pdfs",
-		# Behind `outbound_engine_enabled`, default OFF. While the flag is off this
-		# returns without reading a single job row.
+		# Behind `outbound_engine_enabled`, default OFF. While the flag is off these
+		# return without reading a single job row.
 		"crm.outbound.process_scheduled_jobs",
+		# Reads the Email Queue's own verdict back onto the recipients this app
+		# queued, so "Sent" keeps meaning "the framework says sent".
+		"crm.outbound.sweep_delivery_states",
 	],
 	"daily": [
 		"crm.api.event.trigger_daily_event_notifications",

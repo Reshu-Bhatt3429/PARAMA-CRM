@@ -17,6 +17,41 @@ call tomorrow.
 
 The API key is never logged. Failures are logged with the HTTP status code and
 a truncated response body only.
+
+Four guards, and what each one is for
+-------------------------------------
+* **The budget is reserved BEFORE the network call**, with one atomic statement
+  (`crm.counters`). A read-then-write lets two workers both spend the last
+  request of the month. Reserving first also means a crash mid-request
+  over-counts by one instead of losing the charge, which is the safe direction
+  for someone else's bill.
+* **The answer is validated against the schema that was asked for**
+  (`crm.ai.schema`), not merely parsed. "It is JSON" was never the question.
+* **The request has a size ceiling.** A caller that loops a conversation into a
+  prompt turns a capped monthly budget into an uncapped monthly bill, because
+  the cap counts requests and the provider charges tokens.
+* **No streaming.** Nothing in this app streams a model answer, and no caller
+  may claim it does until it is implemented.
+
+What leaves the site
+--------------------
+BYO key or not, every call sends agency data to a third party. Each call site is
+listed here, and a call site that is not listed is a review blocker. The same
+table is kept in `demo-package/specs/permission-matrix.md`.
+
+* `crm.api.followup_engine.ai_params` -- fills WhatsApp template variables.
+  Sends: the lead's `lead_name`, `first_name`, `destination`,
+  `travel_start_date`, `travel_end_date`, `group_size`, `budget`
+  (`AI_LEAD_FIELDS`), the approved template's name, and up to
+  `CONVERSATION_HISTORY_LIMIT` WhatsApp messages of that conversation, stripped
+  of HTML and cut to 200 characters each. The customer's phone number, email
+  address, owner and every other lead field stay on the site.
+* `crm.api.itinerary` (`skeleton_prompt`, `day_prompt`) -- drafts itinerary days.
+  Sends: the itinerary's `destination`, `start_date`, `num_days`, `group_size`,
+  `budget`, `currency`, and the day titles and summaries already on the
+  itinerary. No customer name, phone, email or lead reference is included.
+
+Nothing else in the app calls `complete()`.
 """
 
 import json
@@ -26,6 +61,9 @@ import time
 import frappe
 import requests
 from frappe import _
+
+from crm.ai import schema as json_schema_check
+from crm.counters import rows_affected
 
 SETTINGS_DOCTYPE = "CRM AI Settings"
 
@@ -64,6 +102,12 @@ TRANSIENT_BACKOFF = 2
 # How much of a failing response body reaches the error log.
 ERROR_BODY_LIMIT = 500
 
+# The ceiling on one request, in UTF-8 bytes of prompt plus system prompt.
+# Roughly 25k tokens: far more than any prompt this app builds, and far less than
+# a runaway loop. The monthly budget counts REQUESTS, so without this a single
+# request can cost more than the whole month was meant to.
+MAX_REQUEST_BYTES = 100_000
+
 JSON_INSTRUCTION = (
 	"Reply with one JSON object and nothing else. No prose, no markdown fence. "
 	"The object must match this JSON schema:\n{schema}"
@@ -79,6 +123,18 @@ class AIConfigurationError(frappe.ValidationError):
 
 class AIResponseError(frappe.ValidationError):
 	"""The provider answered, but not with what was asked for."""
+
+
+class AISchemaError(AIResponseError):
+	"""The answer parsed, but does not match the schema the caller asked for.
+
+	A subclass, so every existing caller's `except AIResponseError` keeps working
+	and the retry can still word its correction accurately.
+	"""
+
+
+class AIRequestError(frappe.ValidationError):
+	"""The request itself is refused, before any budget or network is spent."""
 
 
 def is_configured() -> bool:
@@ -111,8 +167,10 @@ def complete(
 	Raises:
 	        AIConfigurationError: the provider is disabled, unconfigured or over
 	                its monthly request budget.
-	        AIResponseError: the provider answered with something unusable, or
-	                with invalid JSON twice in a row.
+	        AIRequestError: the prompt is larger than `MAX_REQUEST_BYTES`.
+	        AIResponseError: the provider answered with something unusable, with
+	                invalid JSON twice in a row, or twice with an object that does
+	                not match `json_schema`.
 	"""
 	settings = load_settings()
 	month, used = check_quota(settings)
@@ -120,26 +178,81 @@ def complete(
 	if json_schema:
 		system = join_system(system, JSON_INSTRUCTION.format(schema=json.dumps(json_schema)))
 
+	# Order matters: refuse an oversized request before spending a budget slot on
+	# it, and spend the slot before the network call rather than after it.
+	check_request_size(prompt, system)
+	reserve_request(settings, month, used)
 	text = dispatch(settings, prompt, system, max_tokens)
-	record_usage(month, used)
 
 	if not json_schema:
 		return text
 
 	try:
-		return parse_json(text)
+		return read_answer(text, json_schema)
 	except AIResponseError as first_error:
 		# One retry: the model is told what it got wrong. A second failure is a
 		# real fault, and the caller falls back to deterministic values.
-		retry_prompt = (
-			f"{prompt}\n\n"
-			f"Your previous answer was not valid JSON ({first_error}). "
+		retry_prompt = f"{prompt}\n\n{correction(first_error)}"
+		month, used = check_quota(settings)
+		check_request_size(retry_prompt, system)
+		reserve_request(settings, month, used)
+		text = dispatch(settings, retry_prompt, system, max_tokens)
+		return read_answer(text, json_schema)
+
+
+def correction(error: AIResponseError) -> str:
+	"""What to tell the model about its last answer.
+
+	The two faults get different words on purpose. "Not valid JSON" to a model
+	that returned a perfectly valid object with the wrong members is a correction
+	it cannot act on.
+	"""
+	if isinstance(error, AISchemaError):
+		return (
+			f"Your previous answer did not match the schema ({error}). "
 			"Answer again with one JSON object and nothing else."
 		)
-		month, used = check_quota(settings)
-		text = dispatch(settings, retry_prompt, system, max_tokens)
-		record_usage(month, used)
-		return parse_json(text)
+
+	return (
+		f"Your previous answer was not valid JSON ({error}). "
+		"Answer again with one JSON object and nothing else."
+	)
+
+
+def check_request_size(prompt: str, system: str | None) -> None:
+	"""Refuse a request bigger than the ceiling, before it costs anything.
+
+	The monthly budget counts requests, so a caller that accidentally builds a
+	prompt out of an entire conversation history stays inside its request budget
+	while multiplying the bill. This is the guard that makes the request count a
+	meaningful cap.
+	"""
+	size = len(frappe.utils.cstr(prompt).encode("utf-8")) + len(frappe.utils.cstr(system).encode("utf-8"))
+	if size > MAX_REQUEST_BYTES:
+		raise AIRequestError(
+			_("The AI request is {0} bytes, over the {1} byte limit.").format(size, MAX_REQUEST_BYTES)
+		)
+
+
+def read_answer(text: str, json_schema: dict):
+	"""Parse the answer and hold it against the schema that was asked for.
+
+	Parsing alone was never the question. A model that answers `{}` when three
+	template variables were required returns valid JSON and an unusable answer,
+	and the caller then writes it into a message a customer reads.
+	"""
+	parsed = parse_json(text)
+
+	try:
+		json_schema_check.validate(parsed, json_schema)
+	except json_schema_check.SchemaViolation as violation:
+		raise AISchemaError(frappe.utils.cstr(violation)) from violation
+	except json_schema_check.UnsupportedSchema:
+		# The schema, not the answer, is the problem: this app wrote it. Refusing
+		# the answer would hide a bug that belongs in the error log.
+		frappe.log_error(frappe.get_traceback(), "CRM AI: unsupported response schema")
+
+	return parsed
 
 
 # --- settings and budget ---------------------------------------------------
@@ -180,7 +293,12 @@ def current_month() -> str:
 
 
 def check_quota(settings) -> tuple[str, int]:
-	"""Return (month marker, requests already spent this month), or raise."""
+	"""Return (month marker, requests already spent this month), or raise.
+
+	The cheap first gate, on the settings this caller already loaded. It refuses
+	an obviously-over-budget call without touching the database again. It is NOT
+	the gate that makes the cap hold under concurrency -- `reserve_request` is.
+	"""
 	month = current_month()
 	used = settings.requests_this_month if settings.usage_month == month else 0
 
@@ -191,10 +309,88 @@ def check_quota(settings) -> tuple[str, int]:
 	return month, used
 
 
-def record_usage(month: str, used: int):
-	"""Count one request. A counter write must never sink the caller's work."""
+def reserve_request(settings, month: str, used: int) -> None:
+	"""Spend one request from this month's budget, BEFORE the network call.
+
+	Two workers that both read "999 of 1000 used" must not both send. The claim
+	is therefore one atomic statement rather than a read followed by a write, and
+	it happens before the request leaves: a crash between the claim and the answer
+	over-counts by one, which is the safe way to be wrong about someone's bill.
+
+	The limit comes from the settings the caller loaded, so a manager who raises
+	the cap and a job that is mid-flight cannot disagree about which cap applied.
+	"""
+	limit = frappe.utils.cint(settings.max_monthly_requests)
+
+	if not claim_request(month, limit):
+		raise AIConfigurationError(_("The monthly AI request limit of {0} is reached.").format(limit))
+
+	record_usage(month, used)
+
+
+def claim_request(month: str, limit: int) -> bool:
+	"""Increment this month's counter while there is room. True when claimed.
+
+	`limit <= 0` means unlimited, which matches the field's own description.
+
+	The counter lives on the settings Single, so the statement updates the
+	Singles row directly -- that is the only way to make the read of the current
+	count and the write of the new one one operation.
+
+	An UNEXPECTED failure here fails OPEN, with a log entry: an AI feature that
+	stops working because a counter row is unreadable is a worse outcome than a
+	budget that overruns by the requests made while someone fixes it. Being over
+	the cap is not an unexpected failure and fails closed.
+	"""
 	try:
-		frappe.db.set_single_value(SETTINGS_DOCTYPE, {"usage_month": month, "requests_this_month": used + 1})
+		if frappe.db.get_single_value(SETTINGS_DOCTYPE, "usage_month", cache=False) != month:
+			# A new month. Two workers that both do this at the boundary cost at
+			# most one uncounted request between them.
+			frappe.db.set_single_value(SETTINGS_DOCTYPE, {"usage_month": month, "requests_this_month": 0})
+
+		frappe.db.sql(
+			"""
+			update `tabSingles` set value = cast(value as signed) + 1
+			where doctype = %(doctype)s and field = 'requests_this_month'
+				and (%(limit)s <= 0 or cast(value as signed) < %(limit)s)
+			""",
+			{"doctype": SETTINGS_DOCTYPE, "limit": frappe.utils.cint(limit)},
+		)
+		if rows_affected() == 1:
+			return True
+
+		spent = frappe.db.get_single_value(SETTINGS_DOCTYPE, "requests_this_month", cache=False)
+		if spent is None:
+			# The Single has never been saved, so there is no row to update yet.
+			# Write the first request rather than refusing it.
+			frappe.db.set_single_value(SETTINGS_DOCTYPE, {"usage_month": month, "requests_this_month": 1})
+			return True
+
+		return not (limit and frappe.utils.cint(spent) >= limit)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "CRM AI: budget reservation failed")
+		return True
+
+
+def record_usage(month: str, used: int):
+	"""Make the month's count visible in the settings screen.
+
+	The count itself is claimed by `claim_request` before the network call; this
+	only keeps the month marker in step and raises the stored count when it reads
+	LOWER than what this caller already knows was spent. The write never lowers
+	the counter, so it cannot undo a concurrent claim.
+
+	A counter write must never sink the caller's work.
+	"""
+	try:
+		stored = frappe.utils.cint(
+			frappe.db.get_single_value(SETTINGS_DOCTYPE, "requests_this_month", cache=False)
+		)
+		updates = {"usage_month": month}
+		if stored < used + 1:
+			updates["requests_this_month"] = used + 1
+
+		frappe.db.set_single_value(SETTINGS_DOCTYPE, updates)
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "CRM AI: usage counter update failed")
 

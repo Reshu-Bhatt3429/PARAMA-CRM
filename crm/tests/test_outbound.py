@@ -439,6 +439,49 @@ class TestEmailQueueCorrelation(OutboundTestCase):
 			frappe.db.get_value(outbound.RECIPIENT_DOCTYPE, row.name, "state"), outbound.RECIPIENT_QUEUED
 		)
 
+	# --- the hourly entry point ---
+
+	def test_the_delivery_sweep_reads_nothing_while_the_flag_is_off(self):
+		self.make_queued_recipient()
+
+		with (
+			patch.object(outbound, "is_enabled", return_value=False) as flag,
+			patch.object(outbound, "refresh_delivery_states") as refresh_mock,
+		):
+			self.assertEqual(outbound.sweep_delivery_states(), 0)
+
+		flag.assert_called_once_with(outbound.FLAG_OUTBOUND_ENGINE)
+		refresh_mock.assert_not_called()
+
+	def test_the_delivery_sweep_runs_while_the_flag_is_on(self):
+		job, row = self.make_queued_recipient()
+
+		with (
+			patch.object(outbound, "is_enabled", return_value=True),
+			patch.object(outbound, "read_queue_status", return_value="Sent"),
+		):
+			self.assertEqual(outbound.sweep_delivery_states(), 1)
+
+		self.assertEqual(
+			frappe.db.get_value(outbound.RECIPIENT_DOCTYPE, row.name, "state"), outbound.RECIPIENT_SENT
+		)
+
+	def test_the_delivery_sweep_never_raises(self):
+		"""A scheduler job that throws takes the rest of its queue down with it."""
+		with (
+			patch.object(outbound, "is_enabled", side_effect=RuntimeError("boom")),
+			patch.object(frappe, "log_error") as log_mock,
+		):
+			self.assertEqual(outbound.sweep_delivery_states(), 0)
+
+		log_mock.assert_called_once()
+
+	def test_the_hourly_schedule_carries_the_delivery_sweep(self):
+		"""Regression, Stage 1A open issue 5: the function had no caller at all."""
+		from crm import hooks
+
+		self.assertIn("crm.outbound.sweep_delivery_states", hooks.scheduler_events["hourly"])
+
 
 class TestReplyMatching(OutboundTestCase):
 	def test_message_ids_are_extracted_from_a_header(self):

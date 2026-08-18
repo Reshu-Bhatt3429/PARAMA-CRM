@@ -73,3 +73,50 @@ CRM frontend in this stage.
 `CRM Suppression` is readable by a Sales User on purpose: an agent about to
 write to a customer must be able to see that the customer opted out. Writing it
 stays with managers.
+
+---
+
+## Stage 1B — Sequence core, automation context, AI client hardening
+
+**Stage 1B adds NO whitelisted endpoint and NO doctype.** It extracts the
+follow-up engine's machine into `crm/sequences/`, adds two libraries with no
+consumer yet (`crm/automation_context.py`, `crm/counters.py`), hardens
+`crm/ai/client.py`, and wires one scheduler entry.
+
+| Endpoint | Roles | Scope derivation | Record checks | Tested in |
+| --- | --- | --- | --- | --- |
+| _(none added in Stage 1B)_ | — | — | — | — |
+
+The follow-up engine's four existing endpoints (`approve_pending`,
+`dismiss_pending`, `reopen_optout`, `get_template_options`) are unchanged, keep
+their POST-only whitelisting and keep `check_followup_permission`, which
+delegates to `crm/permissions/org_hierarchy.py`. Their tests are unchanged too:
+`crm/tests/test_followup_engine.py::TestPermissions` and
+`::TestDraftApproval::test_state_changing_endpoints_are_post_only`.
+
+### Non-endpoint entry points added in Stage 1B
+
+| Entry point | Reached from | Authorization today | What a future endpoint must add |
+| --- | --- | --- | --- |
+| `crm.sequences.core.*` | `crm.api.followup_engine` only, through an adapter | None of its own. It reads no doctype and holds no permission logic; the adapter it is handed does every read and write | An adapter is a server-side object. It must never be built from request data |
+| `crm.outbound.sweep_delivery_states` | Frappe scheduler, hourly | Flag `outbound_engine_enabled`, default OFF. Never raises | n/a — scheduler only |
+| `crm.counters.reserve_daily_slot` | `crm.automation_context`, future workflow rules | None. The caller owns the check; the field names are validated against the doctype's own meta before they reach SQL | The rule that spends the cap must already have been permission-checked by its own execution path |
+| `crm.automation_context.*` | Nothing yet (Stage 5 workflow rules) | None | A rule action runs as a background job and must re-check permissions AT EXECUTION TIME, as `crm.outbound.execute_job` does |
+
+### What leaves the site on an AI call (spec F6, per call site)
+
+Required by F6: "per-feature documentation of exactly which record fields leave
+the site". The same table is in the `crm/ai/client.py` module docstring, next to
+the code that sends it. **A call site that is not listed here is a review
+blocker.** Every call is BYO key, to the provider the agency configured in
+`CRM AI Settings`, and only when that Single is enabled.
+
+| Call site | Feature | Fields that leave the site | What deliberately does NOT |
+| --- | --- | --- | --- |
+| `crm.api.followup_engine.ai_params` | Fills WhatsApp template variables for one follow-up stage | The lead's `lead_name`, `first_name`, `destination`, `travel_start_date`, `travel_end_date`, `group_size`, `budget` (the `AI_LEAD_FIELDS` tuple); the approved template's name; up to `CONVERSATION_HISTORY_LIMIT` (10) messages of that WhatsApp conversation, HTML-stripped and cut to 200 characters each | The customer's phone number, email address, lead owner, notes, deal values, and every other field on the lead |
+| `crm.api.itinerary.ask_model` (`skeleton_prompt`, `day_prompt`) | Drafts itinerary days | The itinerary's `destination`, `start_date`, `num_days`, `group_size`, `budget`, `currency`, and the day titles and summaries already on the itinerary | Any customer name, phone, email, lead or deal reference. The itinerary's linked lead is never named |
+
+Two properties hold at both call sites and are asserted in code, not by
+convention: the API key travels in a request header and never in a URL or a log
+line, and the answer is validated against the schema that was asked for
+(`crm/ai/schema.py`) before any of it is written to a record.

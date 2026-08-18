@@ -644,6 +644,29 @@ def refresh_delivery_states(job_name: str | None = None) -> int:
 	return updated
 
 
+def sweep_delivery_states() -> int:
+	"""Scheduler entry point for `refresh_delivery_states`. Hourly.
+
+	A separate function rather than putting the guards inside
+	`refresh_delivery_states`, because the two have different contracts. The
+	sweep runs unattended: it is gated on `outbound_engine_enabled` (OFF by
+	default, so it reads nothing at all) and it never raises, because a scheduler
+	job that throws takes the rest of its queue down with it. The function it
+	calls is also used by a request handler, which wants neither guard.
+
+	Without this entry a recipient stays `Queued` for ever and the UI keeps
+	saying "queued" about a message the framework delivered an hour ago.
+	"""
+	try:
+		if not is_enabled(FLAG_OUTBOUND_ENGINE):
+			return 0
+
+		return refresh_delivery_states()
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "CRM outbound: delivery-state sweep failed")
+		return 0
+
+
 # --- reply matching --------------------------------------------------------
 
 

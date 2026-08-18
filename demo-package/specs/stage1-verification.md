@@ -397,3 +397,288 @@ Ruff is pinned to v0.8.1 to match `.pre-commit-config.yaml`.
 5. **`crm.outbound.refresh_delivery_states` has no scheduler entry yet.** It is
    written and tested but nothing calls it, because nothing is queued yet. Wire
    it when the first adapter ships.
+
+---
+
+# Stage 1B (Foundations, part 2) — verification record
+
+Scope: F3 (sequence core extraction), F4 (automation execution context), F6 (AI
+client hardening), the two flaky/unsafe tests Stage 1A handed on (open issues 2
+and 3), and the missing scheduler entry (open issue 5). No user-visible feature
+ships in this stage and no schema changes at all.
+
+Branch: `feat/feature-expansion`. Nothing is committed by this stage; all changes
+sit in the working tree, on top of Stage 1A (`f1cfc59e`).
+
+Run 2026-08-18 23:00 – 2026-08-19 00:30 local, same commands as Stage 1A.
+
+---
+
+## What changed
+
+### Files added
+
+| File | Lines | What it is |
+| --- | --- | --- |
+| `crm/sequences/__init__.py` | 28 | The package. Re-exports the core's public names |
+| `crm/sequences/core.py` | 490 | F3. The channel-agnostic engine: enrolment loop, sweep, per-row decision, stage selection, the claim/commit/send ordering, the transition maths, quiet hours, the outbox key |
+| `crm/sequences/whatsapp.py` | 236 | F3. `WhatsAppFollowupAdapter` — Meta's semantics as the core's adapter interface. Every method is a one-line dispatch into `crm.api.followup_engine` |
+| `crm/automation_context.py` | 195 | F4. Depth ceiling, real-transition detection, durable execution key, after-commit queueing, the daily-cap re-export |
+| `crm/counters.py` | 113 | The atomic reservation both F4 and F6 use. `rows_affected`, `validated_field`, `reserve_daily_slot` |
+| `crm/ai/schema.py` | 240 | F6. The JSON-schema validator, with no new dependency |
+| `crm/tests/test_sequences.py` | 617 | 39 tests: the core, driven by a fake in-memory adapter |
+| `crm/tests/test_automation_context.py` | 237 | 20 tests: the five automation guards and the atomic counter |
+| `crm/tests/test_ai_client.py` | 478 | 35 tests: schema validation, request-size cap, budget reservation |
+
+### Files changed
+
+| File | Change |
+| --- | --- |
+| `crm/api/followup_engine.py` | 1557 → 1405 lines. The loops and the ordering now call `crm.sequences.core` through `get_channel_adapter()`. Every public name it exported still exists, with the same signature |
+| `crm/ai/client.py` | 348 → 544 lines. Budget reserved atomically before the network call; the answer validated against the schema; a request-size ceiling; the per-call-site data-flow documented in the module docstring |
+| `crm/outbound.py` | Added `sweep_delivery_states()`, the flag-guarded, never-raising scheduler entry for `refresh_delivery_states` |
+| `crm/hooks.py` | One line added to `scheduler_events["hourly"]`: `crm.outbound.sweep_delivery_states` |
+| `crm/tests/test_followup_engine.py` | Two tests fixed (below). Nothing else touched: the other 97 tests are byte-identical and pass unchanged |
+| `crm/tests/test_outbound.py` | Four tests added for the new scheduler entry |
+| `demo-package/specs/permission-matrix.md` | Stage 1B section: no endpoint added, the new non-endpoint entry points, and the F6 "what leaves the site" table |
+
+### Schema
+
+**None.** Stage 1B adds no doctype, no field, no index and no patch. `crm/patches.txt`
+is untouched, and no `bench migrate` is needed to run this code.
+
+### Extraction depth for F3
+
+Full extraction of the MACHINE, not of the channel rules. The core owns the
+enrolment loop and its per-row savepoint, the sweep and its per-row isolation,
+`process_row` (locked re-read → reply check → quiet hours → stage), `send_stage`
+(terminal → exhausted → content → destination → draft), `deliver` (claim →
+commit → send → record) and `advance`. The WhatsApp adapter owns every rule that
+mentions Meta, a template, a phone number or a Send Log row.
+
+The webhook handlers (`handle_message_after_insert`, `handle_incoming`,
+`handle_outgoing`, opt-out recording) stayed in the engine deliberately. They are
+WhatsApp-webhook-shaped, and an email adapter's reply detection is Message-ID
+matching through `crm.outbound.match_reply`, not the same code with a flag.
+
+The adapter is constructed with the engine MODULE as an argument rather than
+importing it. That removes the import cycle and keeps every seam patchable: each
+call is an attribute lookup on the module at call time, so
+`patch.object(engine, "create_template_message")` still intercepts the send and
+the suite still cannot reach Meta.
+
+---
+
+## The two tests Stage 1A handed on
+
+### Open issue 3 — `test_quiet_hours_defer_instead_of_cancel` was wall-clock flaky
+
+Cause, found by reading the failure rather than the test: the test froze the
+clock at 23:00 but built the follow-up row's `next_due` from the REAL clock
+(`self.now - 1 minute`). After 23:00 real time, that `next_due` is in the future
+relative to the frozen 23:00, so `process_one` returned at the "not due yet"
+branch and never reached the quiet-hours branch the test is about. Before 23:00
+it passed. Verbatim failure at 23:34, on unmodified code:
+
+```
+AssertionError: datetime.datetime(2026, 8, 18, 23, 34, 19, 117561) != datetime.datetime(2026, 8, 19, 9, 0)
+```
+
+Fix: the row's timestamps are now derived from the injected moment, not from the
+wall clock, and the expected value is derived from the same moment. The clock is
+injected exactly as before (`patch.object(frappe.utils, "now_datetime")`), and
+every assertion is unchanged — same state, same exact `next_due`, same
+"no message was sent".
+
+Evidence it is fixed at the hour that used to fail — the whole module, run at
+23:44 local:
+
+```
+Ran 99 tests in 20.124s
+
+OK
+```
+
+### Open issue 2 — `test_client_refuses_to_run_while_ai_is_disabled` reached the real provider
+
+On the demo site `CRM AI Settings` is enabled with a real key, so the guard the
+test asserts did not fire and `complete()` went to the network. It cost a real
+request every run and, on 2026-08-18, produced this verbatim error:
+
+```
+crm.ai.client.AIResponseError: The AI provider answered with HTTP 429: [{
+  "error": {
+    "code": 429,
+    "message": "You exceeded your current quota, ...
+```
+
+Fix: the disabled state is FORCED inside the test
+(`frappe.db.set_single_value(..., "enabled", 0)` plus a document-cache clear, both
+rolled back by the base class), and `requests.post` is stubbed with an
+`AssertionError`. The assertions are unchanged and now test what they say they
+test: the real guard on the real code path. If the guard ever regresses the test
+fails loudly instead of quietly reaching the network.
+
+Both tests, run individually after the fix:
+
+```
+$ bench --site crm.localhost run-tests --module crm.tests.test_followup_engine \
+    --test test_quiet_hours_defer_instead_of_cancel
+Ran 1 test in 1.156s
+
+OK
+
+$ bench --site crm.localhost run-tests --module crm.tests.test_followup_engine \
+    --test test_client_refuses_to_run_while_ai_is_disabled
+Ran 1 test in 0.120s
+
+OK
+```
+
+The 0.120s is itself the evidence for the second one: the same test took ~12
+seconds before, because it was waiting on a provider.
+
+---
+
+## Backend — every module that collects, run individually
+
+Same push-then-run commands as Stage 1A. Verbatim result lines:
+
+| Module | Result |
+| --- | --- |
+| `crm.fcrm.doctype.crm_invitation.test_crm_invitation` | `Ran 13 tests in 3.979s` `OK` |
+| `crm.fcrm.doctype.crm_product.test_product_item_sync` | `Ran 25 tests in 0.030s` `OK (skipped=18)` |
+| `crm.fcrm.doctype.crm_products.test_crm_products` | `Ran 7 tests in 0.001s` `OK (skipped=6)` |
+| `crm.integrations.erpnext.test_utils` | `Ran 9 tests in 0.009s` `OK (skipped=2)` |
+| **`crm.tests.test_ai_client`** (new) | `Ran 35 tests in 0.261s` `OK` |
+| **`crm.tests.test_automation_context`** (new) | `Ran 20 tests in 0.667s` `OK` |
+| `crm.tests.test_exchange_rate` | `Ran 16 tests in 0.544s` `OK` |
+| `crm.tests.test_followup_engine` | `Ran 99 tests in 19.281s` `OK` |
+| `crm.tests.test_itinerary` | `Ran 112 tests in 42.012s` `OK` |
+| `crm.tests.test_outbound` | `Ran 46 tests in 2.417s` `OK` |
+| **`crm.tests.test_sequences`** (new) | `Ran 39 tests in 0.126s` `OK` |
+| `crm.tests.test_state_options` | `Ran 7 tests in 0.189s` `OK` |
+| `crm.tests.test_suppression` | `Ran 32 tests in 2.161s` `OK` |
+| `crm.tests.test_sweeps` | `Ran 31 tests in 48.120s` `OK` |
+| `crm.tests.test_whatsapp` | `Ran 62 tests in 0.185s` `OK` |
+| `crm.tests.test_whatsapp_demo` | `Ran 12 tests in 0.047s` `OK` |
+
+**565 tests, 0 failures, 0 errors, 26 skips**, against Stage 1A's 467 tests with
+2 failures. The 98 new tests are 39 (`test_sequences`) + 35 (`test_ai_client`) +
+20 (`test_automation_context`) + 4 added to `test_outbound`.
+
+`crm.tests.test_followup_engine` deserves its own line: **all 99 pass**, and 97
+of them are byte-identical to the file Stage 1A left. That is the acceptance
+criterion for F3, and it was checked BEFORE the two test fixes as well — the
+refactor was run against the unmodified test file first and produced exactly the
+Stage 1A failure list, no more and no less:
+
+```
+Ran 99 tests in 35.911s
+
+FAILED (failures=1, errors=1)
+```
+
+### Modules that still do NOT collect in this container
+
+Unchanged from Stage 1A: the same 47 upstream modules abort at import with
+`ImportError: cannot import name 'IntegrationTestCase' from 'frappe.tests'`,
+because the container has frappe v15.117.0 while the app declares
+`>=16.0.0-dev`. Stage 1B adds no test to that set and removes none. They are
+reported as not collectable here, not as passes.
+
+## Frontend
+
+Untouched, and provably so:
+
+```
+$ git status --porcelain -- frontend/
+$
+```
+
+No file under `frontend/` is modified or added. The suite was run anyway:
+
+```
+ RUN  v4.1.4 /home/kreshnith/CRM/frontend
+
+ Test Files  10 passed (10)
+      Tests  224 passed (224)
+   Start at  00:01:08
+   Duration  2.08s (transform 714ms, setup 316ms, import 1.26s, tests 315ms, environment 6.69s)
+```
+
+Identical to Stage 1A. No production build was run: no frontend source changed,
+and the build output is gitignored.
+
+## Lint
+
+```bash
+uvx --from 'ruff==0.8.1' ruff check crm/     # All checks passed!
+uvx --from 'ruff==0.8.1' ruff format crm/    # 3 files reformatted, 326 files left unchanged
+```
+
+The three reformatted files are the three new test modules; the reformatting was
+applied and the suites re-run after it.
+
+## Scheduler entry (Stage 1A open issue 5)
+
+```python
+"hourly": [
+    ...
+    "crm.outbound.process_scheduled_jobs",
+    "crm.outbound.sweep_delivery_states",
+],
+```
+
+`sweep_delivery_states` is a new wrapper, not a change to
+`refresh_delivery_states`, because the two have different contracts: the sweep is
+gated on `outbound_engine_enabled` (default OFF — it reads nothing at all) and
+never raises, while the function it calls is also used from a request handler and
+wants neither guard. The dotted path was resolved on the live site:
+
+```
+$ bench --site crm.localhost execute frappe.get_attr --args '["crm.outbound.sweep_delivery_states"]'
+"<function sweep_delivery_states at 0x7e86147dbc10>"
+```
+
+Four tests cover it in `crm/tests/test_outbound.py`: off-by-default, on when the
+flag is on, never raises, and the hooks entry is present.
+
+## Downgrade behaviour
+
+| Change | To undo |
+| --- | --- |
+| The sequence core | Delete `crm/sequences/` and restore the pre-Stage-1B `crm/api/followup_engine.py`. No data, no schema and no setting is involved — the extraction is code only |
+| `crm/automation_context.py`, `crm/counters.py` | Delete them. Nothing imports them except their own tests and the AI client's use of `rows_affected` |
+| The AI client hardening | Restore the previous `crm/ai/client.py` and delete `crm/ai/schema.py`. The counter it writes is the SAME field (`CRM AI Settings.requests_this_month`) the old code wrote, so no value needs converting |
+| The hourly scheduler entry | Remove the line from `crm/hooks.py`. It is a no-op while the flag is off |
+
+## Open issues handed to Stage 2
+
+1. **The frappe v15 vs v16 mismatch stands** (Stage 1A open issue 1). 47 upstream
+   modules still cannot be collected in this container, including
+   `crm/permissions/test_org_hierarchy.py`. Role and hierarchy permission tests
+   still cannot be run on this machine.
+2. **The AI budget reservation holds a row lock for the length of the provider
+   call.** The claim is `UPDATE tabSingles ... WHERE there is room`, and it does
+   not commit, so the lock is held until the CALLER's transaction ends — which,
+   inside the follow-up sweep, is after the network call. Committing inside the
+   client is not an option: it would release the follow-up row's
+   `SELECT ... FOR UPDATE` early and break the at-most-once ordering. With one
+   scheduler and one worker there is no contention today. If Stage 4's Brief card
+   makes AI calls concurrent and interactive, measure it before assuming it is
+   still free.
+3. **`claim_request` fails OPEN on an unexpected database error**, with a log
+   entry. Being over the cap fails closed; a broken counter row does not take the
+   AI features down. That is a deliberate trade and it is tested
+   (`test_an_unexpected_database_failure_fails_open_and_is_logged`).
+4. **No email adapter exists yet**, by design. `crm/sequences/core.py` documents
+   what one must implement, and `test_sequences.py` proves the core runs with an
+   adapter that touches no WhatsApp doctype at all. Item 21 builds the real one on
+   `crm.outbound`.
+5. **`crm.automation_context` has no consumer.** That is what F4 asked for. Stage
+   5's workflow rules must supply their own counter and day columns to
+   `reserve_daily_slot`, and must re-check permissions at execution time.
+6. **Stage 1A open issue 4 stands**: no channel adapter is registered for the
+   outbound engine, so `process_scheduled_jobs` cannot send even with the flag on.
+   Stage 3 registers the first one.
