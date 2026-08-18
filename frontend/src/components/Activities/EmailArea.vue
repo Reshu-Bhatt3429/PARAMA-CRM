@@ -18,12 +18,15 @@
         />
       </div>
       <div class="flex items-center gap-2 shrink-0">
-        <Badge
-          v-if="status.label"
-          :label="__(status.label)"
-          variant="subtle"
-          :theme="status.color"
-        />
+        <Tooltip v-if="indicator" :text="indicator.tooltip">
+          <span
+            class="flex items-center gap-1 text-sm"
+            :class="indicator.className"
+          >
+            <component :is="indicator.icon" class="size-3.5" />
+            <span v-if="indicator.label">{{ indicator.label }}</span>
+          </span>
+        </Tooltip>
         <TimelineTimestamp :date="activity.communication_date" />
         <div class="flex gap-0.5">
           <Button
@@ -81,12 +84,22 @@
 </template>
 <script setup>
 import LucideForward from '~icons/lucide/forward'
+import LucideCheck from '~icons/lucide/check'
+import LucideCheckCheck from '~icons/lucide/check-check'
+import LucideClock from '~icons/lucide/clock'
+import LucideAlertCircle from '~icons/lucide/alert-circle'
 import ReplyIcon from '@/components/Icons/ReplyIcon.vue'
 import ReplyAllIcon from '@/components/Icons/ReplyAllIcon.vue'
 import AttachmentItem from '@/components/AttachmentItem.vue'
 import EmailContent from '@/components/Activities/EmailContent.vue'
-import { Badge } from 'frappe-ui'
+import { Badge, Tooltip } from 'frappe-ui'
 import TimelineTimestamp from '@/components/Activities/TimelineTimestamp.vue'
+import {
+  emailState,
+  emailStateTimestamp,
+  showEmailState,
+} from '@/utils/emailStatus'
+import { formatDate, timeAgo } from '@/utils'
 import { reactive, computed } from 'vue'
 
 const props = defineProps({
@@ -159,18 +172,63 @@ function forward() {
   })
 }
 
-const status = computed(() => {
-  let _status = props.activity?.data?.delivery_status
-  let indicator_color = 'red'
-  if (['Sent', 'Clicked'].includes(_status)) {
-    indicator_color = 'green'
-  } else if (['Sending', 'Scheduled'].includes(_status)) {
-    indicator_color = 'orange'
-  } else if (['Opened', 'Read'].includes(_status)) {
-    indicator_color = 'blue'
-  } else if (_status == 'Error') {
-    indicator_color = 'red'
+/**
+ * Item 19: one quiet mark beside the timestamp.
+ *
+ * It replaces a coloured `Badge` that printed the raw `delivery_status` word --
+ * "Sent", "Sending", "Error" -- on every message. That was a badge shelf
+ * (spec §2.13) and it said nothing an agent needed: what they want to know is
+ * whether the customer OPENED it. So: one gray tick for sent, two for opened
+ * with the relative time beside them, and the exact timestamp on hover.
+ *
+ * No new tracking. `read_by_recipient` is the framework's own read receipt and
+ * `delivery_status` is the Email Queue's own verdict; both were already in the
+ * activities payload before this stage.
+ */
+const indicator = computed(() => {
+  if (!showEmailState(props.activity)) return null
+
+  const state = emailState(props.activity.data)
+  const openedAt = emailStateTimestamp(props.activity.data)
+  const sentAt = props.activity.communication_date
+
+  switch (state) {
+    case 'opened':
+      return {
+        icon: LucideCheckCheck,
+        // The one place a word is worth the room: "sent" is the default
+        // assumption, "opened" is the news.
+        label: openedAt
+          ? __('Opened · {0}', [timeAgo(openedAt)])
+          : __('Opened'),
+        tooltip: openedAt
+          ? __('Opened on {0}', [formatDate(openedAt)])
+          : __('Opened by the recipient'),
+        className: 'text-ink-gray-5',
+      }
+    case 'sent':
+      return {
+        icon: LucideCheck,
+        label: '',
+        tooltip: __('Sent on {0}', [formatDate(sentAt)]),
+        className: 'text-ink-gray-4',
+      }
+    case 'pending':
+      return {
+        icon: LucideClock,
+        label: '',
+        tooltip: __('Queued for delivery'),
+        className: 'text-ink-gray-4',
+      }
+    case 'failed':
+      return {
+        icon: LucideAlertCircle,
+        label: '',
+        tooltip: __('Delivery failed'),
+        className: 'text-ink-red-3',
+      }
+    default:
+      return null
   }
-  return { label: _status, color: indicator_color }
 })
 </script>

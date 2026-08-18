@@ -1,0 +1,186 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-08-19 09:00:00.000000",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "token",
+  "purpose",
+  "reference_doctype",
+  "reference_name",
+  "active",
+  "column_break_document_link",
+  "file",
+  "file_name",
+  "expires_at",
+  "created_by_user",
+  "stats_section",
+  "view_count",
+  "first_viewed_at",
+  "column_break_document_link_stats",
+  "last_viewed_at",
+  "platform_fetch_at",
+  "payload_section",
+  "payload"
+ ],
+ "fields": [
+  {
+   "description": "The unguessable part of the public URL. This value IS the authorization for /api/method/crm.api.quote.view, so it is never rendered into a page the customer does not already hold.",
+   "fieldname": "token",
+   "fieldtype": "Data",
+   "label": "Token",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "Quote",
+   "fieldname": "purpose",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Purpose",
+   "options": "Quote\nItinerary\nOther"
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Reference Document Type",
+   "options": "DocType",
+   "reqd": 1
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Reference Name",
+   "options": "reference_doctype",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "description": "Cleared when the link is revoked or expires. An inactive link answers exactly like a token that never existed.",
+   "fieldname": "active",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Active"
+  },
+  {
+   "fieldname": "column_break_document_link",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "The PRIVATE File the route streams. It is never served by its own URL; only this route reads it, and only for a live token.",
+   "fieldname": "file",
+   "fieldtype": "Link",
+   "label": "File",
+   "options": "File"
+  },
+  {
+   "fieldname": "file_name",
+   "fieldtype": "Data",
+   "label": "File Name"
+  },
+  {
+   "fieldname": "expires_at",
+   "fieldtype": "Datetime",
+   "label": "Expires At"
+  },
+  {
+   "fieldname": "created_by_user",
+   "fieldtype": "Link",
+   "label": "Created By User",
+   "options": "User"
+  },
+  {
+   "fieldname": "stats_section",
+   "fieldtype": "Section Break",
+   "label": "Views"
+  },
+  {
+   "default": "0",
+   "description": "Customer opens only. A platform prefetch is logged but never counted here.",
+   "fieldname": "view_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "View Count",
+   "read_only": 1
+  },
+  {
+   "fieldname": "first_viewed_at",
+   "fieldtype": "Datetime",
+   "label": "First Viewed At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_document_link_stats",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_viewed_at",
+   "fieldtype": "Datetime",
+   "label": "Last Viewed At",
+   "read_only": 1
+  },
+  {
+   "description": "When the messaging platform prefetched the document while it processed the outgoing message. Not a customer open.",
+   "fieldname": "platform_fetch_at",
+   "fieldtype": "Datetime",
+   "label": "Platform Fetch At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "payload_section",
+   "fieldtype": "Section Break",
+   "label": "Payload"
+  },
+  {
+   "description": "What the document was rendered from, as JSON. Kept so the record of what the customer was sent survives an edit to the deal.",
+   "fieldname": "payload",
+   "fieldtype": "Long Text",
+   "label": "Payload"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-19 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CRM Document Link",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

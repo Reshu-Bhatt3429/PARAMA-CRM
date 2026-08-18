@@ -49,6 +49,7 @@ The flag: `outbound_engine_enabled`, default OFF (`crm.feature_flags`).
 Error contract: `process_scheduled_jobs` runs unattended and never raises.
 """
 
+import importlib
 import json
 import re
 
@@ -174,6 +175,36 @@ def unregister_adapter(channel: str) -> None:
 
 def get_adapter(channel: str):
 	return _ADAPTERS.get(channel)
+
+
+# An adapter registers itself when its module is imported, and a scheduler worker
+# imports `crm.outbound` alone -- nothing drags `crm.api.email` in behind it. The
+# sweep therefore imports the owning modules before it claims anything.
+#
+# Deliberately NOT done inside `get_adapter` or `execute_job`: a job executed
+# directly with no adapter registered must still fail with "no adapter", which is
+# the behaviour Stage 1 shipped and `crm/tests/test_outbound.py` asserts. The
+# import belongs to the unattended entry point, not to the lookup.
+#
+# A registrar is named rather than relied on as an import side effect, so that
+# importing `crm.api.email` for any other reason does not silently arm the
+# engine.
+ADAPTER_REGISTRARS = ("crm.api.email:register_adapters",)
+
+
+def load_adapter_modules() -> None:
+	"""Run every registrar that owns a channel adapter. Never raises.
+
+	A registrar that fails is logged and skipped. Its channel's jobs then fail
+	with "no adapter", which is the honest outcome -- far better than a sweep
+	that dies and takes every other channel down with it.
+	"""
+	for path in ADAPTER_REGISTRARS:
+		module_path, _sep, attribute = path.partition(":")
+		try:
+			getattr(importlib.import_module(module_path), attribute)()
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), f"CRM outbound: adapter registrar {path} failed")
 
 
 # --- enqueue ---------------------------------------------------------------
@@ -439,6 +470,8 @@ def process_scheduled_jobs() -> int:
 	try:
 		if not is_enabled(FLAG_OUTBOUND_ENGINE):
 			return 0
+
+		load_adapter_modules()
 
 		now = frappe.utils.now_datetime()
 		due = frappe.get_all(

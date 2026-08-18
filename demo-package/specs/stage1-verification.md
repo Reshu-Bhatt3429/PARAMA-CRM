@@ -1432,3 +1432,667 @@ rule requires. No file in the "must not touch" list was modified.
    is registered for the outbound engine. Item 6 does not use it — the composer
    sends through `Communication.make`, as it always did — so Send Later is still
    the first feature that will need one.
+
+---
+
+# Stage 3B
+
+Scope: master spec §5 items **7** (target meter), **22** (deal-health flags) and
+**24** (Today page). Branch `feat/feature-expansion`. Nothing committed by this
+stage; all changes sit in the working tree.
+
+Decisions, deviations and the two files touched outside the stated ownership are
+in `demo-package/specs/stage3b-notes.md`. Endpoint authorisation rows are in
+`demo-package/specs/permission-matrix.md`.
+
+## Files
+
+**New — backend**
+
+* `crm/deal_health.py` — the nightly sweep, the three flag rules, the stored value
+* `crm/api/today.py` — one whitelisted endpoint aggregating four existing queries
+* `crm/patches/v1_0/create_parama_deal_health_field.py` — the `custom_parama_health_flags` JSON custom field on CRM Deal
+* `crm/tests/test_deal_health.py`, `crm/tests/test_target_meter.py`, `crm/tests/test_today.py`
+
+**Modified — backend**
+
+* `crm/api/dashboard.py` — `+"target_meter"` in `ALLOWED_CHARTS`, `get_target_meter()`
+* `crm/api/whatsapp_followups.py` — deal-health section on the existing daily digest
+* `crm/hooks.py` — one `daily` scheduler entry
+* `crm/feature_flags.py` — `deal_health_enabled`
+* `crm/fcrm/doctype/fcrm_settings/fcrm_settings.json` — `monthly_revenue_target`, `deal_health_enabled`, `deal_health_section`, `deal_health_stalled_days`
+* `crm/patches.txt` — one line
+
+**New — frontend**
+
+* `frontend/src/components/Dashboard/TargetMeter.vue`
+* `frontend/src/components/DealHealthChip.vue`
+* `frontend/src/pages/Today.vue`
+* `frontend/src/composables/today.js`
+* `frontend/src/utils/targetMeter.js`, `dealHealth.js`, `today.js`
+* `frontend/tests/unit/targetMeter.test.js`, `dealHealth.test.js`, `today.test.js`
+
+**Modified — frontend**
+
+* `frontend/src/components/Dashboard/DashboardItem.vue`, `AddChartModal.vue` — the `progress_chart` type
+* `frontend/src/components/ListViews/DealsListView.vue` — the health column cell
+* `frontend/src/pages/Deals.vue` — the "Needs attention" quick filter and the kanban card branch
+* `frontend/src/components/ViewControls.vue` — the filter predicate (see stage3b-notes §1.1)
+* `frontend/src/pages/WhatsAppInbox.vue` — the Today reply deep link (see stage3b-notes §1.2)
+* `frontend/src/components/Layouts/AppSidebar.vue` — "Today" at the top of Sales, with a count badge
+* `frontend/src/router.js` — the `/today` route and the landing-route fallback
+
+Single-owner check: `crm/hooks.py` (+5), `crm/fcrm/doctype/fcrm_settings/fcrm_settings.json`
+(+36), `crm/feature_flags.py` (+6), `crm/patches.txt` (+1), `crm/api/dashboard.py`
+(+65), `crm/api/whatsapp_followups.py` (+81/-6), `frontend/src/router.js` (+26/-2)
+and `frontend/src/components/Layouts/AppSidebar.vue` (+32/-1) carry Stage 3B's
+changes ONLY — verified with `git diff` on each file. No file on the
+must-NOT-touch list was modified.
+
+## Schema
+
+The custom field had to exist before the tests could run:
+
+```bash
+docker exec crm-local-frappe-1 bash -lc \
+  'cd ~/frappe-bench && bench --site crm.localhost execute crm.patches.v1_0.create_parama_deal_health_field.execute'
+
+docker exec crm-local-frappe-1 bash -lc 'cd ~/frappe-bench && bench --site crm.localhost mariadb -e "describe \`tabCRM Deal\`"' | grep parama
+```
+
+```
+custom_parama_email_normalized	varchar(140)	YES		NULL
+custom_parama_phone_e164	varchar(140)	YES		NULL
+custom_parama_health_flags	longtext	YES		NULL
+```
+
+`FCRM Settings` was reloaded so the four new fields exist on the test site:
+
+```
+In [4]: OK DocField(5t05njnsk5) DocField(5t0eq6glod)
+```
+
+(`deal_health_enabled` and `monthly_revenue_target`, via
+`frappe.reload_doc("fcrm", "doctype", "fcrm_settings")`.)
+
+## Backend — every collectable module, run individually
+
+Pushed with the Stage-1A recipe, then one `bench run-tests --module` per module.
+
+```bash
+cd /home/kreshnith/CRM
+tar -cf - --exclude=__pycache__ --exclude='*.pyc' --exclude='crm/public' crm | \
+  docker exec -i crm-local-frappe-1 bash -lc 'cd ~/frappe-bench/apps/crm && tar -xf -'
+```
+
+| Module | Result |
+| --- | --- |
+| `crm.fcrm.doctype.crm_invitation.test_crm_invitation` | `Ran 13 tests in 3.539s` `OK` |
+| `crm.fcrm.doctype.crm_product.test_product_item_sync` | `Ran 25 tests in 0.032s` `OK (skipped=18)` |
+| `crm.fcrm.doctype.crm_products.test_crm_products` | `Ran 7 tests in 0.001s` `OK (skipped=6)` |
+| `crm.integrations.erpnext.test_utils` | `Ran 9 tests in 0.009s` `OK (skipped=2)` |
+| `crm.tests.test_ai_client` | `Ran 35 tests in 0.348s` `OK` |
+| `crm.tests.test_automation_context` | `Ran 20 tests in 0.323s` `OK` |
+| **`crm.tests.test_deal_health`** | `Ran 37 tests in 28.020s` `OK` |
+| `crm.tests.test_duplicates` | `Ran 18 tests in 4.378s` `OK` |
+| `crm.tests.test_email_compose` | `Ran 18 tests in 0.729s` `OK` |
+| `crm.tests.test_exchange_rate` | `Ran 16 tests in 0.557s` `OK` |
+| `crm.tests.test_followup_engine` | `Ran 99 tests in 18.752s` `OK` |
+| `crm.tests.test_form_auto_response` | `Ran 42 tests in 9.148s` `OK` |
+| `crm.tests.test_itinerary` | `Ran 112 tests in 42.994s` `OK` |
+| `crm.tests.test_outbound` | `Ran 46 tests in 2.512s` `OK` |
+| `crm.tests.test_quote` | `Ran 67 tests in 14.111s` `OK` |
+| `crm.tests.test_reminders` | `Ran 40 tests in 6.474s` `OK` |
+| `crm.tests.test_search` | `Ran 36 tests in 5.183s` `OK` |
+| `crm.tests.test_send_later` | `Ran 58 tests in 9.163s` `OK` |
+| `crm.tests.test_sequences` | `Ran 39 tests in 0.125s` `OK` |
+| `crm.tests.test_snippets` | `Ran 45 tests in 2.476s` `OK` |
+| `crm.tests.test_state_options` | `Ran 7 tests in 0.191s` `OK` |
+| `crm.tests.test_suppression` | `Ran 32 tests in 2.103s` `OK` |
+| `crm.tests.test_sweeps` | `Ran 31 tests in 48.881s` `OK` |
+| `crm.tests.test_tags` | `Ran 36 tests in 5.626s` `OK` |
+| **`crm.tests.test_target_meter`** | `Ran 23 tests in 4.527s` `OK` |
+| **`crm.tests.test_today`** | `Ran 28 tests in 40.131s` `OK` |
+| `crm.tests.test_whatsapp` | `Ran 62 tests in 0.205s` `OK` |
+| `crm.tests.test_whatsapp_demo` | `Ran 12 tests in 0.046s` `OK` |
+
+**Total: 1013 tests, 0 failures, 0 errors, 26 skips.** 88 of those tests are new
+in Stage 3B.
+
+`crm.tests.test_followup_engine` was at `FAILED (failures=2)` in the Stage-1A
+baseline (`Ran 99 tests in 22.050s`) and is `Ran 99 tests in 18.752s` `OK` here.
+Stage 3B changed nothing in that module or in the code it covers; some earlier
+stage fixed the two failures. Recorded as an observation, not as a claim about
+which stage did it.
+
+47 test modules still cannot be collected in this container (they import
+`frappe.tests.IntegrationTestCase` / `UnitTestCase`, frappe v16 only, against the
+container's frappe v15.117.0). That includes `crm/tests/test_dashboard.py`, which
+is why the target-meter tests are a NEW module rather than an addition to it.
+Stage 1A open issue 1 stands, unchanged.
+
+## What the new tests actually assert
+
+**`crm.tests.test_target_meter` (23)** — a deal won this month counts; one won
+last month does not; the last day of this month still counts (half-open upper
+bound); one won next month does not; an open deal never counts; the value is
+converted through `deal_value * IfNull(exchange_rate, 1)` like every other value
+chart; the dashboard's `from_date`/`to_date` are ignored and the subtitle says so;
+`percent` is achieved/target; no target is `hasTarget: false`, not 0%; over target
+reports over 100; the chart is allow-listed and dispatched; an unknown name is
+still refused. **Authorisation:** a real Sales User sees only their own won value,
+cannot widen it by sending `user="Administrator"`, a manager sees the site, and a
+non-agent gets `PermissionError`.
+
+**`crm.tests.test_deal_health` (37)** — serialisation (empty column, not `{}`;
+display order; unknown flags dropped; junk never raises); the three rules as pure
+functions including the closed-deal clear and the configurable stalled window;
+and against the database: an overdue deal is flagged, a healthy one gets an empty
+column, **running the sweep twice writes nothing the second time**, resolving the
+problem clears the chip, winning the deal clears the chip, **a truncated run
+stores a cursor and the next one resumes**, **a finished pass clears the cursor**,
+a second copy does not run while the lock is held. **Flag off:** zero writes, the
+cursor does not move, `sweep_deal_health()` returns 0. **Digest:** the flagged
+deal is named, at most three then "and N more", nothing at all when the flag is
+off, and the deal title is HTML-escaped.
+
+**`crm.tests.test_today` (28)** — the limit is clamped not trusted; overdue sorts
+before merely due; a row with no due time sorts last; the payload is one list plus
+counts that agree with it; every row carries exactly one action; no row appears
+twice; tasks due today and overdue are listed, next week's and finished ones are
+not, an unassigned task belongs to its creator; a flagged deal is listed with its
+flags and an unflagged one is not; **the flag being off removes every deal row
+even over stale stored values**; a pending draft is listed with an Approve action
+and an active follow-up is not. **Authorisation:** a Sales User does not see
+another user's task, does see their own, does not see another team's flagged deal,
+does see their own, the scope comes from the hierarchy conditions, a non-agent is
+refused, and `limit=999999` widens nothing.
+
+## Frontend
+
+```bash
+cd /home/kreshnith/CRM/frontend && npx vitest run
+```
+
+```
+ RUN  v4.1.4 /home/kreshnith/CRM/frontend
+
+ Test Files  19 passed (19)
+      Tests  395 passed (395)
+   Start at  01:28:12
+   Duration  3.68s (transform 981ms, setup 397ms, import 1.84s, tests 557ms, environment 14.05s)
+```
+
+19 files against Stage 2B's 16; the three new ones are Stage 3B's
+(`targetMeter.test.js` 10, `dealHealth.test.js` 14, `today.test.js` 22 = 46
+tests). Stage 2B's note still holds and is worth repeating: **there are no
+component tests in this repo**, `@vue/test-utils` is not a dependency, and
+nothing under `frontend/tests/unit/` mounts anything. Every decision worth
+testing was therefore pushed into a pure function — the bar cap, the "no target"
+state, the chip label, the route per row type, the keyboard cursor, the optimistic
+row removal — and tested there. The wiring inside the `.vue` files is covered by
+the production build, not by a test. That is stated rather than papered over.
+
+### Frontend production build
+
+```bash
+cd /home/kreshnith/CRM/frontend
+NODE_OPTIONS="--max-old-space-size=6144" npx vite build --base=/assets/crm/frontend/
+```
+
+```
+✓ built in 1m 18s
+
+PWA v0.21.2
+mode      generateSW
+precache  1 entries (0.00 KiB)
+files generated
+  ../crm/public/frontend/sw.js.map
+  ../crm/public/frontend/sw.js
+  ../crm/public/frontend/workbox-8c29f6e4.js.map
+  ../crm/public/frontend/workbox-8c29f6e4.js
+warnings
+  An error occurred when globbing for files. '(0 , brace_expansion_1.expand) is not a function'
+```
+
+The globbing warning is the same one Stage 1A recorded and is unrelated. The
+build passed on the first attempt.
+
+### Lint
+
+```bash
+uvx --from 'ruff==0.8.1' ruff check crm/          # All checks passed!
+uvx --from 'ruff==0.8.1' ruff format <the 8 changed backend files>
+npx prettier@3.2.5 --write <the 18 changed frontend files>
+npx oxlint@1.50.0 <the 15 changed frontend source files>
+# Found 0 warnings and 0 errors.  (after fixing two `no-useless-fallback-in-spread`)
+```
+
+`ruff format` was run on Stage 3B's files only. After that,
+`ruff format --check crm/` still reports `8 files would be reformatted, 355 files
+already formatted`. All eight belong to other Stage-3 workers sharing this tree
+(`crm/api/email.py`, `crm/api/form.py`, `crm/api/quote.py`,
+`crm/document_links.py`,
+`crm/fcrm/doctype/crm_form_auto_response_log/crm_form_auto_response_log.py`,
+`crm/tests/test_form_auto_response.py`, `crm/tests/test_quote.py`,
+`crm/tests/test_send_later.py`) and were left alone. No Stage 3B file is in that
+list.
+
+One pre-existing oxlint warning remains in `frontend/src/router.js`
+(`no-unused-vars` on the `catch (error)` of the persona "fail open" block). It is
+not Stage 3B's line and was not touched.
+
+## Two failures worth recording, because the cause is not obvious
+
+**1. `CONSTRAINT 'tabCRM Deal.custom_parama_health_flags' failed`, MariaDB 4025.**
+The first version of the sweep wrote `""` for a healthy deal. Frappe maps the
+JSON fieldtype to MariaDB `json`, which is `longtext` **with a
+`CHECK (json_valid(col))` constraint** — and the empty string is not valid JSON.
+The sweep now writes NULL, which satisfies the check and which `["is", "set"]`
+reads identically. **Any later feature that adds a JSON custom field will hit
+exactly this.** For the same reason the column carries no index: MariaDB refuses
+an index on a TEXT column without a prefix length.
+
+**2. `TypeError: '<' not supported between instances of 'datetime.datetime' and
+'str'`.** `frappe.utils.add_to_date` returns whatever TYPE it was given, so
+passing a string `now` produced a string cutoff that could not be compared with a
+parsed datetime. `evaluate` and `is_awaiting_reply` now normalise `now` with
+`frappe.utils.get_datetime` on entry. Production always passed a datetime, so
+this was only ever reachable from a test — which is exactly what found it.
+
+Two test premises were also wrong and were corrected rather than worked around:
+`CRM Deal.exchange_rate` and `deal_value` are both NOT NULL columns, so the
+`IfNull` / `Coalesce` guards in the chart can never fire through a NULL. The tests
+now assert what the code actually does (the conversion matches the other value
+charts) instead of a NULL case that cannot occur.
+
+## Open issues handed to Stage 4
+
+1. **The digest still has no quiet-hours check and no per-user opt-out.** Master
+   spec §5 item 22 asks for both. Neither exists for `send_daily_digest` today,
+   and this app has no per-user preference store at all
+   (`crm/reminders.py:41-45`). The deal-health section inherits the gap rather
+   than inventing a preference store for one line of text. **This is a deviation
+   and needs an owner decision.**
+2. **`notify_user` dedups on the exact field tuple**, so two digests with
+   identical counts on consecutive days collapse into one. Pre-existing.
+3. **The "Needs Attention" column is not in any default list layout.** It is a
+   real Custom Field so it appears in the column picker and the kanban field
+   picker, but a seeded demo has to add it once per view.
+4. **Today is a personal task list even for a manager.** CRM Task has no
+   row-level rule, so the endpoint scopes tasks to the session user explicitly;
+   flagged deals do follow the hierarchy. The asymmetry is deliberate — see
+   `stage3b-notes.md` §2.11.
+5. **The frappe v15 vs v16 mismatch stands** (Stage 1A open issue 1), and
+   `crm/tests/test_dashboard.py` is one of the 47 modules it blocks.
+
+---
+
+# Stage 3A
+
+Scope: master spec §5 items 4 (web-form auto-response), 5 (send later),
+19 (email open state), 25 (quote PDF). Branch `feat/feature-expansion`. Nothing
+is committed. Deviations, decisions and the `crm/hooks.py` entries this stage may
+not make are in `demo-package/specs/stage3a-notes.md`.
+
+A second worker (Stage 3B) had uncommitted Python and Vue in the same tree
+throughout. Every count below is from a run of the tree as it stood, so the
+Stage 3B suites appear in the table too.
+
+## What changed
+
+### Backend — files added
+
+| File | What it is |
+| --- | --- |
+| `crm/document_links.py` | The shared customer-document machinery. Render a print format, attach it as a File, sweep temporary public copies — extracted from `crm/api/itinerary.py` — plus the new tokenised link, its view log and the platform-vs-customer fetch rule |
+| `crm/api/quote.py` | Item 25. Preview, download, WhatsApp send, and the Guest `view` route |
+| `crm/templates/print_formats/travel_quote_a4.html` | The `Travel Quote A4` print format |
+| `crm/fcrm/doctype/crm_document_link/` | The token row: purpose, reference, private file, expiry, view counters, payload |
+| `crm/fcrm/doctype/crm_document_link_view/` | One row per fetch, with the platform-fetch flag |
+| `crm/fcrm/doctype/crm_form_auto_response/` | Item 4's per-form setting, named after the Web Form |
+| `crm/fcrm/doctype/crm_form_auto_response_log/` | Item 4's idempotency claim and audit trail |
+| `crm/tests/test_quote.py` | 67 tests |
+| `crm/tests/test_send_later.py` | 58 tests |
+| `crm/tests/test_form_auto_response.py` | 42 tests |
+
+### Backend — files changed
+
+| File | Change |
+| --- | --- |
+| `crm/api/email.py` | Item 5: timezone helpers, presets, `schedule_email`, `get_scheduled_emails`, `cancel_scheduled_email`, `send_scheduled_email_now`, `email_adapter`, `register_adapters`, `handle_inbound_reply`. `send_email` itself is untouched |
+| `crm/api/form.py` | Item 4: the auto-response engine, its configuration round trip and the test send. Plus one defensive read — see stage3a-notes §2f |
+| `crm/api/activities.py` | Item 19: the Communication `name`, `read_by_recipient_on`. Items 5 and 25: `scheduled_email` and `quote_view` activities. All additive |
+| `crm/api/itinerary.py` | The PDF helpers now delegate to `crm.document_links`. Public names, signatures and behaviour unchanged |
+| `crm/outbound.py` | `ADAPTER_REGISTRARS` + `load_adapter_modules()`, called once by `process_scheduled_jobs`. `get_adapter` unchanged |
+| `crm/utils/__init__.py` | One call to `handle_inbound_reply` in `on_communication_insert` |
+| `crm/fcrm/doctype/crm_lead/crm_lead.py`, `crm_deal.py` | One call to `queue_auto_response` in `after_insert` |
+| `crm/fcrm/doctype/crm_notification/crm_notification.json` | One `Select` option: `Email` |
+
+### Frontend — files added
+
+| File | What it is |
+| --- | --- |
+| `src/utils/emailStatus.js` | Item 19's pure state helper (10 tests) |
+| `src/utils/sendLater.js` | Item 5's pure preset/parse/cancel helpers (28 tests) |
+| `src/components/editor/mergeField.js` | The TipTap atom node behind item 4's merge pills |
+| `src/components/SendLaterPopover.vue` | The split-button popover |
+| `src/components/Activities/ScheduledEmailArea.vue` | The timeline card, with inline Send now / Cancel |
+| `src/components/Settings/Forms/AutoResponsePanel.vue` | The builder's Auto-response tab |
+| `src/components/Modals/QuoteModal.vue` | The quote preview |
+| `tests/unit/emailStatus.test.js`, `tests/unit/sendLater.test.js` | 38 tests |
+
+### Frontend — files changed
+
+`src/components/EmailEditor.vue` (split Send button),
+`src/components/CommunicationArea.vue` (`scheduleEmail`),
+`src/components/Activities/EmailArea.vue` (item 19's indicator replaces the raw
+delivery-status badge), `src/components/Activities/Activities.vue` (the two new
+activity types), `src/components/Settings/Forms/FormBuilderPanel.vue` (the tab,
+the model, load and save), `src/pages/Deal.vue` and `src/pages/MobileDeal.vue`
+(the Create quote action).
+
+## Migrations
+
+### New doctypes
+
+| Doctype | Naming | Unique keys | Roles |
+| --- | --- | --- | --- |
+| `CRM Form Auto Response` | `field:web_form` | the name is the key: one row per form | System Manager (crud+delete), Sales Manager (crud+delete) |
+| `CRM Form Auto Response Log` | hash | `submission_key` (web form + record) | System Manager (crud+delete), Sales Manager (crud) |
+| `CRM Document Link` | hash | `token` | System Manager (crud+delete), Sales Manager (crud) |
+| `CRM Document Link View` | hash | — | System Manager (crud+delete), Sales Manager (crud) |
+
+No Sales User grant on any of the four. A view log names which customers opened
+which quotes; the deal timeline surfaces it through
+`crm.api.activities`, which has already checked read permission on the deal.
+
+### New fields on existing doctypes
+
+| Doctype | Field | Change |
+| --- | --- | --- |
+| `CRM Notification` | `type` | one appended `Select` option, `Email` |
+
+No other core schema is touched. No patch is needed: the four doctypes are new,
+and a `Select` gaining an option needs none.
+
+### Downgrade behaviour
+
+Remove the app's new modules and: scheduled jobs stay in `CRM Outbound Job` and
+are never claimed (the sweep is flag-gated and OFF by default); auto-response
+rows stay and nothing reads them; quote links stay `active` until their
+`expires_at` passes, and the route that would serve them no longer exists, so
+they answer 404 rather than serving a document. Nothing is deleted by a
+downgrade, and nothing sends.
+
+## Backend — every module that collects, run individually
+
+The container is `crm-local-frappe-1`, the site `crm.localhost`, and the host
+tree is pushed into the container's own clone before each run, exactly as in
+Stage 1. `--app crm` still cannot be used: see "How the suites are run".
+
+```bash
+cd /home/kreshnith/CRM
+tar -cf - --exclude=__pycache__ --exclude='*.pyc' --exclude='crm/public' crm | \
+  docker exec -i crm-local-frappe-1 bash -lc 'cd ~/frappe-bench/apps/crm && tar -xf -'
+
+docker exec crm-local-frappe-1 bash -lc 'cd ~/frappe-bench && \
+  bench --site crm.localhost run-tests --module crm.tests.<module>'
+```
+
+| Module | Result | Verdict |
+| --- | --- | --- |
+| `crm.tests.test_ai_client` | Ran 35 tests | OK |
+| `crm.tests.test_automation_context` | Ran 20 tests | OK |
+| `crm.tests.test_dashboard` | — | DID NOT COLLECT |
+| `crm.tests.test_deal_health` | Ran 38 tests | OK |
+| `crm.tests.test_demo_data` | — | DID NOT COLLECT |
+| `crm.tests.test_duplicates` | Ran 18 tests | OK |
+| `crm.tests.test_email_compose` | Ran 18 tests | OK |
+| `crm.tests.test_exchange_rate` | Ran 16 tests | OK |
+| `crm.tests.test_followup_engine` | Ran 99 tests | OK |
+| `crm.tests.test_form_api` | — | DID NOT COLLECT |
+| `crm.tests.test_form_auto_response` | Ran 42 tests | OK |
+| `crm.tests.test_integrations` | — | DID NOT COLLECT |
+| `crm.tests.test_itinerary` | Ran 112 tests | OK |
+| `crm.tests.test_notification_log` | — | DID NOT COLLECT |
+| `crm.tests.test_outbound` | Ran 46 tests | OK |
+| `crm.tests.test_quote` | Ran 67 tests | OK |
+| `crm.tests.test_reminders` | Ran 40 tests | OK |
+| `crm.tests.test_search` | Ran 36 tests | OK |
+| `crm.tests.test_send_later` | Ran 58 tests | OK |
+| `crm.tests.test_sequences` | Ran 39 tests | OK |
+| `crm.tests.test_snippets` | Ran 45 tests | OK |
+| `crm.tests.test_state_options` | Ran 7 tests | OK |
+| `crm.tests.test_suppression` | Ran 32 tests | OK |
+| `crm.tests.test_sweeps` | Ran 31 tests | OK |
+| `crm.tests.test_tags` | Ran 36 tests | OK |
+| `crm.tests.test_target_meter` | Ran 23 tests | OK |
+| `crm.tests.test_today` | Ran 28 tests | OK |
+| `crm.tests.test_utils` | — | DID NOT COLLECT |
+| `crm.tests.test_whatsapp` | Ran 62 tests | OK |
+| `crm.tests.test_whatsapp_demo` | Ran 12 tests | OK |
+
+**960 tests, 24 modules, all OK. 6 modules do not collect** (the frappe v15 vs
+v16 mismatch, Stage 1A open issue 1 — unchanged by this stage).
+
+### One transient failure, and why it is not a regression
+
+An earlier pass of the same sweep reported:
+
+```
+ERROR: test_the_cursor_round_trips (crm.tests.test_sweeps.TestWatermark.test_the_cursor_round_trips)
+pymysql.err.OperationalError: (1213, 'Deadlock found when trying to get lock; try restarting transaction')
+```
+
+`crm.tests.test_sweeps` re-run immediately, alone: `Ran 31 tests … OK`, and OK
+again in the full sweep above. A second worker was running its own suites against
+the same MariaDB at the time. Recorded rather than dropped.
+
+### The three new suites, and what they actually assert
+
+**`crm/tests/test_form_auto_response.py` — 42 tests.** `_make_auto_response` is
+the one seam between the decision path and the email queue and is stubbed with a
+recorder, so "one submission = exactly one reply" is asserted by COUNTING what
+the recorder was handed, not inferred. The acceptance criteria have a test each:
+`test_one_submission_produces_exactly_one_reply`,
+`test_a_second_run_for_the_same_submission_sends_nothing`,
+`test_the_toggle_off_sends_nothing`,
+`test_a_suppressed_address_is_never_written_to`. `TestQueueTrigger` proves the
+`web_form` name from the POST body is never trusted: a form for another doctype
+and a Web Form from another app both queue nothing.
+
+**`crm/tests/test_send_later.py` — 58 tests.** `outbound.commit` / `rollback` are
+neutralised as in `test_outbound.py`, and
+`test_the_claim_is_committed_before_the_adapter_runs` asserts the ORDERING that
+makes the send at-most-once. `test_cancel_after_claim_is_refused` is the
+cancellation cutoff. `TestReplyCancels` covers the match, the stamp, the claimed
+job that survives a reply, the notification, and that the handler never raises
+inside an inbound insert. `TestSweep` proves the sweep registers the adapter and
+that the registrar does not overwrite one already bound.
+
+**`crm/tests/test_quote.py` — 67 tests.** The PDF is rendered FOR REAL in
+`TestRender` because "the products come out right" is the acceptance criterion.
+`TestTokenRoute` proves an unknown, a revoked and an expired token are
+indistinguishable. `TestClassifyFetch` and `TestViewLog` cover the bot rule from
+both sides. `TestWhatsAppSend::test_the_tokenised_url_is_what_the_platform_is_handed`
+and `::test_no_public_file_is_left_behind` are the upgrade the master spec asked
+for, asserted rather than described.
+
+### The itinerary suite is the check on the extraction
+
+`crm.tests.test_itinerary`: **112 tests, OK** — the same 112 that passed before
+this stage began, on the same tree, unchanged. The tests that patch
+`crm.api.itinerary.frappe.get_all` / `.log_error` / `.delete_doc` still exercise
+the delegated code, because `frappe` is one module object shared by both files.
+
+## Live checks on the running demo site
+
+Every one of these was run against `crm.localhost` over the real request path,
+and every artifact was deleted afterwards.
+
+### Item 4 — the whole pipeline, from a Guest POST
+
+A published CRM web form with the auto-response on, then:
+
+```
+$ curl -X POST '…/api/method/frappe.website.doctype.web_form.web_form.accept' \
+    --data-urlencode 'web_form=smoke-auto-response' \
+    --data-urlencode 'data={"first_name":"Second","email":"second.tester@example.com"}'
+HTTP 200
+```
+
+```
+submission_key                                     status   recipient                   communication
+smoke-auto-response:CRM Lead:CRM-LEAD-2026-00025   Sent     second.tester@example.com   tdb67j3k9j
+
+name        subject          recipients                  sender                 communication_type
+tdb67j3k9j  Thanks Second    second.tester@example.com   agency@example.invalid Automated Message
+body: <p>Hi <span class="merge-field" data-merge-field="first_name">Second</span>, we have your …
+queued: 1
+```
+
+Guest POST → lead insert → `after_insert` → enqueue after commit → the real
+background worker → the claim row → merge → Communication → Email Queue. The
+merge pill's `{{ first_name }}` became `Second` and the wrapper span survived, as
+designed.
+
+The other three acceptance criteria, same path:
+
+```
+smoke-auto-response:CRM Lead:CRM-LEAD-2026-00024  No Email Account  smoke.tester@example.com     no outgoing Email Account is configured
+smoke-auto-response:CRM Lead:CRM-LEAD-2026-00026  Suppressed        optedout.tester@example.com  the address is on the suppression ledger
+```
+
+and with the toggle off: `HTTP 200`, **no log row at all** and
+`select count(*) from tabCommunication where recipients like '%toggledoff%'` → `0`.
+The refusal happens before the enqueue, which is the earliest possible point.
+
+### Item 25 — the Guest route, over HTTP
+
+```
+$ curl -A 'facebookexternalhit/1.1' '…/api/method/crm.api.quote.view?token=…'
+HTTP/1.1 200 OK
+Content-Type: application/pdf
+Content-Disposition: inline; filename=Quote-CRM-DEAL-2026-00010-v1.pdf
+Content-Length: 22292
+%PDF-1.4
+
+$ curl -A 'Mozilla/5.0 Chrome/120' '…?token=…'
+200 application/pdf 22292
+
+$ curl '…?token=deadbeef'
+403 {"exc_type":"PermissionError", … "This link has expired or is no longer valid."}
+```
+
+and the log it wrote:
+
+```
+name         is_platform_fetch  ua                        ip          viewed_at
+sjctkfeihp   1                  facebookexternalhit/1.1   127.0.0.1   2026-08-19 01:50:52.381471
+sjgqvp2etu   0                  Mozilla/5.0 Chrome/120    127.0.0.1   2026-08-19 01:50:52.818415
+
+name         view_count  first_viewed_at   platform_fetch_at  active
+sh0h92geba   1           …:52.818415       …:52.381471        1
+```
+
+Meta's prefetch flagged and not counted; the customer's open counted once.
+
+The PDF itself, rendered from a deal with two products:
+
+```
+row: {'name': 'Bali 5N/6D package', 'rate': '₹ 65,000.00', 'qty': '2', 'discount': '10%', 'net_amount': '₹ 1,17,000.00'}
+row: {'name': 'Airport transfers',  'rate': '₹ 4,000.00',  'qty': '1', 'discount': '—',   'net_amount': '₹ 4,000.00'}
+totals: {'total': '₹ 1,34,000.00', 'discount': '₹ 13,000.00', 'net_total': '₹ 1,21,000.00'}
+pdf bytes: 22284
+HAS ROWS: True   HAS TERMS: True   HAS PLACEHOLDER: True
+```
+
+The deal's own stored `total` was `None` — see stage3a-notes §2e.
+
+### Item 5 — schedule, list, timeline, cancel
+
+```
+LEAD CRM-LEAD-2026-00023
+JOB  u5t9jvu8t7  Scheduled  2026-08-20 09:00:00  Asia/Calcutta
+LISTED ['u5t9jvu8t7']
+TIMELINE [('scheduled_email', 'Live check', True)]
+AFTER CANCEL Cancelled
+LISTED AFTER []
+```
+
+The `tomorrow_morning` preset resolved on the server to 09:00 in the site's
+timezone, which was stored on the job.
+
+### Item 19 — the payload the indicator reads
+
+```
+TOP-LEVEL name: uan7iijm98
+data.name: uan7iijm98
+read_by_recipient: 1
+read_by_recipient_on: 2026-08-19 01:53:49.492825
+delivery_status: Sent
+```
+
+Stage 2B open issue 3 (`activities.py` does not return the Communication `name`)
+is closed.
+
+## Frontend
+
+```bash
+cd /home/kreshnith/CRM/frontend && npx vitest run
+```
+
+```
+ Test Files  21 passed (21)
+      Tests  433 passed (433)
+   Duration  3.96s
+```
+
+433 includes the Stage 3B suites in the same tree. The 38 tests this stage added
+are `tests/unit/emailStatus.test.js` (10) and `tests/unit/sendLater.test.js` (28).
+
+### Frontend production build
+
+```bash
+cd /home/kreshnith/CRM/frontend && \
+  NODE_OPTIONS="--max-old-space-size=6144" npx vite build --base=/assets/crm/frontend/
+```
+
+```
+✓ built in 1m 16s
+```
+
+The one warning, `An error occurred when globbing for files. '(0 , brace_expansion_1.expand) is not a function'`,
+comes from the PWA plugin and is pre-existing (recorded in Stage 2A).
+
+## Lint
+
+```bash
+uvx --from 'ruff==0.8.1' ruff check <the 17 Python files this stage touched>
+# All checks passed!
+uvx --from 'ruff==0.8.1' ruff format <the 15 non-controller Python files>
+# 8 files reformatted, 7 files left unchanged
+
+npx prettier@3.2.5 --write <the 16 frontend files this stage touched>
+npx oxlint@1.50.0 <the 14 frontend source files>
+# Found 0 warnings and 0 errors.
+# Finished in 17ms on 14 files with 93 rules using 8 threads.
+```
+
+Ruff was pointed at this stage's files rather than at `crm/`, for the reason
+Stage 2A recorded: a second worker had uncommitted Python in the same tree, and
+`ruff format crm/` would have rewritten their files mid-edit. The backend suites
+above were re-run after the ruff pass and are the counts reported.
+
+## Open issues handed on
+
+The full list, with the `crm/hooks.py` diffs another worker must apply, is in
+`demo-package/specs/stage3a-notes.md` §1 and §5. The two that matter most:
+
+1. **`crm.api.quote.cleanup_quote_links` is not on the hourly schedule.** Until
+   it is, a quote link never expires and its private PDF is never deleted. The
+   exact diff is in stage3a-notes §1a.
+2. **`outbound_engine_enabled` must be switched on at deploy** or a scheduled
+   email is never delivered. Scheduling, listing, cancelling and Send-now all
+   work with the flag off; only the hourly sweep is gated.

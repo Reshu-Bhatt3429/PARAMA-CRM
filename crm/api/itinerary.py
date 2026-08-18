@@ -31,7 +31,6 @@ that names the settings screen when the agency has not configured a provider.
 Creating, editing, printing and sending an itinerary all work with the AI off.
 """
 
-import contextlib
 import re
 
 import frappe
@@ -39,6 +38,7 @@ from frappe import _
 from frappe.permissions import add_permission, update_permission_property
 from frappe.utils import cint, flt
 
+from crm import document_links
 from crm.ai.client import AIConfigurationError, AIResponseError, complete
 from crm.fcrm.doctype.crm_itinerary.crm_itinerary import (
 	MIN_DAYS,
@@ -68,16 +68,18 @@ DEDUP_NEIGHBOURS = 2
 # Meta fetches the media while it processes the message, not before the POST
 # returns, so the file has to outlive the request. Two hours is far longer than
 # the fetch needs and short enough that the link is not a lasting exposure.
-PUBLIC_PDF_TTL_HOURS = 2
+#
+# The PDF machinery below (render, name, attach, sweep) now lives in
+# `crm.document_links`, which item 25 (quote PDF) shares. The names kept here are
+# the itinerary's own vocabulary and its behaviour is unchanged; only the
+# implementation moved.
+PUBLIC_PDF_TTL_HOURS = document_links.PUBLIC_PDF_TTL_HOURS
 
 # The random suffix `pdf_file_name` gives a send copy. The sweep deletes nothing
 # that does not carry it, so a public file attached to an itinerary by hand is
 # never touched.
-# The trailing `,` is not slack for its own sake: when a file of the same name
-# already exists, Frappe appends six hex characters of the content hash to the
-# name it stores. A fixed-length match would then miss the very file it wrote.
-PUBLIC_PDF_TOKEN_LENGTH = 24
-SEND_COPY_PATTERN = re.compile(rf"-v\d+-[0-9a-f]{{{PUBLIC_PDF_TOKEN_LENGTH},}}\.pdf$", re.IGNORECASE)
+PUBLIC_PDF_TOKEN_LENGTH = document_links.PUBLIC_TOKEN_LENGTH
+SEND_COPY_PATTERN = document_links.SEND_COPY_PATTERN
 
 SKELETON_SYSTEM = (
 	"You are a senior itinerary designer at a travel agency. You plan the arc of a "
@@ -698,16 +700,8 @@ def get_pdf(itinerary: str):
 
 
 def render_pdf(doc) -> bytes:
-	if not frappe.db.exists("Print Format", PRINT_FORMAT):
-		install_print_format()
-
-	return frappe.get_print(
-		DOCTYPE,
-		doc.name,
-		print_format=PRINT_FORMAT,
-		as_pdf=True,
-		no_letterhead=1,
-	)
+	document_links.ensure_print_format(PRINT_FORMAT, install_print_format)
+	return document_links.render_print_pdf(DOCTYPE, doc.name, PRINT_FORMAT)
 
 
 def pdf_file_name(doc, token: str = "") -> str:
@@ -719,11 +713,13 @@ def pdf_file_name(doc, token: str = "") -> str:
 	anyone walk the /files/ directory and read other customers' quotes.
 	"""
 	stem = frappe.utils.cstr(doc.title or doc.name).strip() or doc.name
-	# Anything that is not a plain word character becomes a dash, so the name is
-	# safe in a URL, on disk and in the WhatsApp document card.
-	stem = re.sub(r"[^\w\-]+", "-", stem).strip("-")[:60] or doc.name
-	suffix = f"-{token}" if token else ""
-	return f"{stem}-v{cint(doc.version) or 1}{suffix}.pdf"
+	name = document_links.pdf_file_name(stem, cint(doc.version), token)
+	# `document_links.pdf_file_name` strips the stem to word characters, and a
+	# title made entirely of punctuation strips to nothing. The itinerary's own
+	# fallback has always been the document name, so keep it.
+	if name.startswith("-v"):
+		name = document_links.pdf_file_name(doc.name, cint(doc.version), token)
+	return name
 
 
 def attach_pdf(doc, is_private: int, token: str = ""):
@@ -732,34 +728,11 @@ def attach_pdf(doc, is_private: int, token: str = ""):
 	Regenerating version 3 twice must leave one attachment, not two, so a file
 	with the same name on the same document is dropped first.
 	"""
+	# `render_pdf` and `pdf_file_name` are called through the module so a test
+	# that patches either of them still reaches the patch.
 	content = render_pdf(doc)
 	file_name = pdf_file_name(doc, token)
-
-	stale = frappe.get_all(
-		"File",
-		filters={
-			"attached_to_doctype": DOCTYPE,
-			"attached_to_name": doc.name,
-			"file_name": file_name,
-			"is_private": cint(is_private),
-		},
-		pluck="name",
-	)
-	for name in stale:
-		frappe.delete_doc("File", name, ignore_permissions=True, delete_permanently=True)
-
-	file_doc = frappe.get_doc(
-		{
-			"doctype": "File",
-			"file_name": file_name,
-			"attached_to_doctype": DOCTYPE,
-			"attached_to_name": doc.name,
-			"is_private": cint(is_private),
-			"content": content,
-		}
-	)
-	file_doc.insert(ignore_permissions=True)
-	return file_doc
+	return document_links.attach_pdf(DOCTYPE, doc.name, file_name, content, is_private)
 
 
 def cleanup_public_itinerary_pdfs(older_than_hours: int = PUBLIC_PDF_TTL_HOURS) -> int:
@@ -782,39 +755,7 @@ def cleanup_public_itinerary_pdfs(older_than_hours: int = PUBLIC_PDF_TTL_HOURS) 
 
 	Never raises: a scheduler job that throws takes the rest of its queue down.
 	"""
-	removed = 0
-	try:
-		cutoff = frappe.utils.add_to_date(frappe.utils.now_datetime(), hours=-cint(older_than_hours))
-		candidates = frappe.get_all(
-			"File",
-			filters={
-				"attached_to_doctype": DOCTYPE,
-				"is_private": 0,
-				"creation": ["<", cutoff],
-			},
-			fields=["name", "file_name"],
-			limit=500,
-		)
-
-		for row in candidates:
-			if not is_send_copy_name(row.file_name):
-				continue
-			try:
-				frappe.delete_doc("File", row.name, ignore_permissions=True, delete_permanently=True)
-				removed += 1
-			except Exception:
-				log_quietly(
-					f"could not remove public itinerary PDF {row.file_name}",
-					"CRM Itinerary: cleanup failed",
-				)
-
-		# No explicit commit. The background job runner commits when the method
-		# returns, and committing here would also commit whatever the caller had
-		# open -- which silently defeats the rollback a test relies on.
-	except Exception:
-		log_quietly(frappe.get_traceback(), "CRM Itinerary: public PDF sweep failed")
-
-	return removed
+	return document_links.cleanup_public_pdfs(DOCTYPE, older_than_hours)
 
 
 def log_quietly(message: str, title: str):
@@ -824,13 +765,12 @@ def log_quietly(message: str, title: str):
 	caller can break the logging too. A scheduler job promising never to raise
 	cannot make that promise if its own error handler can throw.
 	"""
-	with contextlib.suppress(Exception):
-		frappe.log_error(message, title)
+	document_links.log_quietly(message, title)
 
 
 def is_send_copy_name(file_name: str) -> bool:
 	"""True only for a file this module named for a WhatsApp send."""
-	return bool(SEND_COPY_PATTERN.search(frappe.utils.cstr(file_name)))
+	return document_links.is_send_copy_name(file_name)
 
 
 # --- whatsapp --------------------------------------------------------------

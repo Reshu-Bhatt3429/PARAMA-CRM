@@ -361,6 +361,16 @@
               </div>
             </div>
 
+            <!-- AUTO-RESPONSE TAB -->
+            <AutoResponsePanel
+              v-else-if="tab.name === 'auto_response'"
+              v-model="autoResponse"
+              :formName="form.name"
+              :dirty="dirty"
+              @change="markDirty"
+              @requestSave="saveThenTest"
+            />
+
             <!-- SHARE TAB -->
             <div v-else class="flex flex-col pt-5">
               <p v-if="!form.published" class="mb-5 text-p-sm text-ink-gray-5">
@@ -659,6 +669,7 @@ import {
   toast,
   createResource,
 } from 'frappe-ui'
+import AutoResponsePanel from '@/components/Settings/Forms/AutoResponsePanel.vue'
 import FieldCard from '@/components/Settings/Forms/FieldCard.vue'
 import { fieldTypeIcon } from '@/components/Settings/Forms/fieldTypeIcon'
 import DragVerticalIcon from '@/components/Icons/DragVerticalIcon.vue'
@@ -672,6 +683,7 @@ import LucideExternalLink from '~icons/lucide/external-link'
 import LucideCheck from '~icons/lucide/check'
 import LucideLayoutList from '~icons/lucide/layout-list'
 import LucideSettings from '~icons/lucide/settings'
+import LucideMailCheck from '~icons/lucide/mail-check'
 import { globalStore } from '@/stores/global'
 import { useTelemetry } from 'frappe-ui/frappe'
 import { copyToClipboard } from '@/utils'
@@ -701,8 +713,13 @@ const tabIndex = ref(0)
 const tabs = [
   { name: 'editor', label: __('Editor'), icon: LucideLayoutList },
   { name: 'settings', label: __('Settings'), icon: LucideSettings },
+  { name: 'auto_response', label: __('Auto-response'), icon: LucideMailCheck },
   { name: 'share', label: __('Share'), icon: LucideShare2 },
 ]
+
+// Item 4. Held here rather than inside the panel so it is saved, discarded and
+// marked dirty by exactly the same machinery as the field layout.
+const autoResponse = ref({ enabled: 0, subject: '', message: '' })
 const expanded = ref(null) // fieldname of the expanded field editor
 const descInput = ref(null)
 // while a draft still has an auto-generated route, keep it in sync with the
@@ -987,6 +1004,14 @@ const iframeSnippet = computed(
 function markDirty() {
   dirty.value = true
 }
+// The auto-response test sends the STORED reply, so an unsaved draft has to be
+// persisted first. Testing the previous version would quietly convince the
+// author their new wording is broken.
+async function saveThenTest() {
+  const ok = await save()
+  if (ok) toast.info(__('Saved. Press "Send test email" again.'))
+}
+
 // header Save button: persist and confirm (errors are toasted inside save())
 async function saveNow() {
   if (!dirty.value || saving.value) return
@@ -1256,6 +1281,11 @@ createResource({
       options: h.options || '',
       default: h.default ?? '',
     }))
+    autoResponse.value = {
+      enabled: doc.auto_response?.enabled || 0,
+      subject: doc.auto_response?.subject || '',
+      message: doc.auto_response?.message || '',
+    }
     hiddenFields.value.forEach((h) => {
       if (h.fieldtype === 'Link') ensureLinkOptions(h.options)
     })
@@ -1474,6 +1504,11 @@ async function save({ silent = false } = {}) {
           options: h.options,
           default: h.default,
         })),
+        auto_response: {
+          enabled: autoResponse.value.enabled ? 1 : 0,
+          subject: autoResponse.value.subject || '',
+          message: autoResponse.value.message || '',
+        },
       },
     })
     form.route = doc.route

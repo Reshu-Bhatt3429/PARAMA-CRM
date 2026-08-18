@@ -123,6 +123,14 @@
               @click="showFilesUploader = true"
             />
 
+            <!-- Item 25. One action, beside the other record actions rather
+                 than in the header: the header is not a shelf (spec §2.13). -->
+            <Button
+              :tooltip="__('Create quote')"
+              :icon="LucideFileText"
+              @click="showQuoteModal = true"
+            />
+
             <Button
               v-if="canDelete"
               :tooltip="__('Delete')"
@@ -327,6 +335,12 @@
       }
     "
   />
+  <QuoteModal
+    v-if="showQuoteModal"
+    v-model="showQuoteModal"
+    :deal="dealId"
+    @sent="activities?.all_activities?.reload()"
+  />
   <DeleteLinkedDocModal
     v-if="showDeleteLinkedDocModal"
     v-model="showDeleteLinkedDocModal"
@@ -343,6 +357,8 @@
 </template>
 <script setup>
 import DeleteLinkedDocModal from '@/components/DeleteLinkedDocModal.vue'
+import QuoteModal from '@/components/Modals/QuoteModal.vue'
+import LucideFileText from '~icons/lucide/file-text'
 import ErrorPage from '@/components/ErrorPage.vue'
 import Icon from '@/components/Icon.vue'
 import Resizer from '@/components/Resizer.vue'
@@ -527,6 +543,8 @@ onBeforeUnmount(() => {
 const reload = ref(false)
 const showOrganizationModal = ref(false)
 const showFilesUploader = ref(false)
+// Item 25.
+const showQuoteModal = ref(false)
 const _organization = ref({})
 
 const breadcrumbs = computed(() => {

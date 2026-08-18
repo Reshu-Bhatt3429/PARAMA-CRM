@@ -55,6 +55,7 @@
       :placeholder="
         __('Hi John, \n\nCan you please provide more details on this...')
       "
+      @schedule="scheduleEmail"
     />
   </div>
   <div
@@ -241,6 +242,55 @@ async function sendMail() {
       __('Not sent to {0}: opted out', [result.suppressed.join(', ')]),
     )
   }
+}
+
+/**
+ * Item 5: park the composed email instead of sending it.
+ *
+ * The draft is cleared exactly as a real send clears it -- the message now
+ * belongs to a `CRM Outbound Job` and leaving a copy in the composer would
+ * invite the agent to send it a second time by hand.
+ *
+ * `payload` is either `{ preset }` or `{ send_at }`. Neither is a time this
+ * browser decided: a preset is resolved on the server in the sender's timezone,
+ * and `send_at` is a naive local wall clock the server reads the same way.
+ */
+async function scheduleEmail(payload) {
+  if (emailEmpty.value) return
+
+  const editor = newEmailEditor.value
+  const scheduling = call('crm.api.email.schedule_email', {
+    doctype: props.doctype,
+    name: doc.value.name,
+    recipients: (editor.toEmails || []).join(', '),
+    cc: (editor.ccEmails || []).join(', '),
+    bcc: (editor.bccEmails || []).join(', '),
+    subject: editor.subject,
+    content: newEmail.value,
+    attachments: attachments.value.map((x) => x.name),
+    sender: editor.fromEmail || getUser().email,
+    sender_full_name: getUser()?.full_name || undefined,
+    ...payload,
+  })
+
+  toast.promise(scheduling, {
+    loading: __('Scheduling...'),
+    success: __('Email scheduled'),
+    error: (e) => e?.messages?.[0] || __('Could not schedule the email'),
+  })
+
+  try {
+    await scheduling
+  } catch {
+    return
+  }
+
+  showEmailBox.value = false
+  newEmail.value = ''
+  attachments.value = []
+  reload.value = true
+  emit('scroll')
+  capture('email_scheduled', { doctype: props.doctype })
 }
 
 /**

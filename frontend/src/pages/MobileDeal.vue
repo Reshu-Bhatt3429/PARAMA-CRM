@@ -42,6 +42,12 @@
   >
     <AssignTo v-model="assignees.data" doctype="CRM Deal" :docname="dealId" />
     <div class="flex items-center gap-2">
+      <!-- Item 25, mobile parity (constraint C4). Same endpoint, same modal. -->
+      <Button
+        :tooltip="__('Create quote')"
+        :icon="LucideFileText"
+        @click="showQuoteModal = true"
+      />
       <CustomActions
         v-if="document._actions?.length"
         :actions="document._actions"
@@ -268,6 +274,12 @@
     doctype="CRM Deal"
     :document="document"
   />
+  <QuoteModal
+    v-if="showQuoteModal"
+    v-model="showQuoteModal"
+    :deal="dealId"
+    @sent="reload = true"
+  />
 </template>
 <script setup>
 import DeleteLinkedDocModal from '@/components/DeleteLinkedDocModal.vue'
@@ -292,6 +304,8 @@ import TagChips from '@/components/TagChips.vue'
 import Activities from '@/components/Activities/Activities.vue'
 import OrganizationModal from '@/components/Modals/OrganizationModal.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
+import QuoteModal from '@/components/Modals/QuoteModal.vue'
+import LucideFileText from '~icons/lucide/file-text'
 import AssignTo from '@/components/AssignTo.vue'
 import ContactModal from '@/components/Modals/ContactModal.vue'
 import CollapsibleSection from '@/components/CollapsibleSection.vue'
@@ -657,6 +671,8 @@ async function triggerStatusChange(value) {
 }
 
 const showLostReasonModal = ref(false)
+// Item 25.
+const showQuoteModal = ref(false)
 
 function setLostReason() {
   if (

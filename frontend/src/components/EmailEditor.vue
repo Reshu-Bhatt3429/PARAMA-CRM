@@ -170,11 +170,39 @@
           </div>
           <div class="mt-2 flex items-center justify-end space-x-2 sm:mt-0">
             <Button v-bind="discardButtonProps || {}" :label="__('Discard')" />
-            <Button
-              variant="solid"
-              v-bind="submitButtonProps || {}"
-              :label="`${__('Send')} (${submitShortcutLabel})`"
-            />
+            <!-- Item 5: Send is a split button. Send Later exists ONLY behind
+                 the caret (spec §2.14) so the composer keeps three visible
+                 actions and one primary. -->
+            <div class="flex items-stretch">
+              <Button
+                variant="solid"
+                v-bind="submitButtonProps || {}"
+                class="rounded-r-none"
+                :label="`${__('Send')} (${submitShortcutLabel})`"
+              />
+              <Popover placement="top-end">
+                <template #target="{ togglePopover }">
+                  <Button
+                    variant="solid"
+                    class="rounded-l-none border-l border-outline-white"
+                    :disabled="submitButtonProps?.disabled"
+                    :tooltip="__('Send later')"
+                    icon="chevron-up"
+                    @click="togglePopover()"
+                  />
+                </template>
+                <template #body="{ close }">
+                  <SendLaterPopover
+                    @schedule="
+                      (payload) => {
+                        close()
+                        scheduleSend(payload)
+                      }
+                    "
+                  />
+                </template>
+              </Popover>
+            </div>
           </div>
         </div>
       </div>
@@ -202,13 +230,14 @@ import AttachmentItem from '@/components/AttachmentItem.vue'
 import EmailMultiSelect from '@/components/Controls/EmailMultiSelect.vue'
 import EmailTemplateSelectorModal from '@/components/Modals/EmailTemplateSelectorModal.vue'
 import SnippetSelectorModal from '@/components/Modals/SnippetSelectorModal.vue'
+import SendLaterPopover from '@/components/SendLaterPopover.vue'
 import LucideTextQuote from '~icons/lucide/text-quote'
 import {
   buildEditorExtensions,
   fullToolbar,
   uploadFile,
 } from '@/components/editor/config'
-import { FileUploader, call, FormControl } from 'frappe-ui'
+import { FileUploader, call, FormControl, Popover } from 'frappe-ui'
 import {
   Editor,
   EditorContent,
@@ -230,6 +259,16 @@ const props = defineProps({
   submitButtonProps: { type: Object, default: () => ({}) },
   discardButtonProps: { type: Object, default: () => ({}) },
 })
+
+// Item 5. The composer owns the draft, not this editor, so the schedule is
+// handed up rather than posted here -- the same division `submitButtonProps`
+// already uses for Send.
+const emit = defineEmits(['schedule'])
+
+function scheduleSend(payload) {
+  if (props.submitButtonProps?.disabled) return
+  emit('schedule', payload)
+}
 
 const CustomParagraph = Paragraph.extend({
   addAttributes() {

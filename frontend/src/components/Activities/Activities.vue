@@ -189,6 +189,29 @@
             <EmailArea :activity="activity" :emailBox="emailBox" />
           </div>
           <div
+            v-else-if="activity.activity_type == 'scheduled_email'"
+            class="pb-5 mt-px"
+          >
+            <ScheduledEmailArea
+              :job="activity.data"
+              @reload="all_activities.reload()"
+            />
+          </div>
+          <div
+            v-else-if="activity.activity_type == 'quote_view'"
+            :id="activity.name"
+            class="mb-4 flex items-center justify-stretch gap-2 py-1.5 text-base"
+          >
+            <div class="inline-flex flex-wrap items-center gap-1.5">
+              <span class="text-ink-gray-8 font-medium">{{
+                __('The customer opened the quote')
+              }}</span>
+            </div>
+            <div class="ml-auto whitespace-nowrap">
+              <TimelineTimestamp :date="activity.data.viewed_at" />
+            </div>
+          </div>
+          <div
             v-else-if="activity.activity_type == 'comment'"
             :id="activity.name"
             class="mb-4"
@@ -440,6 +463,9 @@
 <script setup>
 import ActivityHeader from '@/components/Activities/ActivityHeader.vue'
 import EmailArea from '@/components/Activities/EmailArea.vue'
+import ScheduledEmailArea from '@/components/Activities/ScheduledEmailArea.vue'
+import LucideClock from '~icons/lucide/clock'
+import LucideFileText from '~icons/lucide/file-text'
 import CommentArea from '@/components/Activities/CommentArea.vue'
 import CallArea from '@/components/Activities/CallArea.vue'
 import NoteArea from '@/components/Activities/NoteArea.vue'
@@ -639,8 +665,11 @@ const activities = computed(() => {
     _activities = get_activities()
   } else if (title.value == 'Emails') {
     if (!all_activities.data?.versions) return []
-    _activities = all_activities.data.versions.filter(
-      (activity) => activity.activity_type === 'communication',
+    _activities = all_activities.data.versions.filter((activity) =>
+      // A scheduled email is an email. Hiding it from the Emails tab would put
+      // the one message an agent might still want to stop on the one tab they
+      // are least likely to be looking at.
+      ['communication', 'scheduled_email'].includes(activity.activity_type),
     )
   } else if (title.value == 'Comments') {
     if (!all_activities.data?.versions) return []
@@ -667,7 +696,12 @@ const activities = computed(() => {
     if (
       activity.activity_type == 'incoming_call' ||
       activity.activity_type == 'outgoing_call' ||
-      activity.activity_type == 'communication'
+      activity.activity_type == 'communication' ||
+      // Items 5 and 25. Neither has a human owner to name: a scheduled email
+      // renders its own card, and a quote view is the customer, who has no
+      // User record here.
+      activity.activity_type == 'scheduled_email' ||
+      activity.activity_type == 'quote_view'
     )
       return
 
@@ -818,6 +852,12 @@ function timelineIcon(activity_type, is_lead) {
       break
     case 'attachment_log':
       icon = AttachmentIcon
+      break
+    case 'scheduled_email':
+      icon = LucideClock
+      break
+    case 'quote_view':
+      icon = LucideFileText
       break
     default:
       icon = DotIcon
