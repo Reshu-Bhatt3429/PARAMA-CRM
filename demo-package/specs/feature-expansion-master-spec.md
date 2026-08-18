@@ -10,7 +10,7 @@ We add 27 features to PARAMA-CRM (self-hosted Frappe CRM fork, small travel agen
 
 - C1. No paid third-party services. AI uses the existing `crm/ai` client (BYO key, capped budget, optional). Note: BYOK model calls themselves cost the user's own API budget; that is accepted and capped.
 - C2. No new infrastructure. Reuse Frappe scheduler, email queue, Communication hooks, socket.io, CRM Notification, print-format machinery, and the follow-up engine's guardrail patterns.
-- C3. UI stays clean. Exactly ONE new sidebar item ("Today"). Everything else lives in existing surfaces or Cmd+K.
+- C3 (amended by owner 2026-08-18). The left sidebar must show ALL feature pages clearly — no feature hidden inside a collapsed group by default. Clutter is controlled by GROUPING, not hiding: labeled sections, expanded by default, collapsible with per-user persistence. New features get a sidebar entry only if they are a page (Today, Invoices); panel/composer features still live inside existing surfaces and Cmd+K.
 - C4. Mobile parity is part of EACH feature's acceptance criteria, not a final pass. Every feature spec below implies: works in the Mobile pages, with touch interactions, or it is not done.
 - C5. Every new automation and sweep ships behind a named default-OFF flag. The full flag list is an appendix each stage's worker must extend.
 - C6. AI never acts on its own and never writes to records without a user click. No automatic classification, no auto-send.
@@ -44,6 +44,7 @@ Every new whitelisted endpoint states, in code review and in its test file: who 
 
 ## 5. Feature specs (deltas from v1 only; v1 text stands where not amended)
 
+- **30. Grouped, fully visible sidebar (owner request 2026-08-18; runs right after the branding worker releases AppSidebar.vue, before/with Stage 2).** All feature pages appear in the left sidebar in labeled groups, expanded by default: Sales (Dashboard, Leads, Deals, Contacts, Organizations), Work (Tasks, Notes, Calendar, Call Logs), Channels (WhatsApp Inbox), Travel (Itineraries; Invoices when built; Today joins at Stage 3). Data Import gets an entry (small "More" group with a Settings shortcut). Public/Pinned saved-view sections stay below the feature groups. Collapse state persists per user (localStorage, site+user scoped). Mobile: same groups in the mobile nav. AC: a fresh user sees every feature page without expanding anything; collapse choices survive reload; no route is reachable only from a hidden menu.
 - **1. Task reminders** — uses F5 ledger; NOT the event-reminder precedent (it double-fires across `all` + hourly schedules).
 - **2. Tags / 3. Duplicate warning / 6. Forward / 23. Snippets / 10. Cmd+K / 11. Recents** — as v1, plus: duplicate check endpoint returns only records the caller can read (§3); Cmd+K results permission-checked server-side; recents localStorage key scoped site+user.
 - **5. Send later** — rides F2; authoritative timezone = the sender's user timezone, stored explicitly; cancellation cutoff = until Claimed; reply-cancel matches In-Reply-To.
@@ -82,7 +83,7 @@ Every new whitelisted endpoint states, in code review and in its test file: who 
 - **Stage 3 — Operational slice.** Items 4, 5, 19, 7, 22, 24, 25.
 - **Stage 4 — AI slice.** Items 13+28+15 (Brief card), 14.
 - **Stage 5 — High-risk projects, each behind a short design note reviewed before build.** Order: 21 → 16 → 29 (invoices) → 20 → 17 → 9 → 18 → 26 → 27.
-- **Stage 6 — Adversarial review (user-mandated).** ≥ 2 fresh-context reviewers with distinct lenses: correctness/security (permission matrix, concurrency, queue crash points) and UX-clutter (§2 compliance, mobile). Fix round, then final full verification.
+- **Stage 6 — Adversarial review (user-mandated; runs after ALL changes land).** ≥ 3 fresh-context reviewers with distinct lenses: (a) correctness/security — permission matrix, concurrency, queue crash points, suppression coverage on every send path; (b) UX/user-friendliness — §2 compliance, clutter check, empty states, mobile parity, and a LIVE walkthrough of the running app on seeded demo data, clicking through every new feature end to end as a sales user and as a manager; (c) regression — the pre-existing features (WhatsApp inbox, follow-ups, itineraries) still behave exactly as before. Every finding gets verified before it is reported, fixed or explicitly deferred with the owner's knowledge, then a final full-suite verification closes the program. No feature ships around this gate.
 
 Collision rules: one owner per stage for `crm/hooks.py` and `fcrm_settings.json`; composer/timeline components (`EmailEditor.vue`, `CommunicationArea.vue`, `EmailArea.vue`) are touched by exactly one worker per stage (Stage 2: item 6+23; Stage 3: item 5+19; Stage 4: item 14 + Brief card); Lead/Deal page + list renderers likewise single-owner per stage.
 
@@ -100,7 +101,7 @@ Collision rules: one owner per stage for `crm/hooks.py` and `fcrm_settings.json`
 - D2. Feature modifications (on-demand tone; built-in read receipts only) — ACCEPTED.
 - D3. Leaderboard (8) and best time to contact (12) — CUT.
 - D4. `.pi/PLAN.md` Field/Grid refactor phases — PARKED; feature expansion proceeds. Workers who would need to modify Field.vue/Grid.vue internals STOP and escalate.
-- D5 (PENDING): confirm the agency's tax jurisdiction is India/GST (the invoice module's compliance floor assumes it), and whether to include the free static UPI QR on invoice PDFs.
+- D5 (resolved 2026-08-18): jurisdiction CONFIRMED as India/GST; static UPI QR on invoice PDFs CONFIRMED (agency VPA entered in the Company Profile settings; local qrcode generation, no gateway).
 - D6 (2026-08-18): rebrand the product UI to "PARAMA CRM" — user-directed; display-level only, AGPL attribution kept in the About modal; placeholder wordmark until the user supplies a real logo.
 
 ## 9. Must-not-do list — unchanged from v1, plus: no client-supplied filter is ever trusted server-side; no sweep without a watermark and lock; no send path without a suppression check.
