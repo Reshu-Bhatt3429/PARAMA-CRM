@@ -85,6 +85,10 @@ from crm.permissions.org_hierarchy import (
 	get_lead_permission_query_conditions,
 	has_lead_permission,
 )
+from crm.suppression import CHANNEL_WHATSAPP
+from crm.suppression import STATE_OPTED_OUT as LEDGER_OPTED_OUT
+from crm.suppression import suppress as suppress_address
+from crm.suppression import unsuppress as unsuppress_address
 from crm.utils import parse_phone_number
 
 FOLLOWUP_DOCTYPE = "CRM WhatsApp Followup"
@@ -339,6 +343,7 @@ def enroll_one(lead: str, aggregate: dict, stages, cutoff, keywords) -> bool:
 				"opted_out_source": optout_source(historic_optout),
 			}
 		)
+		mirror_optout_to_ledger(phone, optout_source(historic_optout), lead)
 	elif last_outgoing and (not last_incoming or last_outgoing > last_incoming):
 		followup.state = STATE_ACTIVE
 		followup.next_due = frappe.utils.add_to_date(last_activity, days=stages[0].silence_days)
@@ -1112,6 +1117,9 @@ def handle_incoming(doc):
 			},
 			update_modified=False,
 		)
+		mirror_optout_to_ledger(
+			followup.phone or e164(get_counterpart_number(doc)), optout_source(doc), followup.lead
+		)
 		return
 
 	if followup.state in TERMINAL_STATES:
@@ -1145,11 +1153,14 @@ def record_optout_without_row(doc):
 		return
 
 	stamp = doc.get("creation") or frappe.utils.now_datetime()
+	phone = e164(get_counterpart_number(doc))
+	mirror_optout_to_ledger(phone, optout_source(doc), lead)
+
 	followup = frappe.new_doc(FOLLOWUP_DOCTYPE)
 	followup.update(
 		{
 			"lead": lead,
-			"phone": e164(get_counterpart_number(doc)),
+			"phone": phone,
 			"state": STATE_OPTED_OUT,
 			"cycle": 1,
 			"current_stage": 0,
@@ -1179,6 +1190,49 @@ def optout_source(message) -> str:
 	"""A short, auditable record of what triggered an opt-out."""
 	text = " ".join(frappe.utils.strip_html(frappe.utils.cstr(message.get("message"))).split())
 	return f"WhatsApp message {message.get('name') or '?'}: {text[:120]}"
+
+
+# --- consent write-through -------------------------------------------------
+# The `Opted Out` state on the follow-up row remains this engine's own source of
+# truth; nothing below changes how it behaves. These two helpers ALSO write the
+# same fact into `crm.suppression`, which is the ledger every other outbound
+# path in the app reads. Without them a customer who says STOP on WhatsApp is
+# still reachable by the composer, by mass email and by the web-form
+# auto-response, because none of those can see a follow-up row.
+#
+# Neither helper is allowed to raise. An opt-out that failed to record because
+# its mirror failed would be a far worse bug than a mirror that lags.
+
+
+def mirror_optout_to_ledger(phone, source: str, lead: str | None = None) -> None:
+	"""Copy a WhatsApp opt-out into the suppression ledger. Never raises."""
+	if not phone:
+		return
+
+	try:
+		suppress_address(
+			CHANNEL_WHATSAPP,
+			phone,
+			state=LEDGER_OPTED_OUT,
+			source=source,
+			reference_doctype=LEAD_DOCTYPE if lead else None,
+			reference_name=lead,
+		)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "CRM follow-up engine: suppression write-through failed")
+
+
+def mirror_reopen_to_ledger(phone, reason: str) -> None:
+	"""Lift the matching ledger row when a manager reopens an opt-out."""
+	if not phone:
+		return
+
+	try:
+		unsuppress_address(CHANNEL_WHATSAPP, phone, reason)
+	except Exception:
+		frappe.log_error(
+			frappe.get_traceback(), "CRM follow-up engine: suppression release write-through failed"
+		)
 
 
 def handle_outgoing(doc):
@@ -1375,6 +1429,7 @@ def reopen_optout(followup: str, reason: str):
 		},
 		update_modified=False,
 	)
+	mirror_reopen_to_ledger(doc.phone, reason)
 
 	frappe.get_doc(
 		{

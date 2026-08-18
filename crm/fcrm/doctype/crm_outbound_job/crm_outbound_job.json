@@ -1,0 +1,232 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-08-18 12:00:00.000000",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "job_type",
+  "channel",
+  "state",
+  "scheduled_at",
+  "column_break_job",
+  "idempotency_key",
+  "owner_user",
+  "sender_timezone",
+  "reference_section",
+  "reference_doctype",
+  "reference_name",
+  "payload_section",
+  "subject",
+  "payload",
+  "outcome_section",
+  "claimed_at",
+  "completed_at",
+  "column_break_outcome",
+  "recipient_count",
+  "sent_count",
+  "failed_count",
+  "suppressed_count",
+  "cancelled_reason",
+  "last_error"
+ ],
+ "fields": [
+  {
+   "description": "What created this job: Send Later, Mass Email, Sequence, Scheduled Report. Free text so a later stage adds a type without a schema change.",
+   "fieldname": "job_type",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Job Type",
+   "reqd": 1
+  },
+  {
+   "default": "Email",
+   "fieldname": "channel",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Channel",
+   "options": "Email\nWhatsApp",
+   "reqd": 1
+  },
+  {
+   "default": "Draft",
+   "description": "Draft → Scheduled → Claimed → Queued → Sent / Failed. Cancelled is reachable from Draft and Scheduled only: once a job is Claimed the recipients may already be with the provider.",
+   "fieldname": "state",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "State",
+   "options": "Draft\nScheduled\nClaimed\nQueued\nSent\nFailed\nCancelled",
+   "reqd": 1
+  },
+  {
+   "description": "When the job becomes due, in system time. The sender's own timezone is kept separately so a later stage can show the wall-clock time they picked.",
+   "fieldname": "scheduled_at",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Scheduled At"
+  },
+  {
+   "fieldname": "column_break_job",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Unique per job. A caller that retries with the same key gets the existing job back instead of a second one.",
+   "fieldname": "idempotency_key",
+   "fieldtype": "Data",
+   "label": "Idempotency Key",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "description": "The user the send is made on behalf of. Background execution re-checks THIS user's permissions at run time, not the enqueuing user's.",
+   "fieldname": "owner_user",
+   "fieldtype": "Link",
+   "label": "On Behalf Of",
+   "options": "User"
+  },
+  {
+   "description": "The sender's timezone at the moment they scheduled, stored explicitly so a later change to their profile cannot move an already-scheduled send.",
+   "fieldname": "sender_timezone",
+   "fieldtype": "Data",
+   "label": "Sender Timezone"
+  },
+  {
+   "fieldname": "reference_section",
+   "fieldtype": "Section Break",
+   "label": "Reference"
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Reference Document Type",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Reference Name",
+   "options": "reference_doctype"
+  },
+  {
+   "fieldname": "payload_section",
+   "fieldtype": "Section Break",
+   "label": "Payload"
+  },
+  {
+   "fieldname": "subject",
+   "fieldtype": "Data",
+   "label": "Subject"
+  },
+  {
+   "description": "JSON body of the send, owned by the job type. The engine never interprets it.",
+   "fieldname": "payload",
+   "fieldtype": "Long Text",
+   "label": "Payload"
+  },
+  {
+   "fieldname": "outcome_section",
+   "fieldtype": "Section Break",
+   "label": "Outcome"
+  },
+  {
+   "fieldname": "claimed_at",
+   "fieldtype": "Datetime",
+   "label": "Claimed At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "completed_at",
+   "fieldtype": "Datetime",
+   "label": "Completed At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_outcome",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "recipient_count",
+   "fieldtype": "Int",
+   "label": "Recipients",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Sent means the Email Queue reports sent, not that the composer accepted it.",
+   "fieldname": "sent_count",
+   "fieldtype": "Int",
+   "label": "Sent",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "failed_count",
+   "fieldtype": "Int",
+   "label": "Failed",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Recipients the suppression ledger held back. Counted, never sent, never retried.",
+   "fieldname": "suppressed_count",
+   "fieldtype": "Int",
+   "label": "Suppressed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cancelled_reason",
+   "fieldtype": "Small Text",
+   "label": "Cancelled Reason",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "label": "Last Error",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-18 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CRM Outbound Job",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

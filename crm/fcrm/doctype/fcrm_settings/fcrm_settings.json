@@ -17,6 +17,8 @@
   "activity_timeline_section",
   "crm_timeline_timestamp_format",
   "crm_timeline_sort_order",
+  "feature_flags_section",
+  "outbound_engine_enabled",
   "currency_tab",
   "currency",
   "exchange_rate_provider_section",
@@ -211,6 +213,20 @@
    "fieldtype": "Select",
    "label": "Timeline Sort Order",
    "options": "Oldest First\nNewest First"
+  },
+  {
+   "collapsible": 1,
+   "description": "Every switch added by the feature expansion, in one place. All of them are OFF until somebody turns them on. The registry that must agree with this section is crm/feature_flags.py.",
+   "fieldname": "feature_flags_section",
+   "fieldtype": "Section Break",
+   "label": "Feature Flags"
+  },
+  {
+   "default": "0",
+   "description": "Lets the scheduler claim and process CRM Outbound Jobs (Send Later, mass email, sequences, scheduled reports). While this is off the outbound sweep returns without reading a single job, so nothing can be sent through the outbound engine. Turning it on does not by itself create any job.",
+   "fieldname": "outbound_engine_enabled",
+   "fieldtype": "Check",
+   "label": "Outbound engine"
   },
   {
    "default": "0",

@@ -166,7 +166,10 @@ override_doctype_class = {
 
 doc_events = {
 	"Contact": {
-		"validate": ["crm.api.contact.validate"],
+		"validate": ["crm.api.contact.validate", "crm.contact_keys.set_contact_keys"],
+	},
+	"CRM Lead": {
+		"validate": ["crm.contact_keys.set_contact_keys"],
 	},
 	"Notification Log": {
 		"before_insert": ["crm.extends.notification_log.before_insert"],
@@ -189,6 +192,7 @@ doc_events = {
 		"after_insert": ["crm.api.followup_engine.handle_message_after_insert"],
 	},
 	"CRM Deal": {
+		"validate": ["crm.contact_keys.set_contact_keys"],
 		"on_update": [
 			"crm.fcrm.doctype.erpnext_crm_settings.erpnext_crm_settings.create_customer_in_erpnext"
 		],
@@ -233,6 +237,9 @@ scheduler_events = {
 		"crm.api.whatsapp_followups.notify_pending_followups",
 		"crm.api.followup_engine.process_followups",
 		"crm.api.itinerary.cleanup_public_itinerary_pdfs",
+		# Behind `outbound_engine_enabled`, default OFF. While the flag is off this
+		# returns without reading a single job row.
+		"crm.outbound.process_scheduled_jobs",
 	],
 	"daily": [
 		"crm.api.event.trigger_daily_event_notifications",

@@ -1,0 +1,142 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-08-18 12:00:00.000000",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "task",
+  "recipient",
+  "channel",
+  "status",
+  "column_break_reminder",
+  "dedup_key",
+  "offset_minutes",
+  "due_date",
+  "sent_at",
+  "error_section",
+  "last_error"
+ ],
+ "fields": [
+  {
+   "fieldname": "task",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Task",
+   "options": "CRM Task",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "recipient",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Recipient",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "default": "Notification",
+   "fieldname": "channel",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Channel",
+   "options": "Notification\nEmail",
+   "reqd": 1
+  },
+  {
+   "default": "Claimed",
+   "description": "Claimed means the key is spent and the reminder was attempted. The row is never deleted, so one offset fires at most once.",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Claimed\nSent\nFailed\nSuppressed",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_reminder",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "task + recipient + offset + due date + channel, enforced by a unique index. The due date is part of the key on purpose: rescheduling a task is a NEW reminder, not a repeat of the old one.",
+   "fieldname": "dedup_key",
+   "fieldtype": "Data",
+   "label": "Dedup Key",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "0",
+   "description": "Minutes before the due date this reminder belongs to. 0 is the reminder at the due time itself.",
+   "fieldname": "offset_minutes",
+   "fieldtype": "Int",
+   "label": "Offset (minutes)"
+  },
+  {
+   "description": "The task's due date at the moment the reminder was claimed.",
+   "fieldname": "due_date",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Due Date"
+  },
+  {
+   "fieldname": "sent_at",
+   "fieldtype": "Datetime",
+   "label": "Sent At"
+  },
+  {
+   "fieldname": "error_section",
+   "fieldtype": "Section Break",
+   "label": "Error"
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "label": "Last Error",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-18 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CRM Reminder Log",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
