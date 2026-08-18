@@ -252,10 +252,13 @@ class TestWhatsAppDemoUsersAndAssignment(FrappeTestCase):
 
 		# The first lead is unassigned; the second already carries an open
 		# assignment and must be left alone (idempotency).
-		with patch(
-			"crm.demo.whatsapp_demo.get_assigned_users",
-			side_effect=[[], ["someone@demo.crm"]],
-		), patch("crm.demo.whatsapp_demo.assign") as mock_assign:
+		with (
+			patch(
+				"crm.demo.whatsapp_demo.get_assigned_users",
+				side_effect=[[], ["someone@demo.crm"]],
+			),
+			patch("crm.demo.whatsapp_demo.assign") as mock_assign,
+		):
 			assignments = assign_demo_leads(leads)
 
 		# assign() is called only for the unassigned lead, with a demo user.
