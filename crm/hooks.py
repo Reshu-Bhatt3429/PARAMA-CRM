@@ -141,6 +141,7 @@ permission_query_conditions = {
 	"CRM Notification": "crm.fcrm.doctype.crm_notification.crm_notification.get_permission_query_conditions",
 	"CRM WhatsApp Followup": "crm.api.followup_engine.get_followup_permission_query_conditions",
 	"CRM Itinerary": "crm.api.itinerary.get_itinerary_permission_query_conditions",
+	"CRM Snippet": "crm.api.snippets.get_snippet_permission_query_conditions",
 }
 
 has_permission = {
@@ -149,6 +150,7 @@ has_permission = {
 	"CRM Notification": "crm.fcrm.doctype.crm_notification.crm_notification.has_permission",
 	"CRM WhatsApp Followup": "crm.api.followup_engine.has_followup_permission",
 	"CRM Itinerary": "crm.api.itinerary.has_itinerary_permission",
+	"CRM Snippet": "crm.api.snippets.has_snippet_permission",
 }
 
 # DocType Class
@@ -258,7 +260,15 @@ scheduler_events = {
 	"cron": {
 		"*/5 * * * *": ["crm.lead_syncing.background_sync.sync_leads_from_sources_5_minutes"],
 		"*/10 * * * *": ["crm.lead_syncing.background_sync.sync_leads_from_sources_10_minutes"],
-		"*/15 * * * *": ["crm.lead_syncing.background_sync.sync_leads_from_sources_15_minutes"],
+		"*/15 * * * *": [
+			"crm.lead_syncing.background_sync.sync_leads_from_sources_15_minutes",
+			# Task due-date reminders. Registered on exactly ONE schedule, on
+			# purpose: the event-reminder path above sits on both `all` and
+			# `hourly` and therefore double-fires. Behind `task_reminders_enabled`,
+			# default OFF, and every delivery claims a unique CRM Reminder Log key
+			# first, so even a second schedule could not produce a second reminder.
+			"crm.reminders.send_task_reminders",
+		],
 	},
 }
 

@@ -78,6 +78,8 @@ import GeneralSettings from '@/components/Settings/GeneralSettings.vue'
 import AIFollowupSettings from '@/components/Settings/AIFollowupSettings.vue'
 import DashboardSettings from '@/components/Settings/DashboardSettings.vue'
 import EmailTemplatePage from '@/components/Settings/EmailTemplate/EmailTemplatePage.vue'
+import SnippetsPage from '@/components/Settings/Snippets/SnippetsPage.vue'
+import LucideTextQuote from '~icons/lucide/text-quote'
 import TelephonyPage from '@/components/Settings/Telephony/TelephonyPage.vue'
 import EmailConfig from '@/components/Settings/EmailConfig.vue'
 import Icon from '@/components/Icon.vue'
@@ -188,6 +190,11 @@ const tabs = computed(() => {
           label: __('Templates'),
           icon: EmailTemplateIcon,
           component: markRaw(EmailTemplatePage),
+        },
+        {
+          label: __('Snippets'),
+          icon: markRaw(LucideTextQuote),
+          component: markRaw(SnippetsPage),
         },
       ],
     },

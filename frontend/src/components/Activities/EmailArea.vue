@@ -40,6 +40,13 @@
             class="text-ink-gray-7"
             @click="reply(activity.data, true)"
           />
+          <Button
+            :tooltip="__('Forward')"
+            variant="ghost"
+            :icon="LucideForward"
+            class="text-ink-gray-7"
+            @click="forward()"
+          />
         </div>
       </div>
     </div>
@@ -73,6 +80,7 @@
   </div>
 </template>
 <script setup>
+import LucideForward from '~icons/lucide/forward'
 import ReplyIcon from '@/components/Icons/ReplyIcon.vue'
 import ReplyAllIcon from '@/components/Icons/ReplyAllIcon.vue'
 import AttachmentItem from '@/components/AttachmentItem.vue'
@@ -134,6 +142,21 @@ function reply(email, reply_all = false) {
     .insertContentAt(0, { type: 'paragraph' })
     .focus('start')
     .run()
+}
+
+/**
+ * Forward the whole message: subject, quoted body, original attachments.
+ *
+ * The composer does the work, not this card. `CommunicationArea` owns the
+ * attachment model and the draft, so it exposes `forward()` and this button
+ * hands it the message; doing it here would need EmailArea to reach into a
+ * model it does not own.
+ */
+function forward() {
+  emailBox.forward({
+    ...props.activity.data,
+    communication_date: props.activity.communication_date,
+  })
 }
 
 const status = computed(() => {

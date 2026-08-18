@@ -682,3 +682,736 @@ flag is on, never raises, and the hooks entry is present.
 6. **Stage 1A open issue 4 stands**: no channel adapter is registered for the
    outbound engine, so `process_scheduled_jobs` cannot send even with the flag on.
    Stage 3 registers the first one.
+
+---
+
+# Stage 2A (Low-risk slice) — verification record
+
+## Stage 2A
+
+Scope: master spec §5 items **2** (tag chips), **3** (duplicate warning on
+create), **10** (Cmd/Ctrl+K palette) and **11** (recently viewed). Items 1, 6 and
+23 of the same stage belong to a second worker running in parallel; their files
+are listed here only where they affected this stage's verification.
+
+Branch: `feat/feature-expansion`. Nothing is committed by this stage; all changes
+sit in the working tree, on top of Stage 1B.
+
+Run 2026-08-19, same environment and same commands as Stage 1A and 1B.
+
+---
+
+## What changed
+
+### Backend — files added
+
+| File | What it is |
+| --- | --- |
+| `crm/api/tags.py` | Item 2. Four whitelisted endpoints (`get_tags`, `add_tag`, `remove_tag`, `search_tags`) in front of `frappe.desk.doctype.tag.tag.DocTags`, plus the tag validation the core writer does not do |
+| `crm/api/duplicates.py` | Item 3. `check_duplicates(doctype, email, phone)` over the Stage-1A `custom_parama_*` columns |
+| `crm/api/search.py` | Items 10 and 11. `palette_search(query, limit)` over six groups, and `resolve_records(records)` for the recents list |
+| `crm/tests/test_tags.py` | 36 tests |
+| `crm/tests/test_duplicates.py` | 18 tests |
+| `crm/tests/test_search.py` | 36 tests |
+
+**No schema change.** Stage 2A adds no doctype, no field, no index and no patch.
+`crm/patches.txt`, `crm/hooks.py` and `fcrm_settings.json` are untouched by this
+stage, so no `bench migrate` is needed to run this code. The two columns the
+duplicate check reads were created by Stage 1A; `_user_tags` is created by the
+framework's own `DocTags.setup()` the first time a doctype is tagged.
+
+### Frontend — files added
+
+| File | What it is |
+| --- | --- |
+| `frontend/src/utils/tags.js` | The 8-colour pastel palette, the name hash, the "+N" collapse rule and the fuzzy ranker. Pure functions |
+| `frontend/src/utils/palette.js` | Row routing, group icons, quick actions, section building, arrow-key movement. Pure functions |
+| `frontend/src/utils/recents.js` | The localStorage key shape and the merge/dedupe/cap rules. Pure functions |
+| `frontend/src/composables/recents.js` | The one shared `useStorage` handle over those rules |
+| `frontend/src/composables/commandPalette.js` | The module-level open/close ref |
+| `frontend/src/components/TagChips.vue` | Chips, the "+N" expander, and the "+" Combobox with fuzzy search and a "Create '<query>'" row |
+| `frontend/src/components/CommandPalette.vue` | The palette itself |
+| `frontend/src/components/DuplicateWarning.vue` | The amber banner |
+| `frontend/tests/unit/tags.test.js` | 30 tests |
+| `frontend/tests/unit/palette.test.js` | 24 tests |
+| `frontend/tests/unit/recents.test.js` | 15 tests |
+
+### Frontend — files changed
+
+| File | Change |
+| --- | --- |
+| `frontend/src/components/Modals/GlobalModals.vue` | Mounts `<CommandPalette />` once. It is rendered by both `DesktopLayout` and `MobileLayout`, which is why the palette is reachable from all three of its triggers |
+| `frontend/src/components/Layouts/AppSidebar.vue` | One `SidebarItem` above Notifications that opens the palette, with a ⌘K / Ctrl K hint. Nothing else in the file was touched — the grouped-sidebar work was already committed |
+| `frontend/src/components/Mobile/MobileAppHeader.vue` | A search button in the top bar (spec §2.18) |
+| `frontend/src/components/Modals/LeadModal.vue`, `ContactModal.vue`, `DealModal.vue` | One `<DuplicateWarning>` each, bound to that form's email and phone fields |
+| `frontend/src/pages/Lead.vue`, `Deal.vue` | `<TagChips>` under the record title in the side panel, plus the recents write |
+| `frontend/src/pages/MobileLead.vue`, `MobileDeal.vue` | `<TagChips>` in a row of its own under the action bar — editable, not read-only — plus the recents write |
+| `frontend/src/pages/Contact.vue`, `Organization.vue`, `MobileContact.vue`, `MobileOrganization.vue` | The recents write only |
+| `frontend/src/components/ListViews/LeadsListView.vue`, `DealsListView.vue` | A `_user_tags` column branch rendering read-only chips; clicking one emits `applyTagFilter` |
+| `frontend/src/pages/Leads.vue`, `Deals.vue` | One line each wiring `applyTagFilter` to `ViewControls` |
+| `frontend/src/components/ViewControls.vue` | New `applyTagFilter(tag)`, exposed. No existing function changed |
+| `frontend/src/utils/model.js` | One entry so "Tags" is selectable in Column Settings |
+
+### Docs
+
+| File | Change |
+| --- | --- |
+| `demo-package/specs/permission-matrix.md` | Stage 2A section: all seven endpoints, one row each, plus the honest statement of which doctypes have no row-level rule in this app |
+| `demo-package/specs/stage2a-notes.md` | New. The changes this stage wanted but could not make, and the findings handed to other owners |
+
+---
+
+## Backend — every module that collects, run individually
+
+Same push-then-run commands as Stage 1A. The push:
+
+```bash
+cd /home/kreshnith/CRM
+tar -cf - --exclude=__pycache__ --exclude='*.pyc' --exclude='crm/public' crm | \
+  docker exec -i crm-local-frappe-1 bash -lc 'cd ~/frappe-bench/apps/crm && tar -xf -'
+```
+
+Verbatim result lines, 2026-08-19:
+
+| Module | Result |
+| --- | --- |
+| `crm.fcrm.doctype.crm_invitation.test_crm_invitation` | `Ran 13 tests in 4.195s` `OK` |
+| `crm.fcrm.doctype.crm_product.test_product_item_sync` | `Ran 25 tests in 0.033s` `OK (skipped=18)` |
+| `crm.fcrm.doctype.crm_products.test_crm_products` | `Ran 7 tests in 0.001s` `OK (skipped=6)` |
+| `crm.integrations.erpnext.test_utils` | `Ran 9 tests in 0.009s` `OK (skipped=2)` |
+| `crm.tests.test_ai_client` | `Ran 35 tests in 0.269s` `OK` |
+| `crm.tests.test_automation_context` | `Ran 20 tests in 0.507s` `OK` |
+| **`crm.tests.test_duplicates`** (new, Stage 2A) | `Ran 18 tests in 43.724s` `OK` |
+| `crm.tests.test_email_compose` (new, other worker) | `Ran 18 tests in 0.522s` `OK` |
+| `crm.tests.test_exchange_rate` | `Ran 16 tests in 0.547s` `OK` |
+| `crm.tests.test_followup_engine` | `Ran 99 tests in 20.623s` `OK` |
+| `crm.tests.test_itinerary` | `Ran 112 tests in 53.178s` `OK` |
+| `crm.tests.test_outbound` | `Ran 46 tests in 2.327s` `OK` |
+| `crm.tests.test_reminders` (new, other worker) | `Ran 40 tests in 6.518s` `OK` |
+| **`crm.tests.test_search`** (new, Stage 2A) | `Ran 36 tests in 5.252s` `OK` |
+| `crm.tests.test_sequences` | `Ran 39 tests in 0.157s` `OK` |
+| `crm.tests.test_snippets` (new, other worker) | `Ran 45 tests in 3.138s` `OK` |
+| `crm.tests.test_state_options` | `Ran 7 tests in 0.259s` `OK` |
+| `crm.tests.test_suppression` | `Ran 32 tests in 2.812s` `OK` |
+| `crm.tests.test_sweeps` | `Ran 31 tests in 61.592s` `OK` |
+| **`crm.tests.test_tags`** (new, Stage 2A) | `Ran 36 tests in 8.150s` `OK` |
+| `crm.tests.test_whatsapp` | `Ran 62 tests in 0.212s` `OK` |
+| `crm.tests.test_whatsapp_demo` | `Ran 12 tests in 0.051s` `OK` |
+
+**758 tests, 0 failures, 0 errors, 26 skips**, across 22 modules. Stage 2A adds
+90 of them (36 + 18 + 36). The other 103 new tests since Stage 1B belong to the
+parallel worker's items 1, 6 and 23; they are reported here because they run in
+the same tree, not because this stage wrote them.
+
+The module list was derived rather than remembered: every `crm/**/test_*.py` was
+checked for an `IntegrationTestCase` / `UnitTestCase` import, and the 22 that do
+not import one were run. The other **47 still do not collect** in this container,
+unchanged from Stage 1A and 1B — the container has frappe v15.117.0 while the app
+declares `>=16.0.0-dev`. They are reported as not collectable here, never as
+passes.
+
+### The permission-matrix tests DID run — Stage 1A/1B open issue 1 is narrower than it looked
+
+Stage 1A and 1B both recorded that "role and hierarchy permission tests cannot be
+run on this machine". That is true of `crm/permissions/test_org_hierarchy.py`,
+which imports `IntegrationTestCase` and still does not collect. It is NOT true of
+the hierarchy RULE, which this stage tests directly and without any patching, by
+the pattern `crm/tests/test_itinerary.py::TestPermissions` already used: create a
+real `User` with the `Sales User` role, `frappe.set_user(...)`, and call the
+endpoint.
+
+So the §3 permission-matrix requirement is met with real tests, not with mocks:
+
+* `crm/tests/test_duplicates.py::TestPermissions::test_a_sales_user_does_not_see_another_teams_lead` —
+  a Sales User who supplies the EXACT email address of a lead owned by somebody
+  else gets `[]`.
+* `...::test_a_sales_user_does_see_their_own_lead` — the same user, the same
+  address, after the lead is reassigned to them: one result. The filter is
+  row-level, not a blanket refusal.
+* `crm/tests/test_search.py::TestPermissions::test_a_sales_user_does_not_see_another_teams_lead`
+  and `::test_a_sales_user_does_not_reach_it_by_email_either` — the same for the
+  palette, by name and by address.
+* `crm/tests/test_search.py::TestPermissions::test_a_recent_the_user_lost_access_to_is_dropped` —
+  item 11's requirement: a localStorage recent whose record the user may no
+  longer read renders nothing.
+* `crm/tests/test_tags.py::TestPermissions` — read, add and remove on another
+  team's lead all raise `PermissionError`, and
+  `::test_the_refused_write_did_not_happen` proves the column was not written
+  before the check.
+
+Both endpoint modules also carry
+`test_the_scope_comes_from_the_hierarchy_conditions`, which asserts the condition
+TEXT that `crm.permissions.org_hierarchy` produces for that user. That is the
+"test the query-condition application directly" fallback the stage brief asked
+for; it is kept alongside the real tests, not instead of them, so that a rewrite
+away from `frappe.get_list` fails loudly.
+
+---
+
+## Live check on the running demo site
+
+The unit tests prove the rule. This proves the wiring, on seeded demo data,
+signed in over HTTP as the demo Sales User `priya@demo.crm` (the site has
+`enable_sales_hierarchy = 1`).
+
+```
+$ curl -s -b $J "http://crm.localhost:8000/api/method/crm.api.search.palette_search?query=an"
+{"message":{"query":"an","groups":[{"doctype":"CRM Lead","label":"Leads","items":[
+  {"doctype":"CRM Lead","name":"CRM-LEAD-2026-00019","title":"Amara Okafor","subtitle":"Lumen Analytics · Proposal Sent", ...
+
+$ curl -s -b $J ".../crm.api.duplicates.check_duplicates?doctype=CRM%20Lead&email=amara.okafor@example.com"
+{"message":[{"doctype":"CRM Lead","name":"CRM-LEAD-2026-00019","title":"Amara Okafor","matched_field":"email"}]}
+
+$ curl -s -b $J ".../crm.api.tags.add_tag?doctype=CRM%20Lead&name=X&tag=Y"      # GET
+403
+```
+
+The 403 is the POST-only whitelisting doing its job. With a CSRF token and a
+POST, the whole round trip works:
+
+```
+add_tag        -> {"message":["Live Smoke"]}
+get_tags       -> {"message":["Live Smoke"]}
+search_tags    -> {"message":["Live Smoke"]}
+add_tag "a,b"  -> frappe.exceptions.ValidationError: A tag cannot contain a comma.
+resolve_records([real, "nope"]) -> one row, the fabricated name dropped
+remove_tag     -> {"message":[]}
+```
+
+The `Tag` master row and the `Tag Link` created by that check were deleted
+afterwards; the demo site is back where it started.
+
+Row filtering, on real data rather than a fixture: one of the site's eight leads
+(`CRM-LEAD-2026-00023`, "Animesh") is outside `priya`'s subtree, and
+`frappe.get_list` returns 7 of 8 for her. Searching that lead's exact name in the
+palette as `priya`:
+
+```
+palette for 'Animes' -> ['CRM-LEAD-2026-00018', 'CRM-DEAL-2026-00007', 'Animesh']
+contains the hidden lead? False
+```
+
+A DIFFERENT lead with the same person's name comes back; the one she may not see
+does not. That is §3 working end to end.
+
+### Speed (item 10's "under 500 ms" target)
+
+Five `palette_search` calls against the seeded database, in-process:
+
+```
+5 palette queries in 0.219s
+```
+
+~44 ms each, six `get_list` queries per call. Well inside the target. Stated
+limit: the derived email and phone columns are searched as "contains", so the
+Stage-1A index cannot be used for them. That is deliberate — typing the last four
+digits of a number has to find the record — and the index still earns its keep on
+the exact-equality lookups in `crm.api.duplicates`. On a database an order of
+magnitude larger this is the first thing to measure again.
+
+---
+
+## Frontend
+
+```bash
+cd /home/kreshnith/CRM/frontend && npx vitest run
+```
+
+```
+ RUN  v4.1.4 /home/kreshnith/CRM/frontend
+
+ Test Files  16 passed (16)
+      Tests  349 passed (349)
+   Start at  00:30:56
+   Duration  3.78s (transform 2.83s, setup 306ms, import 4.46s, tests 511ms, environment 12.17s)
+```
+
+Stage 2A's own three files, run alone:
+
+```
+ Test Files  3 passed (3)
+      Tests  69 passed (69)
+```
+
+Against Stage 1B's 10 files / 224 tests (30 + 24 + 15 = 69 here). The other 56
+new tests belong to the parallel worker.
+
+What the 69 cover: the "+N" collapse rule (§2.13), the colour hash being stable
+and case-insensitive, the fuzzy ranker's three tiers, the "Create '<query>'"
+offer being suppressed for a name that already exists in another casing, every
+palette route including the task/note parent fallback, arrow-key wrapping,
+**`buildSections` never returning an empty list** (§2's "Cmd+K is never blank"),
+the DOM ids that `aria-activedescendant` points at being unique, and the recents
+key being scoped per site AND per user with a cap that holds under 30 writes.
+
+### Production build
+
+```bash
+cd /home/kreshnith/CRM/frontend
+NODE_OPTIONS="--max-old-space-size=6144" npx vite build --base=/assets/crm/frontend/
+```
+
+```
+✓ built in 1m 21s
+
+PWA v0.21.2
+mode      generateSW
+precache  1 entries (0.00 KiB)
+warnings
+  An error occurred when globbing for files. '(0 , brace_expansion_1.expand) is not a function'
+```
+
+Same glob warning and same `NODE_OPTIONS` requirement as Stage 1A. The build
+output is gitignored, so it left no working-tree churn.
+
+**The first attempt failed, and not on a Stage 2A file.** Verbatim:
+
+```
+[plugin vite:vue] src/components/Settings/Snippets/SnippetsPage.vue (122:17): Error parsing JavaScript expression: Unterminated string constant. (2:18)
+```
+
+That file belongs to the parallel worker (item 23). Rather than edit somebody
+else's file, this stage rebuilt an rsync copy of `frontend/` in which only that
+one interpolation was replaced with a placeholder, and that copy built clean —
+proving every Stage 2A file compiles. The owner then fixed it in the real tree at
+00:39 (the message is now built in the script block and rendered with `v-text`),
+and the build above is the real tree, unmodified. The finding is recorded in
+`demo-package/specs/stage2a-notes.md` §4.
+
+### Lint
+
+```bash
+uvx --from 'ruff==0.8.1' ruff check crm/api/tags.py crm/api/duplicates.py crm/api/search.py \
+  crm/tests/test_tags.py crm/tests/test_duplicates.py crm/tests/test_search.py
+# All checks passed!
+uvx --from 'ruff==0.8.1' ruff format <same six files>
+# 6 files left unchanged
+```
+
+Ruff was pointed at Stage 2A's six files rather than at `crm/` as in Stage 1,
+deliberately: a second worker has uncommitted Python in the same tree this stage,
+and `ruff format crm/` would have rewritten their files mid-edit.
+
+---
+
+## Deviations from the stage brief
+
+1. **The duplicate banner sits under the form, not under the field.** Item 3 asks
+   for it "directly under the field". The email and phone inputs are rendered by
+   `FieldLayout` / `Field.vue`, which this stage is barred from touching and which
+   master spec §8 D4 parks. The banner renders immediately below the whole
+   `<FieldLayout>` block instead — still inline, still amber, still non-blocking,
+   still dismissible. Full reasoning and what a `Field.vue` owner would need to
+   add: `demo-package/specs/stage2a-notes.md` §1.
+2. **Mobile tags are editable, not read-only.** The brief allowed read-only as
+   the minimum. A row of its own under the mobile action bar was cheap, so both
+   mobile record pages get the full editable component.
+3. **`frontend/src/utils/model.js` and `ViewControls.vue` were touched**, one
+   entry and one new function respectively. Neither is in this stage's stated
+   ownership list, and neither modifies existing behaviour. Recorded in
+   `stage2a-notes.md` §2 and §3.
+4. **Tag chips are on CRM Lead and CRM Deal only.** `crm.api.tags` allowlists
+   exactly those two. Contacts and Organizations can carry `_user_tags` — the
+   framework and the list filter both support it — but no endpoint of ours will
+   write them, so nothing tags them from the CRM UI.
+
+---
+
+## Open issues handed on
+
+1. **`Contact`, `CRM Organization`, `CRM Task` and `FCRM Note` have no row-level
+   permission rule anywhere in this app.** `crm/hooks.py` registers
+   `permission_query_conditions` for CRM Lead and CRM Deal only. The palette and
+   the duplicate check therefore show exactly what the Tasks, Notes, Contacts and
+   Organizations list pages already show — no more, but also no less. This is
+   pre-existing and it is now visible in one more place. It belongs on the Stage 6
+   correctness/security reviewer's list, not to a feature stage.
+2. **`frappe.desk.doctype.tag.tag.add_tag` is still reachable.** It is whitelisted
+   by the framework, it writes `_user_tags` before it checks `write`, and it
+   accepts a comma inside a tag. `crm.api.tags` is a safe door added beside it,
+   not a replacement. Closing the framework one means overriding a framework
+   whitelist — a Stage 6 decision.
+3. **The palette searches the derived columns with a leading wildcard**, so the
+   Stage-1A indexes do not serve it. Measured at ~44 ms per query on the demo
+   database; re-measure before this ships to a materially larger site.
+4. **CRM Task and FCRM Note have no record route in this app.** The palette opens
+   the parent record when the row names one and falls back to the list otherwise.
+   A stage that adds a detail route should extend
+   `frontend/src/utils/palette.js::RECORD_ROUTES` and delete the fallback.
+5. **No live click-through of the UI was performed by this stage.** The endpoints
+   were exercised over real HTTP as a real Sales User and every component compiles
+   and is unit-tested, but nobody drove the palette, the chips or the banner in a
+   browser. That walkthrough is Stage 6's (b) reviewer's job and is explicitly
+   still owed.
+6. **Stage 1A/1B open issue 1 stands but is narrower than recorded.** The 47
+   v16-only modules still do not collect, including
+   `crm/permissions/test_org_hierarchy.py`. Hierarchy behaviour itself IS testable
+   here, and Stage 2A tests it — see the section above.
+
+---
+
+# Stage 2B — verification record
+
+Scope: master spec §5 items **1** (task due-date reminders, on the F5 ledger),
+**6** (email forward) and **23** (snippets). Run 2026-08-19, same commands as
+Stage 1A and 1B.
+
+Branch: `feat/feature-expansion`. Nothing is committed by this stage; all
+changes sit in the working tree, alongside Stage 2A's (a second worker was
+landing items 2, 3, 10 and 11 in the same tree at the same time — see the note
+on shared files at the end).
+
+Deviations, decisions and open questions live in
+`demo-package/specs/stage2b-notes.md`. The endpoints are in
+`demo-package/specs/permission-matrix.md` under "Stage 2B".
+
+---
+
+## What changed
+
+### Files added — backend
+
+| File | What it is |
+| --- | --- |
+| `crm/reminders.py` | Item 1. The bounded, flag-gated, ledger-backed reminder sweep |
+| `crm/api/snippets.py` | Item 23. `get_snippets`, `render`, the merge, and the two permission hooks |
+| `crm/api/email.py` | Item 6. `send_email` — the composer's send path with the suppression ledger in front of it |
+| `crm/fcrm/doctype/crm_snippet/` | The `CRM Snippet` doctype: JSON, controller, `__init__.py` |
+| `crm/patches/v1_0/set_task_reminder_offset_default.py` | Gives the new Int column on the Single its intended default of 60 |
+| `crm/tests/test_reminders.py` | 40 tests |
+| `crm/tests/test_snippets.py` | 45 tests |
+| `crm/tests/test_email_compose.py` | 18 tests |
+
+### Files added — frontend
+
+| File | What it is |
+| --- | --- |
+| `frontend/src/utils/tasks.js` | The due-date chip state, class and tooltip reason. Pure |
+| `frontend/src/utils/snippets.js` | `filterSnippets`, `slashTrigger`, `applySnippet`, `htmlToText`. Pure |
+| `frontend/src/utils/emailForward.js` | `forwardSubject`, `forwardQuote`, `forwardedAttachments`, `deletableAttachments`. Pure |
+| `frontend/src/components/Modals/SnippetSelectorModal.vue` | The searchable picker both composers open |
+| `frontend/src/components/Settings/Snippets/SnippetsPage.vue` | Settings → Email → Snippets: list, create, edit, delete |
+| `frontend/tests/unit/taskDueDate.test.js` | 11 tests |
+| `frontend/tests/unit/snippets.test.js` | 28 tests |
+| `frontend/tests/unit/emailForward.test.js` | 17 tests |
+
+### Files changed
+
+| File | Change |
+| --- | --- |
+| `crm/hooks.py` | One cron entry (`crm.reminders.send_task_reminders` on `*/15 * * * *`), one `permission_query_conditions` entry and one `has_permission` entry for `CRM Snippet` |
+| `crm/feature_flags.py` | One registry entry: `task_reminders_enabled` |
+| `crm/fcrm/doctype/fcrm_settings/fcrm_settings.json` | One Check in the Feature Flags section, plus a collapsible "Task Reminders" section with the offset and the email switch |
+| `crm/patches.txt` | One line |
+| `frontend/src/components/Activities/EmailArea.vue` | A Forward button next to Reply and Reply All |
+| `frontend/src/components/CommunicationArea.vue` | `forward()` exposed; `sendMail` moved onto `crm.api.email.send_email`; Discard no longer deletes carried files |
+| `frontend/src/components/EmailEditor.vue` | A snippet button, the picker, and `focusTo()` for the forward |
+| `frontend/src/components/Activities/WhatsAppInboxComposer.vue` | Snippet button and the `/` trigger |
+| `frontend/src/components/Activities/WhatsAppBox.vue` | Snippet icon and the `/` trigger |
+| `frontend/src/components/ListViews/TasksListView.vue` | Due-date chip colour and its tooltip reason |
+| `frontend/src/components/Activities/TaskArea.vue` | The same, on the record page's Tasks tab |
+| `frontend/src/components/Settings/Settings.vue` | The Snippets entry under Email |
+| `demo-package/specs/permission-matrix.md` | The Stage 2B section |
+
+---
+
+## Migrations
+
+### New doctypes
+
+| Doctype | Purpose | Unique index | Other indexes |
+| --- | --- | --- | --- |
+| `CRM Snippet` | One reusable piece of composer text, with `{{ token }}` merge fields | — | `shortcut` |
+
+`shortcut` is deliberately NOT unique at the table level. Two Sales Users may
+each hold a private `/booking`, because neither of them ever sees both; a shared
+snippet collides with everything. That rule cannot be expressed as a table-wide
+index, so it lives in `CRMSnippet.check_shortcut_is_free` and is tested three
+ways.
+
+### New fields on existing doctypes
+
+| Doctype | Field | Type | Notes |
+| --- | --- | --- | --- |
+| `FCRM Settings` | `task_reminders_enabled` | Check, default `0` | The flag. Registry: `crm/feature_flags.py` |
+| `FCRM Settings` | `task_reminders_section` | Section Break | Collapsible, `depends_on` the flag |
+| `FCRM Settings` | `task_reminder_offset_minutes` | Int, default `60` | Org-wide. See the note below |
+| `FCRM Settings` | `task_reminder_email` | Check, default `0` | The optional second channel |
+
+### Patches
+
+`crm.patches.v1_0.set_task_reminder_offset_default #19-08-2026`.
+
+It exists because of a trap worth recording: **`FCRM Settings` is a Single, and
+a new `Int` column on a Single that already exists is written as `0`, not as the
+JSON default.** `0` is a legitimate value here — it means "remind at the due
+time itself" — so the reader cannot tell an unset column from a deliberate zero.
+The patch settles it once, and only when the value is falsy AND the feature has
+never been switched on.
+
+Observed on the demo site, before and after:
+
+```
+$ bench --site crm.localhost execute ...   # before the patch
+offset: 0
+
+Executing crm.patches.v1_0.set_task_reminder_offset_default #19-08-2026 in crm.localhost (_c8b3e5206096f0bd)
+Success: Done in 0.189s
+
+$ bench --site crm.localhost execute ...   # after
+offset: 60
+```
+
+A database backup was taken immediately before the first migrate:
+`./crm.localhost/private/backups/20260819_002810-crm_localhost-database.sql.gz`.
+
+### State on the demo site after migrate
+
+```
+snippet doctype: CRM Snippet
+table: (('tabCRM Snippet',),)
+task_reminders_enabled True
+task_reminder_offset_minutes True
+task_reminder_email True
+offset: 60
+email leg: False
+flags: {'outbound_engine_enabled': False, 'task_reminders_enabled': False}
+sweep with flag off: 0
+reminder log rows: 0
+```
+
+Both flags are OFF, the sweep reads nothing, and the ledger is empty. No
+user-visible automation starts by itself.
+
+### Downgrade behaviour
+
+| Change | To undo |
+| --- | --- |
+| `CRM Snippet` | Delete the DocType record and drop `tabCRM Snippet`. Only `crm/api/snippets.py` and the Settings page read it |
+| The four `FCRM Settings` fields | Delete them. `crm.feature_flags.is_enabled` then reads the flag as OFF and `reminder_offset_minutes` falls back to 60 — but the sweep never runs, because the flag is gone |
+| The cron entry | Remove `crm.reminders.send_task_reminders` from `crm/hooks.py`. It is a no-op while the flag is off |
+| The two `CRM Snippet` permission hooks | Remove them from `crm/hooks.py`. The doctype then falls back to its role permissions, which are wider — delete the doctype instead |
+| The composer's send path | Restore the `frappe.core.doctype.communication.email.make` call in `CommunicationArea.vue::sendMail` and add `send_email: 1` back. That also removes the suppression check |
+| The due-date chip colours | Revert two `:class` bindings and two tooltip helpers. No data is involved |
+| Reminder ledger rows | Delete the `CRM Reminder Log` rows. Deleting a row makes that one reminder eligible again — the row IS the at-most-once mechanism |
+
+No upstream core schema was edited. No existing field, index or doctype was
+changed or removed.
+
+---
+
+## Backend — every module that collects, run individually
+
+Same push-then-run commands as Stage 1A. Verbatim result lines:
+
+| Module | Result |
+| --- | --- |
+| `crm.fcrm.doctype.crm_invitation.test_crm_invitation` | `Ran 13 tests in 3.756s` `OK` |
+| `crm.fcrm.doctype.crm_product.test_product_item_sync` | `Ran 25 tests in 0.029s` `OK (skipped=18)` |
+| `crm.fcrm.doctype.crm_products.test_crm_products` | `Ran 7 tests in 0.001s` `OK (skipped=6)` |
+| `crm.integrations.erpnext.test_utils` | `Ran 9 tests in 0.007s` `OK (skipped=2)` |
+| `crm.tests.test_ai_client` | `Ran 35 tests in 0.257s` `OK` |
+| `crm.tests.test_automation_context` | `Ran 20 tests in 0.690s` `OK` |
+| `crm.tests.test_duplicates` (Stage 2A) | `Ran 18 tests in 3.848s` `OK` |
+| **`crm.tests.test_email_compose`** (new) | `Ran 18 tests in 0.714s` `OK` |
+| `crm.tests.test_exchange_rate` | `Ran 16 tests in 0.596s` `OK` |
+| `crm.tests.test_followup_engine` | `Ran 99 tests in 19.650s` `OK` |
+| `crm.tests.test_itinerary` | `Ran 112 tests in 42.777s` `OK` |
+| `crm.tests.test_outbound` | `Ran 46 tests in 2.434s` `OK` |
+| **`crm.tests.test_reminders`** (new) | `Ran 40 tests in 6.471s` `OK` |
+| `crm.tests.test_search` (Stage 2A) | `Ran 36 tests in 5.249s` `OK` |
+| `crm.tests.test_sequences` | `Ran 39 tests in 0.122s` `OK` |
+| **`crm.tests.test_snippets`** (new) | `Ran 45 tests in 2.337s` `OK` |
+| `crm.tests.test_state_options` | `Ran 7 tests in 0.180s` `OK` |
+| `crm.tests.test_suppression` | `Ran 32 tests in 1.999s` `OK` |
+| `crm.tests.test_sweeps` | `Ran 31 tests in 48.804s` `OK` |
+| `crm.tests.test_tags` (Stage 2A) | `Ran 36 tests in 5.595s` `OK` |
+| `crm.tests.test_whatsapp` | `Ran 62 tests in 0.187s` `OK` |
+| `crm.tests.test_whatsapp_demo` | `Ran 12 tests in 0.045s` `OK` |
+
+**758 tests, 0 failures, 0 errors, 26 skips.** 103 of them are Stage 2B's
+(40 + 45 + 18); 90 are Stage 2A's, which were already in the tree.
+
+### Modules that still do NOT collect in this container
+
+Unchanged from Stage 1A and 1B: the same 47 upstream modules abort at import,
+because the container has frappe v15.117.0 while the app declares
+`>=16.0.0-dev`. Spot-checked, verbatim, on this tree:
+
+```
+$ bench --site crm.localhost run-tests --module crm.permissions.test_org_hierarchy
+ImportError: cannot import name 'IntegrationTestCase' from 'frappe.tests' (/home/frappe/frappe-bench/apps/frappe/frappe/tests/__init__.py)
+
+$ bench --site crm.localhost run-tests --module crm.tests.test_dashboard
+ImportError: cannot import name 'IntegrationTestCase' from 'frappe.tests' (/home/frappe/frappe-bench/apps/frappe/frappe/tests/__init__.py)
+```
+
+Stage 2B adds no test to that set and removes none. They are reported as not
+collectable here, not as passes.
+
+**What that costs, and what covers it.** `crm/permissions/test_org_hierarchy.py`
+is the module a permission-matrix test would normally extend. Because it cannot
+run here, `crm/tests/test_snippets.py` exercises the real rules directly instead
+of patching them: it sets a real Sales User with `frappe.set_user` and lets the
+real `has_snippet_permission` and the real org-hierarchy `has_permission` hook
+refuse the read
+(`TestVisibility::test_another_users_private_snippet_is_invisible`,
+`TestRenderPermissions::test_a_record_the_caller_cannot_read_is_refused`).
+
+### What the three new suites actually assert
+
+The four checks the brief named, and where they are:
+
+| Required check | Test |
+| --- | --- |
+| Reminder idempotency — run the job twice, one notification | `test_reminders.py::TestIdempotency::test_two_runs_produce_one_notification` |
+| Ledger dedup under a simulated double-fire | `::TestIdempotency::test_a_simulated_double_fire_claims_once`, plus `::test_the_claim_is_committed_before_the_notification`, which asserts the ORDER that makes a racing worker's insert collide |
+| Snippet permissions — another user's private snippet is invisible | `test_snippets.py::TestVisibility::test_another_users_private_snippet_is_invisible` and `::TestDocumentPermission::test_a_user_may_not_read_another_users_private_snippet` |
+| Suppression check on the forward path | `test_email_compose.py::TestSendEmail` — `test_a_suppressed_recipient_is_dropped_and_named`, `test_a_suppressed_cc_is_dropped_and_the_mail_still_goes`, `test_nothing_is_sent_when_every_recipient_opted_out` |
+
+Two things the reminder suite had to learn about this site, recorded so the next
+worker does not rediscover them:
+
+1. **Inserting a `CRM Task` with an assignee already produces a
+   `CRM Notification`** ("assigned a new task ... to you", through
+   `crm.api.todo.after_insert`). A naive count of notifications on the task is
+   one too high. `notifications_for` filters to the reminder text.
+2. **The reminder carries no `owner`.** `notify_user` returns early when the
+   owner equals the recipient, and a task somebody made for themselves is the
+   commonest case there is. Asserted by
+   `TestDelivery::test_a_self_assigned_task_still_notifies`.
+
+---
+
+## Live check on the demo site
+
+Not a test — the endpoints run against real seeded data, inside a transaction
+that was rolled back afterwards:
+
+```
+lead: {'name': 'CRM-LEAD-2026-00023', 'first_name': 'Animesh', 'lead_owner': 'crm.admin@example.com'}
+rendered: <p>Hi Animesh, from Administrator. {{ nope }}</p>
+flag off sweep: 0
+due tasks in window: 0
+rolled back; snippet still there? None
+```
+
+The merge resolved `{{ first_name }}` and `{{ user.full_name }}` and left the
+unknown `{{ nope }}` exactly as typed — a misspelt token is meant to be found by
+the agent, not by the customer.
+
+---
+
+## Frontend
+
+```
+ RUN  v4.1.4 /home/kreshnith/CRM/frontend
+
+ Test Files  16 passed (16)
+      Tests  349 passed (349)
+   Start at  00:40:15
+   Duration  3.40s (transform 730ms, setup 268ms, import 1.69s, tests 610ms, environment 12.08s)
+```
+
+16 files against Stage 1B's 10: three are Stage 2B's (`taskDueDate.test.js`,
+`snippets.test.js`, `emailForward.test.js`, 11 + 28 + 17 = 56 tests) and three
+are Stage 2A's (69 tests).
+
+**There are no component tests in this repo, and Stage 2B did not add the first
+one.** `@vue/test-utils` is not a dependency and nothing under
+`frontend/tests/unit/` mounts anything. Every decision worth testing was
+therefore pushed into a pure function — the chip state, the `/` trigger, the
+snippet insert, the forward subject and quote, the attachment marking — and
+tested there. The wiring inside the `.vue` files is covered by the production
+build, not by a test. That is stated rather than papered over.
+
+### Frontend production build
+
+```bash
+cd /home/kreshnith/CRM/frontend
+NODE_OPTIONS="--max-old-space-size=6144" npx vite build --base=/assets/crm/frontend/
+```
+
+```
+✓ built in 1m 27s
+
+PWA v0.21.2
+mode      generateSW
+precache  1 entries (0.00 KiB)
+files generated
+  ../crm/public/frontend/sw.js.map
+  ../crm/public/frontend/sw.js
+  ../crm/public/frontend/workbox-8c29f6e4.js.map
+  ../crm/public/frontend/workbox-8c29f6e4.js
+warnings
+  An error occurred when globbing for files. '(0 , brace_expansion_1.expand) is not a function'
+```
+
+The globbing warning is the same one Stage 1A recorded and is unrelated.
+
+The FIRST build attempt failed, on Stage 2B's own code, and the failure is worth
+recording because the cause is not obvious:
+
+```
+x Build failed in 1m
+error during build:
+[vite-plugin-pwa:build] There was an error during the build:
+  [plugin vite:vue] src/components/Settings/Snippets/SnippetsPage.vue (122:17): Error parsing JavaScript expression: Unterminated string constant. (2:18)
+```
+
+A help line explaining the merge tokens contained a literal `{{ field }}` inside
+a `{{ __(...) }}` interpolation, and the Vue template compiler cannot parse
+nested braces. The hint is now assembled in the script with `{0}`-style
+placeholders and rendered through `v-text`. **Any later feature that documents a
+`{{ token }}` in a template will hit exactly this.**
+
+### Lint
+
+```bash
+uvx --from 'ruff==0.8.1' ruff check crm/     # All checks passed!
+uvx --from 'ruff==0.8.1' ruff format crm/    # 344 files left unchanged
+npx prettier@3.2.5 --write <the 16 changed frontend files>
+npx oxlint@1.50.0 <the 13 changed frontend source files>
+# Found 0 warnings and 0 errors.
+# Finished in 15ms on 13 files with 93 rules using 8 threads.
+```
+
+Ruff is pinned to v0.8.1 and prettier/oxlint to the versions in
+`.pre-commit-config.yaml`. The vitest suite was re-run after the prettier pass
+and is the 349-test result above.
+
+---
+
+## Shared files, with a second worker in the tree
+
+Stage 2A (items 2, 3, 10, 11) was being written into the same working tree at
+the same time. The single-owner rule held: `crm/hooks.py`,
+`crm/fcrm/doctype/fcrm_settings/fcrm_settings.json`, `crm/patches.txt` and
+`frontend/src/components/Settings/Settings.vue` carry Stage 2B's changes only
+(`git diff --stat` on `crm/hooks.py` and `Settings.vue`: 12 and 7 added lines,
+all of them listed above). `EmailEditor.vue`, `CommunicationArea.vue` and
+`EmailArea.vue` were touched by Stage 2B alone, as the master spec's collision
+rule requires. No file in the "must not touch" list was modified.
+
+---
+
+## Open issues handed to Stage 3
+
+1. **`/` does not open the snippet picker in the EMAIL composer** — frappe-ui's
+   `RichTextKit` already owns that character for the formatting menu. The
+   snippet icon does. Full reasoning and the three rejected alternatives are in
+   `demo-package/specs/stage2b-notes.md`.
+2. **`crm/api/activities.py` does not return the Communication `name`.** Forward
+   did not need it (attachments re-link by their own File docnames), but item 5
+   (Send Later) and item 19 (read receipts) will, and it is a one-line change to
+   `get_deal_activities` / `get_lead_activities`.
+3. **The two WhatsApp composers are still duplicates.** The snippet trigger had
+   to be wired twice; only the pure helpers are shared.
+4. **A reply still loses the user's signature.** `reply()` in `EmailArea.vue`
+   calls `clearContent()` after the `showEmailBox` watcher has inserted it. That
+   is pre-existing and was left alone; `forward()` puts the signature back.
+5. **The frappe v15 vs v16 mismatch stands** (Stage 1A open issue 1).
+6. **Stage 1A open issue 4 and Stage 1B open issue 6 stand**: no channel adapter
+   is registered for the outbound engine. Item 6 does not use it — the composer
+   sends through `Communication.make`, as it always did — so Send Later is still
+   the first feature that will need one.

@@ -42,8 +42,11 @@
       doctype="CRM Task"
     >
       <div v-if="column.key === 'due_date' && item">
-        <Tooltip :text="item && formatDate(item, 'ddd, MMM D, YYYY | hh:mm a')">
-          <div class="flex items-center gap-2 truncate text-base">
+        <Tooltip :text="dueTooltip(item, row?.status)">
+          <div
+            class="flex items-center gap-2 truncate text-base"
+            :class="taskDueClass(taskDueState(item, row?.status))"
+          >
             <div><CalendarIcon /></div>
             <div class="truncate">
               {{ formatDate(item, 'D MMM, hh:mm a') }}
@@ -197,6 +200,7 @@ import {
   formatDuration,
   sanitizeHTML,
 } from '@/utils'
+import { taskDueClass, taskDueLabel, taskDueState } from '@/utils/tasks'
 import {
   Avatar,
   ListView,
@@ -243,6 +247,13 @@ const list = defineModel('list', { type: Object })
 function onColumnWidthUpdated({ width, save }, column) {
   column.width = width
   if (save) emit('columnWidthUpdated', column)
+}
+
+/** The full date, plus why the chip is coloured when it is. */
+function dueTooltip(dueDate, status) {
+  const date = formatDate(dueDate, 'ddd, MMM D, YYYY | hh:mm a')
+  const reason = taskDueLabel(taskDueState(dueDate, status))
+  return reason ? `${date} · ${__(reason)}` : date
 }
 
 function getLabel(label, column) {

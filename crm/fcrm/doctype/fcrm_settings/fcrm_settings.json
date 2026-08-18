@@ -19,6 +19,10 @@
   "crm_timeline_sort_order",
   "feature_flags_section",
   "outbound_engine_enabled",
+  "task_reminders_enabled",
+  "task_reminders_section",
+  "task_reminder_offset_minutes",
+  "task_reminder_email",
   "currency_tab",
   "currency",
   "exchange_rate_provider_section",
@@ -176,14 +180,14 @@
   },
   {
    "default": "0",
-   "description": "Automatically sets Communication Status to \u201cReplied\u201d for the lead or deal when a response is received. Applies only when SLA is enabled",
+   "description": "Automatically sets Communication Status to “Replied” for the lead or deal when a response is received. Applies only when SLA is enabled",
    "fieldname": "auto_mark_replied_on_response",
    "fieldtype": "Check",
    "label": "Mark lead/deal as replied on response"
   },
   {
    "default": "0",
-   "description": "Automatically sets Communication Status to \u201cOpen\u201d for the lead or deal when a new communication is created. Applies only when SLA is enabled",
+   "description": "Automatically sets Communication Status to “Open” for the lead or deal when a new communication is created. Applies only when SLA is enabled",
    "fieldname": "auto_reopen_on_new_communication",
    "fieldtype": "Check",
    "label": "Reopen lead/deal on new communication"
@@ -227,6 +231,35 @@
    "fieldname": "outbound_engine_enabled",
    "fieldtype": "Check",
    "label": "Outbound engine"
+  },
+  {
+   "default": "0",
+   "description": "Lets the scheduler remind assignees about tasks that are about to fall due. While this is off the reminder sweep returns without reading a single task row, so no notification and no email is ever produced. Registry: crm/feature_flags.py.",
+   "fieldname": "task_reminders_enabled",
+   "fieldtype": "Check",
+   "label": "Task due-date reminders"
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:doc.task_reminders_enabled",
+   "description": "How the reminders above behave. These are ORG-WIDE defaults, not per-user preferences.",
+   "fieldname": "task_reminders_section",
+   "fieldtype": "Section Break",
+   "label": "Task Reminders"
+  },
+  {
+   "default": "60",
+   "description": "How many minutes before its due date a task reminder fires. 60 means one hour before. 0 reminds at the due time itself. Blank or negative falls back to 60.",
+   "fieldname": "task_reminder_offset_minutes",
+   "fieldtype": "Int",
+   "label": "Remind this many minutes before the due date"
+  },
+  {
+   "default": "0",
+   "description": "Also send the reminder as an email. The in-app notification is always produced; this adds a second, suppression-checked channel with its own ledger key.",
+   "fieldname": "task_reminder_email",
+   "fieldtype": "Check",
+   "label": "Also email the reminder"
   },
   {
    "default": "0",

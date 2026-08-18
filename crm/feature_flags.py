@@ -27,6 +27,11 @@ FLAGS = {
 		"the outbound sweep returns without reading a single job, so nothing is "
 		"ever sent through the outbound engine."
 	),
+	"task_reminders_enabled": (
+		"Lets the scheduler remind assignees about tasks that are about to fall due. "
+		"While this is off the reminder sweep returns without reading a single task "
+		"row, so no notification and no email is ever produced."
+	),
 }
 
 

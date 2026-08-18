@@ -29,6 +29,7 @@
         >
           <span class="text-xs text-ink-gray-4 mr-2">{{ __('TO') }}:</span>
           <EmailMultiSelect
+            ref="toInput"
             v-model="toEmails"
             class="flex-1"
             variant="ghost"
@@ -130,6 +131,12 @@
               :icon="EmailTemplateIcon"
               @click="showEmailTemplateSelectorModal = true"
             />
+            <Button
+              :tooltip="__('Insert Snippet')"
+              variant="ghost"
+              :icon="LucideTextQuote"
+              @click="showSnippetSelectorModal = true"
+            />
             <FileUploader
               :upload-args="{
                 doctype: doctype,
@@ -178,6 +185,12 @@
     :doctype="doctype"
     @apply="applyEmailTemplate"
   />
+  <SnippetSelectorModal
+    v-model="showSnippetSelectorModal"
+    :doctype="doctype"
+    :docname="modelValue?.name"
+    @apply="applySnippet"
+  />
 </template>
 
 <script setup>
@@ -188,6 +201,8 @@ import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import AttachmentItem from '@/components/AttachmentItem.vue'
 import EmailMultiSelect from '@/components/Controls/EmailMultiSelect.vue'
 import EmailTemplateSelectorModal from '@/components/Modals/EmailTemplateSelectorModal.vue'
+import SnippetSelectorModal from '@/components/Modals/SnippetSelectorModal.vue'
+import LucideTextQuote from '~icons/lucide/text-quote'
 import {
   buildEditorExtensions,
   fullToolbar,
@@ -255,6 +270,7 @@ const fromEmail = ref('')
 const toEmails = ref(modelValue.value.email ? [modelValue.value.email] : [])
 const ccEmails = ref([])
 const bccEmails = ref([])
+const toInput = ref(null)
 const ccInput = ref(null)
 const bccInput = ref(null)
 
@@ -315,6 +331,21 @@ async function applyEmailTemplate(template) {
   capture('email_template_applied', { doctype: props.doctype })
 }
 
+const showSnippetSelectorModal = ref(false)
+
+/**
+ * Insert a snippet at the caret. The body arrives already merged from the
+ * server, so nothing is resolved here.
+ *
+ * Insert, never replace: unlike an email template, a snippet is a paragraph
+ * inside a message somebody is already writing.
+ */
+function applySnippet({ body }) {
+  editor.value.commands.insertContent(body)
+  editor.value.commands.focus()
+  capture('snippet_inserted', { doctype: props.doctype })
+}
+
 function appendEmoji() {
   editor.value.commands.insertContent(emoji.value)
   editor.value.commands.focus()
@@ -332,6 +363,11 @@ function toggleBCC() {
   if (bcc.value) nextTick(() => bccInput.value.setFocus())
 }
 
+/** Put the caret in the To field. A forward opens with no recipient. */
+function focusTo() {
+  toInput.value?.setFocus?.()
+}
+
 defineExpose({
   editor,
   subject,
@@ -341,5 +377,6 @@ defineExpose({
   toEmails,
   ccEmails,
   bccEmails,
+  focusTo,
 })
 </script>
