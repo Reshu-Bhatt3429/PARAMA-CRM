@@ -320,19 +320,26 @@ def backfill_unlinked_whatsapp_messages() -> dict:
 def on_update(doc, method):
 	# after_commit: without it a client reloads the thread before the row is
 	# committed and shows a stale conversation.
-	# The event stays site wide on purpose. It carries only the reference ids, no
-	# message text, and the team inbox lets a manager watch conversations that are
-	# assigned to somebody else, so per-assignee delivery would stop the manager
-	# inbox from refreshing. TODO: narrow it to assignees plus INBOX_MANAGER_ROLES
-	# holders once the inbox can subscribe per role.
-	frappe.publish_realtime(
-		"whatsapp_message",
-		{
-			"reference_doctype": doc.reference_doctype,
-			"reference_name": doc.reference_name,
-		},
-		after_commit=True,
-	)
+	# Deliver the inbox refresh only to users who can see this conversation:
+	# the assigned agents plus inbox managers. This avoids broadcasting the
+	# lead/deal name to every Desk session and picks explicit rooms.
+	recipients = set()
+	if doc.reference_doctype and doc.reference_name:
+		assigned = frappe.db.get_value(doc.reference_doctype, doc.reference_name, "_assign")
+		recipients.update(parse_assigned_users(assigned))
+	recipients.update(get_inbox_manager_users())
+
+	payload = {
+		"reference_doctype": doc.reference_doctype,
+		"reference_name": doc.reference_name,
+	}
+	for user in recipients:
+		frappe.publish_realtime(
+			"whatsapp_message",
+			payload,
+			user=user,
+			after_commit=True,
+		)
 
 	notify_agent(doc)
 
@@ -907,6 +914,28 @@ def get_conversation_references(aggregates: list[dict]) -> dict[tuple, dict]:
 			}
 
 	return references
+
+
+def get_inbox_manager_users() -> list[str]:
+	"""Enabled users who can view all WhatsApp conversations (inbox managers)."""
+	rows = frappe.get_all(
+		"Has Role",
+		filters={"role": ["in", list(INBOX_MANAGER_ROLES)], "parenttype": "User"},
+		distinct=True,
+		pluck="parent",
+	)
+	if not rows:
+		return []
+
+	return frappe.get_all(
+		"User",
+		filters=[
+			["name", "in", rows],
+			["name", "!=", "Guest"],
+			["enabled", "=", 1],
+		],
+		pluck="name",
+	)
 
 
 def parse_assigned_users(value) -> list[str]:

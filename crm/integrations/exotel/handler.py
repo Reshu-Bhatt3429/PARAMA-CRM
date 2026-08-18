@@ -21,7 +21,9 @@ WEBHOOK_TOKEN_HEADER = "X-Webhook-Token"
 
 
 # Incoming Call
-@frappe.whitelist(allow_guest=True)
+# Exotel's servers call this webhook unauthenticated; validate_request()
+# verifies the shared webhook token (constant-time) before any work is done.
+@frappe.whitelist(allow_guest=True)  # nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
 def handle_request(**kwargs):
 	validate_request()
 	if not is_integration_enabled():

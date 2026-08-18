@@ -111,7 +111,9 @@ def get_chart(
 
 	method = get_chart_method(name)
 	if not method:
-		frappe.throw(_("Invalid chart name"))
+		# Unknown/disallowed chart name: return an error instead of dispatching
+		# to an arbitrary attribute. The allowlist stays the security boundary.
+		return {"error": _("Invalid chart name: {0}").format(name)}
 
 	return method(from_date, to_date, user)
 
