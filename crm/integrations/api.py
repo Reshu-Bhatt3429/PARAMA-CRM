@@ -88,6 +88,8 @@ def add_note_to_call_log(call_sid: str, note: dict):
 			}
 		).insert(ignore_permissions=True)
 	else:
+		# the note is addressed by name, so the caller must be allowed to write it
+		frappe.get_doc("FCRM Note", note.get("name")).check_permission("write")
 		_note = frappe.set_value("FCRM Note", note.get("name"), "content", note.get("content"))
 
 	call_log = frappe.get_cached_doc("CRM Call Log", call_sid)
@@ -118,6 +120,8 @@ def add_task_to_call_log(call_sid: str, task: dict):
 		).insert(ignore_permissions=True)
 	else:
 		_task = frappe.get_doc("CRM Task", task.get("name"))
+		# the task is addressed by name, so the caller must be allowed to write it
+		_task.check_permission("write")
 		_task.update(
 			{
 				"title": task.get("title"),
@@ -337,6 +341,8 @@ def get_contact(phone_number: str, country: str = "IN", exact_match: bool = Fals
 		.orderby(Contact.modified, order=Order.desc)
 	)
 	contacts = query.run(as_dict=True)
+	# the query builder bypasses permissions, so keep only the records the caller may read
+	contacts = [c for c in contacts if frappe.has_permission("Contact", "read", c.name)]
 
 	if len(contacts):
 		# Check if the contact is associated with a deal
@@ -345,6 +351,8 @@ def get_contact(phone_number: str, country: str = "IN", exact_match: bool = Fals
 				deal = frappe.db.get_value(
 					"CRM Contacts", {"contact": contact.name, "is_primary": 1}, "parent"
 				)
+				if not frappe.has_permission("CRM Deal", "read", deal):
+					continue
 				if are_same_phone_number(
 					contact.matched_phone, phone_number, country, validate=not exact_match
 				):
@@ -365,6 +373,8 @@ def get_contact(phone_number: str, country: str = "IN", exact_match: bool = Fals
 		.orderby("modified", order=Order.desc)
 	)
 	leads = query.run(as_dict=True)
+	# the query builder bypasses permissions, so keep only the records the caller may read
+	leads = [lead for lead in leads if frappe.has_permission("CRM Lead", "read", lead.name)]
 
 	if len(leads):
 		for lead in leads:

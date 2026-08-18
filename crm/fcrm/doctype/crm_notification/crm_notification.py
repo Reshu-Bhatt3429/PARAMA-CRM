@@ -76,6 +76,9 @@ def notify_user(notification):
 		reference_name=notification.redirect_to_docname,
 	)
 
-	if frappe.db.exists("CRM Notification", values):
+	# `doctype` is not a column: leaving it in the filters makes the lookup fail
+	# silently, so an identical notification would never be suppressed.
+	filters = {key: value for key, value in values.items() if key != "doctype"}
+	if frappe.db.exists("CRM Notification", filters):
 		return
 	frappe.get_doc(values).insert(ignore_permissions=True)

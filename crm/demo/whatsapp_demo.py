@@ -18,13 +18,16 @@ Everything is idempotent: re-running only fills in what is missing. No network
 calls. See `insert_demo_message` for why that needs care.
 """
 
+import os
+
 import frappe
 from frappe import _
+from frappe.desk.form.assign_to import _add as assign
 from frappe.utils import add_to_date, now_datetime
 
+from crm.api.doc import get_assigned_users
 from crm.api.whatsapp import (
 	WHATSAPP_LEAD_SOURCE,
-	assign_whatsapp_lead,
 	ensure_whatsapp_lead_source,
 )
 from crm.install import add_default_lead_statuses
@@ -58,8 +61,9 @@ DEMO_SALES_USERS = [
 ]
 
 # Demo-only credential. Never a real password: these accounts exist so you can
-# log in as two different salespeople on a throwaway site.
-DEMO_USER_PASSWORD = "demo1234"
+# log in as two different salespeople on a throwaway site. Set CRM_DEMO_PASSWORD
+# in the environment to override it before seeding a box anyone else can reach.
+DEMO_USER_PASSWORD = os.environ.get("CRM_DEMO_PASSWORD") or "demo1234"
 
 DEMO_LEADS = [
 	{
@@ -131,6 +135,12 @@ DEMO_LEAD_DERIVED_FIELDS = ("travel_start_in_days", "travel_days")
 # hours, which is what the follow-up nudge fires on), script 3 is warm (a short
 # thread, last touched two days ago) and script 4 is cold (nothing for nine
 # days). See `crm.api.whatsapp.compute_priority`.
+#
+# `status` on an Outgoing row uses the same vocabulary the live send path writes
+# ("Success" / "Failed"), not Meta's delivery words ("sent"/"delivered"/"read"),
+# so a seeded row and a really-sent row read the same. frappe_whatsapp is not
+# vendored in this repo, so the exact option list could not be verified here --
+# check WhatsApp Message's `status` field if the demo ever shows a blank status.
 DEMO_CONVERSATIONS = [
 	[
 		{
@@ -142,7 +152,7 @@ DEMO_CONVERSATIONS = [
 			"minutes_ago": 178,
 			"type": "Outgoing",
 			"message": "Hi Amara! The Mara is at its best then. Are you flexible on the dates?",
-			"status": "read",
+			"status": "Success",
 		},
 		{
 			"minutes_ago": 165,
@@ -150,7 +160,7 @@ DEMO_CONVERSATIONS = [
 			"content_type": "image",
 			"attach": "/assets/crm/images/desk.png",
 			"message": "This is the camp most of our groups start from.",
-			"status": "read",
+			"status": "Success",
 		},
 		{
 			"minutes_ago": 40,
@@ -161,7 +171,7 @@ DEMO_CONVERSATIONS = [
 			"minutes_ago": 12,
 			"type": "Outgoing",
 			"message": "Sending the proposal over now — happy to walk through it on a call.",
-			"status": "delivered",
+			"status": "Success",
 		},
 	],
 	[
@@ -169,7 +179,7 @@ DEMO_CONVERSATIONS = [
 			"minutes_ago": 1180,
 			"type": "Outgoing",
 			"message": "Hi Diego, following up on the Douro trip for the leadership offsite.",
-			"status": "read",
+			"status": "Success",
 		},
 		{
 			"minutes_ago": 1140,
@@ -182,13 +192,13 @@ DEMO_CONVERSATIONS = [
 			"content_type": "document",
 			"attach": "/assets/crm/images/logo.svg",
 			"message": "",
-			"status": "read",
+			"status": "Success",
 		},
 		{
 			"minutes_ago": 300,
 			"type": "Outgoing",
 			"message": "Quote attached. It holds the river-view rooms until Friday.",
-			"status": "sent",
+			"status": "Success",
 		},
 		{
 			"minutes_ago": 190,
@@ -206,13 +216,13 @@ DEMO_CONVERSATIONS = [
 			"minutes_ago": 2880,
 			"type": "Outgoing",
 			"message": "Done, Priya. Two nights at the ryokan with the private onsen.",
-			"status": "read",
+			"status": "Success",
 		},
 		{
 			"minutes_ago": 2870,
 			"type": "Outgoing",
 			"message": "Vouchers are in your inbox. Safe travels!",
-			"status": "read",
+			"status": "Success",
 		},
 	],
 	[
@@ -225,7 +235,7 @@ DEMO_CONVERSATIONS = [
 			"minutes_ago": 12980,
 			"type": "Outgoing",
 			"message": "Hi Jonas! Good to hear from you. Summer or northern lights season?",
-			"status": "read",
+			"status": "Success",
 		},
 		{
 			"minutes_ago": 12950,
@@ -236,7 +246,7 @@ DEMO_CONVERSATIONS = [
 			"minutes_ago": 12900,
 			"type": "Outgoing",
 			"message": "No rush — ping me once they have, and I will hold the cabins.",
-			"status": "read",
+			"status": "Success",
 		},
 	],
 ]
@@ -302,17 +312,28 @@ def ensure_demo_sales_users() -> list[str]:
 
 
 def assign_demo_leads(leads: list[dict]) -> dict[str, str]:
-	"""Share the demo leads out with the same helper the live capture path uses.
+	"""Share the demo leads round-robin between the two demo salespeople.
 
-	`assign_whatsapp_lead` picks whichever Sales User currently holds the fewest
-	open WhatsApp leads, so consecutive calls alternate between the two demo
-	users -- and skip any lead that is already assigned.
+	The live helper (`crm.api.whatsapp.assign_whatsapp_lead`) picks from every
+	Sales User on the site, so on a site that already has real -- or
+	setup-wizard -- Sales Users the demo conversations land on accounts nobody
+	can log in to. The demo needs its two scripted inboxes, so it assigns to
+	DEMO_SALES_USERS directly, through the same `assign_to` mechanism.
+
+	Idempotent: a lead that already carries an open assignment is left alone.
 	"""
+	demo_users = [data["email"] for data in DEMO_SALES_USERS]
 	assignments = {}
-	for lead in leads:
-		assignee = assign_whatsapp_lead(lead["name"])
-		if assignee:
-			assignments[lead["name"]] = assignee
+	for index, lead in enumerate(leads):
+		if get_assigned_users("CRM Lead", lead["name"]):
+			continue
+
+		assignee = demo_users[index % len(demo_users)]
+		assign(
+			{"assign_to": [assignee], "doctype": "CRM Lead", "name": lead["name"]},
+			ignore_permissions=True,
+		)
+		assignments[lead["name"]] = assignee
 
 	return assignments
 
@@ -474,7 +495,9 @@ def insert_demo_message(docname: str, lead: dict, message: dict, timestamp, acco
 			"attach": message.get("attach") or "",
 			"message_type": "Manual",
 			"message_id": f"wamid.demo.{docname}",
-			"status": "" if is_incoming else (message.get("status") or "sent"),
+			# Incoming rows carry no send status; outgoing ones use the live
+			# vocabulary ("Success" / "Failed"). See DEMO_CONVERSATIONS.
+			"status": "" if is_incoming else (message.get("status") or "Success"),
 			"profile_name": full_name if is_incoming else "",
 			"whatsapp_account": account_name,
 			"reference_doctype": "CRM Lead",

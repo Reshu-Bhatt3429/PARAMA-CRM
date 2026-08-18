@@ -75,7 +75,7 @@
           />
         </div>
       </div>
-      <div class="h-px border-t mx-2 border-outline-gray-modals" />
+      <div class="h-px border-t mx-2 border-outline-elevation-2" />
       <div class="flex gap-4 items-center justify-between py-3 px-2">
         <div class="flex flex-col">
           <div class="text-p-base font-medium text-ink-gray-7 truncate">
@@ -100,7 +100,7 @@
           />
         </div>
       </div>
-      <div class="h-px border-t mx-2 border-outline-gray-modals" />
+      <div class="h-px border-t mx-2 border-outline-elevation-2" />
       <div class="flex gap-4 items-center justify-between py-3 px-2">
         <div class="flex flex-col">
           <div class="text-p-base font-medium text-ink-gray-7 truncate">

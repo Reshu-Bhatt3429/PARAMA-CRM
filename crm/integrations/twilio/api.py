@@ -7,6 +7,60 @@ from werkzeug.wrappers import Response
 from crm.integrations.api import get_contact_by_phone_number
 
 from .twilio_handler import IncomingCall, Twilio, TwilioCallDetails
+from .utils import get_public_url
+
+
+def _get_signed_url_candidates(request):
+	"""Return the URLs that Twilio could have signed for this request.
+
+	Twilio signs the exact URL it called. Behind a TLS terminating proxy the scheme
+	or the port of the received URL can differ from that URL, so the site public URL
+	is tried as well.
+	"""
+	path = request.path
+	if request.query_string:
+		path += "?" + frappe.safe_decode(request.query_string)
+
+	candidates = [request.url]
+
+	public_url = get_public_url(path)
+	if public_url not in candidates:
+		candidates.append(public_url)
+
+	return candidates
+
+
+def validate_twilio_signature(twilio):
+	"""Verify the X-Twilio-Signature HMAC of an incoming webhook.
+
+	The AccountSid in the payload is only an identifier and not a secret, so the
+	signature is the part that authenticates the request.
+	"""
+	from twilio.request_validator import RequestValidator
+
+	request = frappe.request
+	if not request:
+		frappe.throw(_("Invalid Twilio request"), frappe.PermissionError)
+
+	signature = request.headers.get("X-Twilio-Signature")
+	if not signature:
+		frappe.throw(_("Missing Twilio signature"), frappe.PermissionError)
+
+	auth_token = twilio.settings.get_password("auth_token", raise_exception=False)
+	if not auth_token:
+		frappe.throw(_("Twilio auth token is not configured"), frappe.PermissionError)
+
+	if request.method == "POST":
+		params = request.form or frappe.safe_decode(request.get_data() or b"")
+	else:
+		params = {}
+
+	validator = RequestValidator(auth_token)
+	for url in _get_signed_url_candidates(request):
+		if validator.validate(url, params, signature):
+			return
+
+	frappe.throw(_("Invalid Twilio signature"), frappe.PermissionError)
 
 
 def validate_twilio_request(args, require_application_sid: bool = False):
@@ -14,6 +68,9 @@ def validate_twilio_request(args, require_application_sid: bool = False):
 	if not twilio:
 		frappe.throw(_("Twilio configuration is missing"), frappe.PermissionError)
 
+	validate_twilio_signature(twilio)
+
+	# secondary check, the AccountSid identifies the account but does not authenticate it
 	account_sid = frappe.utils.cstr(args.get("AccountSid"))
 	if not account_sid or account_sid != frappe.utils.cstr(twilio.account_sid):
 		frappe.throw(_("Invalid Twilio account"), frappe.PermissionError)

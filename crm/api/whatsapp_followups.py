@@ -34,6 +34,17 @@ DIGEST_ROLES = ("Sales Manager", "System Manager")
 
 DIGEST_EXCLUDED_USERS = ("Guest",)
 
+# The nudge and the daily digest are both WhatsApp notifications pointed at the
+# same Lead/Deal, so matching on the reference alone would let an unread digest
+# silence every nudge for that conversation. The nudge message template lives
+# here so `has_unread_followup` can match on its (translated) prefix instead.
+FOLLOWUP_MESSAGE = "Pending WhatsApp follow-up: {0} has been waiting since {1}"
+
+
+def followup_message_prefix() -> str:
+	"""The leading, conversation-independent part of a nudge message."""
+	return _(FOLLOWUP_MESSAGE).split("{0}")[0]
+
 
 def notify_pending_followups():
 	"""Hourly: nudge whoever owns a conversation that has been waiting too long."""
@@ -123,9 +134,7 @@ def create_followup_notification(conversation: dict, user: str) -> bool:
 			"owner": None,
 			"assigned_to": user,
 			"notification_type": "WhatsApp",
-			"message": _("Pending WhatsApp follow-up: {0} has been waiting since {1}").format(
-				conversation["display_name"], waiting_since
-			),
+			"message": _(FOLLOWUP_MESSAGE).format(conversation["display_name"], waiting_since),
 			"notification_text": notification_text,
 			# The reminder is about a conversation, not about one message. Pointing
 			# notification_type_doctype at the Lead/Deal (per-message notifications
@@ -150,6 +159,10 @@ def has_unread_followup(conversation: dict, user: str) -> bool:
 				"read": 0,
 				"notification_type_doctype": conversation["reference_doctype"],
 				"notification_type_doc": conversation["reference_name"],
+				# Nudges only. Without this an unread daily digest -- which is also a
+				# WhatsApp notification on the same Lead/Deal -- would suppress the
+				# hourly nudge for that conversation.
+				"message": ["like", f"{followup_message_prefix()}%"],
 			},
 		)
 	)

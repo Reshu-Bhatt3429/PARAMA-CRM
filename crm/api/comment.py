@@ -33,11 +33,13 @@ def notify_mentions(doc):
 			if doctype == "lead"
 			else reference_doc.organization or reference_doc.lead_name
 		)
+		safe_owner = frappe.utils.escape_html(owner or "")
+		safe_name = frappe.utils.escape_html(name or "")
 		notification_text = f"""
             <div class="mb-2 leading-5 text-ink-gray-5">
-                <span class="font-medium text-ink-gray-9">{owner}</span>
+                <span class="font-medium text-ink-gray-9">{safe_owner}</span>
                 <span>{_("mentioned you in {0}").format(doctype)}</span>
-                <span class="font-medium text-ink-gray-9">{name}</span>
+                <span class="font-medium text-ink-gray-9">{safe_name}</span>
             </div>
         """
 		notify_user(
@@ -98,7 +100,12 @@ def add_attachments(name: str, attachments: Iterable[str | dict]) -> None:
 	# loop through attachments
 	for a in attachments:
 		if isinstance(a, str):
+			# re-attaching copies the file_url, so the caller must already be
+			# allowed to read the source File — otherwise a private file leaks.
+			frappe.has_permission("File", "read", a, throw=True)
 			attach = frappe.db.get_value("File", {"name": a}, ["file_url", "is_private"], as_dict=1)
+			if not attach:
+				continue
 			file_args = {
 				"file_url": attach.file_url,
 				"is_private": attach.is_private,

@@ -85,6 +85,7 @@
       ref="textareaRef"
       v-model="content"
       rows="3"
+      maxlength="4096"
       class="max-h-48 w-full resize-none border-0 bg-transparent px-4 py-3 text-base text-ink-gray-9 placeholder-ink-gray-4 focus:ring-0"
       :placeholder="__('Reply via WhatsApp…')"
       @keydown.enter.exact.prevent="send()"
@@ -94,14 +95,15 @@
     <div class="flex h-12 items-center justify-between px-4 pb-1">
       <span class="text-xs text-ink-gray-4">
         {{ content.length }}/4096
-        <span class="hidden sm:inline">
+        <span class="hidden xl:inline">
           · {{ __('Enter to send, Shift+Enter for a new line') }}
         </span>
       </span>
       <Button
         variant="solid"
         :label="__('Send')"
-        :disabled="!content.trim()"
+        :loading="sending"
+        :disabled="sending || !content.trim()"
         @click="send()"
       >
         <template #prefix>
@@ -143,6 +145,7 @@ const textareaRef = ref(null)
 const emoji = ref('')
 const content = ref('')
 const fileType = ref('')
+const sending = ref(false)
 
 function textareaEl() {
   return textareaRef.value
@@ -154,7 +157,7 @@ function uploadFile(file) {
 }
 
 function send() {
-  if (!content.value.trim()) return
+  if (sending.value || !content.value.trim()) return
   sendMessage({ attach: '', content_type: 'text' })
   capture('whatsapp_send_message')
 }
@@ -169,18 +172,24 @@ function sendMessage({ attach, content_type }) {
     reply_to: reply.value?.name || '',
     content_type,
   }
-  content.value = ''
-  fileType.value = ''
-  reply.value = {}
+  // The draft is only cleared once the server has accepted it, so a failed
+  // send leaves the typed text (and the quoted reply) in place to retry.
+  // `sending` stands in for the optimistic clear and blocks a double send.
+  sending.value = true
   createResource({
     url: 'crm.api.whatsapp.create_whatsapp_message',
     params: args,
     auto: true,
     onSuccess: () => {
+      sending.value = false
+      content.value = ''
+      fileType.value = ''
+      reply.value = {}
       whatsapp.value.reload()
       emit('sent')
     },
     onError: (error) => {
+      sending.value = false
       toast.error(error.messages?.[0] || __('Failed to send WhatsApp message'))
     },
   })

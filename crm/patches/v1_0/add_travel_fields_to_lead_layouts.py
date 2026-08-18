@@ -4,9 +4,10 @@ The travel fields (destination, travel dates, group size, budget) were added to
 the CRM Lead doctype and to the default Lead layouts in ``crm/install.py``, but
 that seeder is skip-if-exists -- so sites installed earlier keep their old
 layouts and never see the new fields. This patch appends a "Travel" section to
-the Lead Side Panel and Data Fields layouts. Idempotent: a layout that already
-mentions any travel field anywhere is left untouched, as is a site whose
-doctype does not (yet) carry the fields.
+the Lead Side Panel and Data Fields layouts, carrying only the travel fields
+that layout does not mention yet. Idempotent: a layout that already mentions
+every travel field is left untouched, as is a site whose doctype does not (yet)
+carry the fields.
 """
 
 import json
@@ -52,7 +53,17 @@ def execute():
 			continue
 
 		present = {field for column in _iter_columns(layout) for field in column.get("fields", [])}
-		if present.intersection(TRAVEL_FIELDS):
+
+		# Append only what is missing, so a layout that already carries one travel
+		# field still gets the other four. A layout that carries all five ends up
+		# with no columns to add and is left untouched.
+		missing_columns = []
+		for column in columns:
+			fields = [field for field in column["fields"] if field not in present]
+			if fields:
+				missing_columns.append({**column, "fields": fields})
+
+		if not missing_columns:
 			continue
 
 		layout.append(
@@ -60,7 +71,7 @@ def execute():
 				"label": "Travel",
 				"name": "travel_section",
 				"opened": True,
-				"columns": [dict(column) for column in columns],
+				"columns": missing_columns,
 			}
 		)
 		doc.layout = json.dumps(layout)

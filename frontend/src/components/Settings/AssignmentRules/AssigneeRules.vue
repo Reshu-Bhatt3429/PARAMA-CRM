@@ -48,7 +48,7 @@
           </template>
           <template #body="{ togglePopover }">
             <div
-              class="p-1 text-ink-gray-7 mt-1 w-48 bg-white shadow-xl rounded"
+              class="p-1 text-ink-gray-7 mt-1 w-48 bg-surface-elevation-2 shadow-xl rounded"
             >
               <div
                 v-for="option in documentRoutingOptions"
@@ -103,7 +103,7 @@
           :placement="'top'"
         >
           <div
-            class="text-xs rounded-full select-none bg-blue-600 text-white p-0.5 px-2"
+            class="text-xs rounded-full select-none bg-surface-gray-10 text-ink-base p-0.5 px-2"
           >
             {{ __('Last') }}
           </div>

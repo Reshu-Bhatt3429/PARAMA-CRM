@@ -26,6 +26,8 @@ def get_assignment_rules_list():
 @frappe.whitelist()
 def duplicate_assignment_rule(docname: str, new_name: str):
 	doc = frappe.get_doc("Assignment Rule", docname)
+	# the source rule is addressed by name, so the caller must be allowed to read it
+	doc.check_permission("read")
 	doc.name = new_name
 	doc.assignment_rule_name = new_name
 	doc.insert()

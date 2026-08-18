@@ -1,9 +1,14 @@
+import hmac
+
 import frappe
 import requests
 from frappe import _
 from frappe.integrations.utils import create_request_log
 
 from crm.integrations.api import get_contact_by_phone_number
+
+# header that carries the webhook verify token, it keeps the token out of the URL
+WEBHOOK_TOKEN_HEADER = "X-Webhook-Token"
 
 # Endpoints for webhook
 
@@ -26,7 +31,7 @@ def handle_request(**kwargs):
 		kwargs,
 		request_description="Exotel Call",
 		service_name="Exotel",
-		request_headers=frappe.request.headers,
+		request_headers=get_request_headers_for_log(),
 		is_remote_request=1,
 	)
 
@@ -97,6 +102,7 @@ def make_a_call(to_number: str, from_number: str | None = None, caller_id: str |
 	try:
 		response = requests.post(
 			endpoint,
+			auth=get_exotel_auth(),
 			data={
 				"From": from_number,
 				"To": to_number,
@@ -130,10 +136,10 @@ def make_a_call(to_number: str, from_number: str | None = None, caller_id: str |
 
 
 def get_exotel_endpoint(action=None, version="v1"):
+	# the credentials stay out of the URL, they travel in the HTTP Basic auth header,
+	# because a URL is written to proxy logs, to error reports and to request logs
 	settings = get_exotel_settings()
-	return "https://{api_key}:{api_token}@{subdomain}/{version}/Accounts/{sid}/{action}".format(
-		api_key=settings.api_key,
-		api_token=settings.get_password("api_token"),
+	return "https://{subdomain}/{version}/Accounts/{sid}/{action}".format(
 		subdomain=settings.subdomain,
 		version=version,
 		sid=settings.account_sid,
@@ -141,15 +147,25 @@ def get_exotel_endpoint(action=None, version="v1"):
 	)
 
 
+def get_exotel_auth():
+	"""Return (api_key, api_token) for the HTTP Basic auth header of an Exotel call."""
+	settings = get_exotel_settings()
+	return (settings.api_key, settings.get_password("api_token"))
+
+
 def get_all_exophones():
 	endpoint = get_exotel_endpoint("IncomingPhoneNumbers", "v2_beta")
-	response = requests.get(endpoint)
+	response = requests.get(endpoint, auth=get_exotel_auth())
 	return [phone.get("friendly_name") for phone in response.json().get("incoming_phone_numbers", [])]
 
 
 def get_status_updater_url():
 	from frappe.utils.data import get_url
 
+	# TODO: Exotel gives no way to set a request header on a callback it makes, so the
+	# verify token has to stay in this query string. Validation accepts the token in the
+	# WEBHOOK_TOKEN_HEADER header first, so a gateway that can inject the header keeps the
+	# token out of the URL. Rotate the token if the proxy logs are exposed.
 	webhook_verify_token = frappe.db.get_single_value("CRM Exotel Settings", "webhook_verify_token")
 	return get_url(f"api/method/crm.integrations.exotel.handler.handle_request?key={webhook_verify_token}")
 
@@ -158,12 +174,22 @@ def get_exotel_settings():
 	return frappe.get_single("CRM Exotel Settings")
 
 
+def get_request_headers_for_log():
+	"""Return the request headers without the webhook token, so the log keeps no secret."""
+	return {k: v for k, v in frappe.request.headers.items() if k.lower() != WEBHOOK_TOKEN_HEADER.lower()}
+
+
 def validate_request():
-	# workaround security since exotel does not support request signature
-	# /api/method/<exotel-integration-method>?key=<exotel-webhook=verify-token>
+	# workaround security since exotel does not support request signature.
+	# preferred: the token travels in the WEBHOOK_TOKEN_HEADER header.
+	# fallback (Exotel itself): /api/method/<exotel-integration-method>?key=<token>
 	webhook_verify_token = frappe.db.get_single_value("CRM Exotel Settings", "webhook_verify_token")
-	key = frappe.request.args.get("key")
-	is_valid = key and key == webhook_verify_token
+	key = frappe.request.headers.get(WEBHOOK_TOKEN_HEADER) or frappe.request.args.get("key")
+	is_valid = (
+		bool(webhook_verify_token)
+		and bool(key)
+		and hmac.compare_digest(str(key).encode(), str(webhook_verify_token).encode())
+	)
 
 	if not is_valid:
 		frappe.throw(_("Unauthorized request"), exc=frappe.PermissionError)

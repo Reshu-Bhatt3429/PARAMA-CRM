@@ -1,3 +1,5 @@
+import re
+
 import frappe
 import requests
 from frappe import _
@@ -9,6 +11,11 @@ from crm.fcrm.doctype.fcrm_settings.fcrm_settings import FCRMSettings
 def get_exchange_rate(from_currency: str, to_currency: str, date: str | None = None):
 	if not date:
 		date = "latest"
+
+	# `date` reaches the host position of a provider URL, so only an ISO date or
+	# the literal "latest" may pass. Anything else is a redirect of the request.
+	if date != "latest" and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(date)):
+		frappe.throw(_("Invalid date: {0}").format(frappe.utils.escape_html(str(date))))
 
 	# "latest" is keyed by today's date so tomorrow's call automatically misses the cache
 	cache_date = frappe.utils.today() if date == "latest" else date

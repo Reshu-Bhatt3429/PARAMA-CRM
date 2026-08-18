@@ -3,9 +3,8 @@
   <div
     v-if="visible"
     ref="target"
-    class="absolute z-20 h-screen bg-surface-base transition-all duration-300 ease-in-out"
+    class="absolute z-20 h-screen bg-surface-base shadow-xl transition-all duration-300 ease-in-out"
     :style="{
-      'box-shadow': '8px 0px 8px rgba(0, 0, 0, 0.1)',
       'max-width': '400px',
       'min-width': '400px',
       left: 'calc(100% + 1px)',

@@ -305,39 +305,29 @@ input[type='radio'] {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  border: 2px solid #c5c2c2;
+  border: 2px solid var(--outline-gray-3);
   border-radius: 50%;
   outline: none;
   transition: all 0.2s ease;
-  background-color: white;
+  background-color: var(--surface-base);
 }
 
+/* The checked state is the theme's primary "solid" pair, exactly like a solid
+   Button: `--surface-gray-10` fill with `--ink-base` on top. Both tokens invert
+   between light and dark, so the former `[data-theme='dark']` overrides (which
+   hardcoded #171717 / #fff) are no longer needed. */
 input[type='radio']:checked {
-  background-color: black;
-  border: 2px solid #000;
+  background-color: var(--surface-gray-10);
+  border: 2px solid var(--surface-gray-10);
 }
 
 input[type='radio']:checked::after {
   content: '';
-  background-color: #fff;
+  background-color: var(--ink-base);
 }
 
 input[type='radio']:focus {
   outline: none !important;
   box-shadow: none !important;
-}
-
-[data-theme='dark'] input[type='radio'] {
-  border: 2px solid #525252;
-  background-color: transparent;
-}
-
-[data-theme='dark'] input[type='radio']:checked {
-  background-color: #171717;
-  border: 2px solid #fff;
-}
-
-[data-theme='dark'] input[type='radio']:checked::after {
-  background-color: #171717;
 }
 </style>

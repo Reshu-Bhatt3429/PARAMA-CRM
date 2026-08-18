@@ -513,7 +513,7 @@
 
       <!-- PREVIEW MODE -->
       <div v-else class="max-w-2xl pt-6">
-        <div class="rounded-xl border bg-surface-white p-7">
+        <div class="rounded-xl border bg-surface-base p-7">
           <!-- simulated success screen -->
           <div
             v-if="previewSubmitted"

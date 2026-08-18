@@ -188,7 +188,7 @@ def parse_call_log(call):
 
 @frappe.whitelist()
 def get_call_log(name: str):
-	call = frappe.get_cached_doc(
+	call_log = frappe.get_cached_doc(
 		"CRM Call Log",
 		name,
 		fields=[
@@ -207,16 +207,18 @@ def get_call_log(name: str):
 			"reference_docname",
 			"creation",
 		],
-	).as_dict()
+	)
+	call_log.check_permission("read")
 
-	call = parse_call_log(call)
+	call = parse_call_log(call_log.as_dict())
 
 	notes = []
 	tasks = []
 
 	if call.get("note"):
-		note = frappe.get_cached_doc("FCRM Note", call.get("note")).as_dict()
-		notes.append(note)
+		note = frappe.get_cached_doc("FCRM Note", call.get("note"))
+		if note.has_permission("read"):
+			notes.append(note.as_dict())
 
 	if call.get("reference_doctype") and call.get("reference_docname"):
 		if call.get("reference_doctype") == "CRM Lead":
@@ -227,11 +229,13 @@ def get_call_log(name: str):
 	if call.get("links"):
 		for link in call.get("links"):
 			if link.get("link_doctype") == "CRM Task":
-				task = frappe.get_cached_doc("CRM Task", link.get("link_name")).as_dict()
-				tasks.append(task)
+				task = frappe.get_cached_doc("CRM Task", link.get("link_name"))
+				if task.has_permission("read"):
+					tasks.append(task.as_dict())
 			elif link.get("link_doctype") == "FCRM Note":
-				note = frappe.get_cached_doc("FCRM Note", link.get("link_name")).as_dict()
-				notes.append(note)
+				note = frappe.get_cached_doc("FCRM Note", link.get("link_name"))
+				if note.has_permission("read"):
+					notes.append(note.as_dict())
 			elif link.get("link_doctype") == "CRM Lead":
 				call["_lead"] = link.get("link_name")
 			elif link.get("link_doctype") == "CRM Deal":

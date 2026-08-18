@@ -10,8 +10,10 @@
       @click="theme = 'light'"
     >
       <div class="pl-5 pt-3.5 bg-surface-gray-2 rounded-t-[10.5px]">
-        <div class="bg-white rounded-tl-sm">
-          <div class="flex gap-[3px] py-[3px] px-1 border-b border-gray-100">
+        <div class="theme-preview-light bg-surface-base rounded-tl-sm">
+          <div
+            class="flex gap-[3px] py-[3px] px-1 border-b border-outline-gray-1"
+          >
             <div class="size-1.5 bg-[#FF5F57] rounded-full"></div>
             <div class="size-1.5 bg-[#FEBC2D] rounded-full"></div>
             <div class="size-1.5 bg-[#28C840] rounded-full"></div>
@@ -29,9 +31,9 @@
               <div>{{ __(name) }}</div>
             </div>
             <div class="flex flex-col flex-1 gap-[5px]">
-              <div class="bg-gray-100 w-full h-1.5"></div>
-              <div class="bg-gray-100 w-full h-1.5"></div>
-              <div class="bg-gray-100 w-full h-1.5"></div>
+              <div class="bg-surface-blue-6 w-full h-1.5"></div>
+              <div class="bg-surface-gray-3 w-full h-1.5"></div>
+              <div class="bg-surface-gray-3 w-full h-1.5"></div>
             </div>
           </div>
         </div>
@@ -58,8 +60,10 @@
       @click="theme = 'dark'"
     >
       <div class="pl-5 pt-3.5 bg-surface-gray-2 rounded-t-[10.5px]">
-        <div class="bg-gray-900 rounded-tl-sm">
-          <div class="flex gap-[3px] py-[3px] px-1 border-b border-gray-800">
+        <div class="theme-preview-dark bg-surface-base rounded-tl-sm">
+          <div
+            class="flex gap-[3px] py-[3px] px-1 border-b border-outline-gray-1"
+          >
             <div class="size-1.5 bg-[#FF5F57] rounded-full"></div>
             <div class="size-1.5 bg-[#FEBC2D] rounded-full"></div>
             <div class="size-1.5 bg-[#28C840] rounded-full"></div>
@@ -77,9 +81,9 @@
               <div>{{ __(name) }}</div>
             </div>
             <div class="flex flex-col flex-1 gap-[5px]">
-              <div class="bg-gray-800 w-full h-1.5"></div>
-              <div class="bg-gray-800 w-full h-1.5"></div>
-              <div class="bg-gray-800 w-full h-1.5"></div>
+              <div class="bg-surface-blue-6 w-full h-1.5"></div>
+              <div class="bg-surface-gray-3 w-full h-1.5"></div>
+              <div class="bg-surface-gray-3 w-full h-1.5"></div>
             </div>
           </div>
         </div>
@@ -111,8 +115,10 @@
         <div
           class="flex flex-1 pl-5 pt-3.5 bg-surface-gray-2 rounded-tl-[10.5px]"
         >
-          <div class="bg-white rounded-tl-sm w-full">
-            <div class="flex gap-[3px] py-[3px] px-1 border-b border-gray-100">
+          <div class="theme-preview-light bg-surface-base rounded-tl-sm w-full">
+            <div
+              class="flex gap-[3px] py-[3px] px-1 border-b border-outline-gray-1"
+            >
               <div class="size-1.5 bg-[#FF5F57] rounded-full"></div>
               <div class="size-1.5 bg-[#FEBC2D] rounded-full"></div>
               <div class="size-1.5 bg-[#28C840] rounded-full"></div>
@@ -135,8 +141,10 @@
         <div
           class="flex flex-1 pl-5 pt-3.5 bg-surface-gray-3 rounded-tr-[10.5px]"
         >
-          <div class="bg-gray-900 rounded-tl-sm w-full">
-            <div class="flex gap-[3px] py-[3px] px-1 border-b border-gray-800">
+          <div class="theme-preview-dark bg-surface-base rounded-tl-sm w-full">
+            <div
+              class="flex gap-[3px] py-[3px] px-1 border-b border-outline-gray-1"
+            >
               <div class="size-1.5 bg-[#FF5F57] rounded-full"></div>
               <div class="size-1.5 bg-[#FEBC2D] rounded-full"></div>
               <div class="size-1.5 bg-[#28C840] rounded-full"></div>
@@ -196,3 +204,27 @@ const theme = computed({
   },
 })
 </script>
+
+<style scoped>
+/* The two mini-windows must show the light palette AND the dark palette at the
+   same time, whatever theme the app is currently in, so they cannot read the
+   global tokens (those flip together). Instead each preview redefines the
+   handful of tokens it draws with, exactly as `.crm-sidebar` and `.crm-chat` do
+   in index.css. Every value below is copied from the matching declaration in
+   src/index.css, so the preview always shows the real product palette. */
+.theme-preview-light {
+  --surface-base: #ffffff; /* index.css: light --surface-base stays white */
+  --surface-gray-3: #ebebf5; /* index.css light --surface-gray-3 */
+  --surface-blue-6: #4f46e5; /* index.css light --surface-blue-6 (indigo primary) */
+  --ink-gray-5: #787882; /* index.css light --ink-gray-5 */
+  --outline-gray-1: #e8e8f3; /* index.css light --outline-gray-1 */
+}
+
+.theme-preview-dark {
+  --surface-base: #16171b; /* index.css dark --surface-base */
+  --surface-gray-3: #36373f; /* index.css dark --surface-gray-3 */
+  --surface-blue-6: #818cf8; /* index.css dark indigo accent (--ink-blue-link) */
+  --ink-gray-5: #7a7a7a; /* frappe-ui dark --ink-gray-5 (not re-themed) */
+  --outline-gray-1: #242424; /* frappe-ui dark --outline-gray-1 (not re-themed) */
+}
+</style>
