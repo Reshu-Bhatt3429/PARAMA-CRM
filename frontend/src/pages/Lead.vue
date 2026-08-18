@@ -132,6 +132,7 @@
                   {{ title }}
                 </div>
               </Tooltip>
+              <TagChips doctype="CRM Lead" :name="leadId" />
               <div class="flex gap-1.5">
                 <Button
                   v-if="callEnabled"
@@ -264,6 +265,7 @@ import LinkIcon from '@/components/Icons/LinkIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
+import TagChips from '@/components/TagChips.vue'
 import Activities from '@/components/Activities/Activities.vue'
 import AssignTo from '@/components/AssignTo.vue'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
@@ -287,6 +289,7 @@ import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
 import { whatsappEnabled } from '@/composables/whatsapp'
 import { callEnabled } from '@/composables/telephony'
+import { useRecents } from '@/composables/recents'
 import {
   createResource,
   FileUploader,
@@ -341,6 +344,15 @@ const doc = computed(() => document.doc || {})
 onMounted(async () => {
   if (document.doc) await triggerOnRender()
 })
+
+// Item 11. Recorded only once the document actually loaded: a lead the user
+// may not read never reaches here, so it never enters their recents.
+const { record: recordRecent } = useRecents()
+watch(
+  () => document.doc?.name,
+  (name) => name && recordRecent('CRM Lead', name),
+  { immediate: true },
+)
 
 watch(error, (err) => {
   if (err) {

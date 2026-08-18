@@ -23,6 +23,30 @@
              active row's shadow. Widen the scroll box to the sidebar edges and
              pad the content back in so the shadow has room. -->
         <div class="-mx-2 mt-2 flex flex-1 flex-col gap-1 overflow-y-auto px-2">
+          <!-- Search sits above Notifications rather than inside a feature
+               group: it is not a page, it opens the Cmd+K palette. -->
+          <SidebarItem
+            id="search-btn"
+            :label="__('Search')"
+            @click="openCommandPalette"
+          >
+            <template #prefix>
+              <span
+                class="lucide-search size-4 text-ink-gray-7"
+                aria-hidden="true"
+              />
+            </template>
+            <template #suffix>
+              <span
+                v-if="!isCollapsed"
+                class="mr-2 text-xs text-ink-gray-5"
+                aria-hidden="true"
+              >
+                {{ searchShortcutLabel }}
+              </span>
+            </template>
+          </SidebarItem>
+
           <SidebarItem
             id="notifications-btn"
             :label="__('Notifications')"
@@ -216,6 +240,7 @@ import {
   mobileSidebarOpened,
 } from '@/composables/settings'
 import { showChangePasswordModal } from '@/composables/modals'
+import { openCommandPalette } from '@/composables/commandPalette'
 import { isWhatsappInstalled } from '@/composables/whatsapp'
 import { canUseItineraries } from '@/composables/itinerary'
 import { useBroadcast } from '@/composables/useBroadcast.js'
@@ -266,6 +291,14 @@ const isCollapsed = computed(() => isSidebarCollapsed.value && !props.mobile)
 
 const isFCSite = ref(window.is_fc_site)
 const isDemoSite = ref(window.is_demo_site)
+
+// The palette answers to both modifiers; the hint shows the one this machine
+// actually uses.
+const searchShortcutLabel =
+  typeof navigator !== 'undefined' &&
+  /Mac|iPhone|iPad/.test(navigator.platform || '')
+    ? '⌘K'
+    : 'Ctrl K'
 
 // Every feature page lives in one of these labelled groups, and every group is
 // open on first load, so a new user sees the whole app without expanding

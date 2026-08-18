@@ -86,6 +86,7 @@
               {{ title }}
             </div>
           </Tooltip>
+          <TagChips doctype="CRM Deal" :name="dealId" />
           <div class="flex gap-1.5">
             <Button
               v-if="callEnabled"
@@ -362,6 +363,7 @@ import ArrowUpRightIcon from '@/components/Icons/ArrowUpRightIcon.vue'
 import SuccessIcon from '@/components/Icons/SuccessIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
+import TagChips from '@/components/TagChips.vue'
 import Activities from '@/components/Activities/Activities.vue'
 import OrganizationModal from '@/components/Modals/OrganizationModal.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
@@ -412,6 +414,7 @@ import {
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useActiveTabManager } from '@/composables/useActiveTabManager'
+import { useRecents } from '@/composables/recents'
 
 const { on } = useBroadcast()
 const { brand } = getSettings()
@@ -442,6 +445,15 @@ const {
   scripts,
   error,
 } = useDocument('CRM Deal', props.dealId)
+
+// Item 11 (recently viewed). Recorded only once the document loaded:
+// a record the user may not read never reaches here.
+const { record: recordRecent } = useRecents()
+watch(
+  () => document.doc?.name,
+  (name) => name && recordRecent('CRM Deal', name),
+  { immediate: true },
+)
 
 const canDelete = computed(() => permissions.data?.permissions?.delete || false)
 

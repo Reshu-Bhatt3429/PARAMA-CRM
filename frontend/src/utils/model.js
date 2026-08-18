@@ -28,6 +28,10 @@ export const standardFieldsMeta = [
     options: 'User',
   },
   { label: 'Like', fieldtype: 'Data', fieldname: '_liked_by' },
+  // Makes "Tags" addable as a list column (master spec §5, item 2). The server
+  // already offers `_user_tags` as a filterable field
+  // (`crm/api/doc.py::get_filterable_fields`); this is the column side of it.
+  { label: 'Tags', fieldtype: 'Data', fieldname: '_user_tags' },
 ]
 
 export const noValueFieldTypes = [

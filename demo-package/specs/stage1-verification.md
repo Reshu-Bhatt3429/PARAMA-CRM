@@ -961,8 +961,16 @@ warnings
   An error occurred when globbing for files. '(0 , brace_expansion_1.expand) is not a function'
 ```
 
-Same glob warning and same `NODE_OPTIONS` requirement as Stage 1A. The build
-output is gitignored, so it left no working-tree churn.
+Same glob warning and same `NODE_OPTIONS` requirement as Stage 1A. Both
+`crm/public/frontend` and `crm/www/crm.html` are gitignored (`.gitignore:10-11`),
+so the build left no working-tree churn. The build was re-run after the last
+code change and passed again (`✓ built in 1m 14s`).
+
+**The running demo site still serves the PREVIOUS bundle.** The container serves
+its own clone at `~/frappe-bench/apps/crm`, and the push command this stage uses
+excludes `crm/public` on purpose. Building is a verification step here, not a
+deploy; deploying a half-finished Stage 2 (this worker's items plus the parallel
+worker's) is a decision for whoever closes the stage.
 
 **The first attempt failed, and not on a Stage 2A file.** Verbatim:
 
@@ -1041,9 +1049,18 @@ and `ruff format crm/` would have rewritten their files mid-edit.
 5. **No live click-through of the UI was performed by this stage.** The endpoints
    were exercised over real HTTP as a real Sales User and every component compiles
    and is unit-tested, but nobody drove the palette, the chips or the banner in a
-   browser. That walkthrough is Stage 6's (b) reviewer's job and is explicitly
-   still owed.
-6. **Stage 1A/1B open issue 1 stands but is narrower than recorded.** The 47
+   browser — the demo site still serves the pre-Stage-2 bundle (see the build
+   section). That walkthrough is Stage 6's (b) reviewer's job and is explicitly
+   still owed. Two things it should check first, because they are the parts a
+   unit test cannot reach: the frappe-ui `Combobox` in `TagChips.vue` (this stage
+   uses its `trigger="button"` + `#trigger` slot + `type: 'custom'` option
+   contract, all of which are library behaviour, not ours), and the palette's
+   focus handling inside reka-ui's `DialogContent`.
+6. **Lint scope was narrowed on purpose.** `ruff format crm/` and
+   `prettier --write frontend/` were NOT run tree-wide, because a second worker
+   has uncommitted files in the same tree. Whoever closes Stage 2 should run both
+   tree-wide once the parallel work has landed.
+7. **Stage 1A/1B open issue 1 stands but is narrower than recorded.** The 47
    v16-only modules still do not collect, including
    `crm/permissions/test_org_hierarchy.py`. Hierarchy behaviour itself IS testable
    here, and Stage 2A tests it — see the section above.

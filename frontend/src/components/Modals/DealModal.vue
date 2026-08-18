@@ -55,6 +55,11 @@
             :data="deal.doc"
             doctype="CRM Deal"
           />
+          <DuplicateWarning
+            doctype="CRM Deal"
+            :email="deal.doc.email"
+            :phone="deal.doc.mobile_no"
+          />
           <ErrorMessage v-if="error" class="mt-4" :message="__(error)" />
         </div>
       </div>
@@ -81,6 +86,7 @@
 </template>
 
 <script setup>
+import DuplicateWarning from '@/components/DuplicateWarning.vue'
 import EditIcon from '@/components/Icons/EditIcon.vue'
 import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import { usersStore } from '@/stores/users'

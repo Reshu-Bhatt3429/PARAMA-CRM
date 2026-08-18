@@ -27,6 +27,15 @@
         </div>
         <div>
           <FieldLayout v-if="tabs.data" :tabs="tabs.data" :data="lead.doc" />
+          <!-- Non-blocking: a match never stops the Create button. It sits
+               under the form rather than under the email field itself because
+               the fields are rendered by FieldLayout, which this stage does
+               not modify (see demo-package/specs/stage2a-notes.md). -->
+          <DuplicateWarning
+            doctype="CRM Lead"
+            :email="lead.doc.email"
+            :phone="lead.doc.mobile_no"
+          />
           <ErrorMessage v-if="error" class="mt-4" :message="__(error)" />
         </div>
       </div>
@@ -53,6 +62,7 @@
 </template>
 
 <script setup>
+import DuplicateWarning from '@/components/DuplicateWarning.vue'
 import EditIcon from '@/components/Icons/EditIcon.vue'
 import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import { usersStore } from '@/stores/users'

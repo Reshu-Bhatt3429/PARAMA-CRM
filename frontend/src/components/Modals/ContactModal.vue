@@ -31,6 +31,11 @@
           :data="_contact.doc"
           doctype="Contact"
         />
+        <DuplicateWarning
+          doctype="Contact"
+          :email="_contact.doc.email_id"
+          :phone="_contact.doc.mobile_no"
+        />
         <ErrorMessage v-if="error" class="mt-6" :message="__(error)" />
       </div>
       <div class="px-4 pb-7 pt-4 sm:px-6">
@@ -49,6 +54,7 @@
 </template>
 
 <script setup>
+import DuplicateWarning from '@/components/DuplicateWarning.vue'
 import FieldLayout from '@/components/FieldLayout/FieldLayout.vue'
 import EditIcon from '@/components/Icons/EditIcon.vue'
 import { usersStore } from '@/stores/users'

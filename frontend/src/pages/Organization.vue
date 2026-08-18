@@ -224,6 +224,7 @@ import {
   call,
 } from 'frappe-ui'
 import { useDoctypeModal } from '@/composables/doctypeModal'
+import { useRecents } from '@/composables/recents'
 import { useTelemetry } from 'frappe-ui/frappe'
 import { computed, ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -253,6 +254,15 @@ const {
   scripts,
   triggerOnRender,
 } = useDocument('CRM Organization', props.organizationId)
+
+// Item 11 (recently viewed). Recorded only once the document loaded:
+// a record the user may not read never reaches here.
+const { record: recordRecent } = useRecents()
+watch(
+  () => organization.doc?.name,
+  (name) => name && recordRecent('CRM Organization', name),
+  { immediate: true },
+)
 
 const canDelete = computed(() => permissions.data?.permissions?.delete || false)
 

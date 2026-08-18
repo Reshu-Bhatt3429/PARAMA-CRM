@@ -17,8 +17,13 @@
   />
   <AboutModal v-model="showAboutModal" />
   <FieldLayoutDialogContainer />
+  <!-- Mounted here, once, because it is reached from three places that live in
+       different trees: the desktop sidebar button, the mobile top-bar button
+       and the global Cmd/Ctrl+K shortcut. -->
+  <CommandPalette />
 </template>
 <script setup>
+import CommandPalette from '@/components/CommandPalette.vue'
 import FieldLayoutDialogContainer from '@/components/Modals/FieldLayoutDialogContainer.vue'
 import ChangePasswordModal from '@/components/Modals/ChangePasswordModal.vue'
 import CreateDocumentModal from '@/components/Modals/CreateDocumentModal.vue'
