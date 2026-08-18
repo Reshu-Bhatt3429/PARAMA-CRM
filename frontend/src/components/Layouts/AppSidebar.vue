@@ -55,16 +55,14 @@
             v-for="section in allViews"
             :key="section.name"
             :label="section.name"
-            :hideLabel="section.hideLabel"
             :opened="section.opened"
           >
-            <template #header="{ opened, hide, toggle }">
+            <template #header="{ opened, toggle }">
               <SidebarLabel
-                v-if="!hide"
                 divider
                 class="mb-1 mt-4 select-none"
                 :class="!isCollapsed && 'cursor-pointer'"
-                @click="toggle()"
+                @click="toggleSection(section, opened, toggle)"
               >
                 <span class="flex items-center gap-1.5">
                   <span
@@ -83,7 +81,7 @@
                 :to="link.to"
                 :label="__(link.label)"
                 :active="activeItem === link.key"
-                @click="selectItem($event, link.key)"
+                @click="onLinkClick($event, link)"
               >
                 <template #prefix>
                   <Icon :icon="link.icon" class="size-4 text-ink-gray-7" />
@@ -176,6 +174,7 @@
 
 <script setup>
 import BrushCleaningIcon from '~icons/lucide/brush-cleaning'
+import LucideImport from '~icons/lucide/import'
 import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
 import LucideMap from '~icons/lucide/map'
 import CRMLogo from '@/components/Icons/CRMLogo.vue'
@@ -200,6 +199,7 @@ import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
 import CollapseSidebar from '@/components/Icons/CollapseSidebar.vue'
 import NotificationsIcon from '@/components/Icons/NotificationsIcon.vue'
+import SettingsIcon from '@/components/Icons/SettingsIcon.vue'
 import HelpIcon from '@/components/Icons/HelpIcon.vue'
 import Notifications from '@/components/Notifications.vue'
 import Settings from '@/components/Settings/Settings.vue'
@@ -243,6 +243,7 @@ const props = defineProps({
 
 const route = useRoute()
 
+const { user } = sessionStore()
 const { getPinnedViews, getPublicViews } = viewsStore()
 const { toggle: toggleNotificationPanel } = notificationsStore()
 const { capture } = useTelemetry()
@@ -251,6 +252,14 @@ const { send } = useBroadcast()
 
 const isSidebarCollapsed = useStorage('isSidebarCollapsed', false)
 
+// Which sidebar groups this user has collapsed, as { [group name]: true }.
+// One browser can hold sessions for several sites and several users, so the key
+// carries both; anything missing from the map counts as open.
+const collapsedGroupsKey = `crm:sidebar-groups:${
+  window.site_name || window.location.hostname
+}:${user || 'guest'}`
+const collapsedGroups = useStorage(collapsedGroupsKey, {})
+
 // The mobile drawer pins the sidebar open, so it is never visually collapsed
 // even when the stored rail state says otherwise.
 const isCollapsed = computed(() => isSidebarCollapsed.value && !props.mobile)
@@ -258,78 +267,123 @@ const isCollapsed = computed(() => isSidebarCollapsed.value && !props.mobile)
 const isFCSite = ref(window.is_fc_site)
 const isDemoSite = ref(window.is_demo_site)
 
-const links = [
+// Every feature page lives in one of these labelled groups, and every group is
+// open on first load, so a new user sees the whole app without expanding
+// anything. A group whose entries are all conditioned away is dropped entirely
+// rather than left as an empty header.
+const linkGroups = [
   {
-    label: 'Dashboard',
-    icon: LucideLayoutDashboard,
-    to: 'Dashboard',
-    condition: () => !props.mobile,
+    name: 'Sales',
+    links: [
+      {
+        label: 'Dashboard',
+        icon: LucideLayoutDashboard,
+        to: 'Dashboard',
+        condition: () => !props.mobile,
+      },
+      {
+        label: 'Leads',
+        icon: LeadsIcon,
+        to: 'Leads',
+      },
+      {
+        label: 'Deals',
+        icon: DealsIcon,
+        to: 'Deals',
+      },
+      {
+        label: 'Contacts',
+        icon: ContactsIcon,
+        to: 'Contacts',
+      },
+      {
+        label: 'Organizations',
+        icon: OrganizationsIcon,
+        to: 'Organizations',
+      },
+    ],
   },
   {
-    label: 'Leads',
-    icon: LeadsIcon,
-    to: 'Leads',
+    name: 'Work',
+    links: [
+      {
+        label: 'Tasks',
+        icon: TaskIcon,
+        to: 'Tasks',
+      },
+      {
+        label: 'Notes',
+        icon: NoteIcon,
+        to: 'Notes',
+      },
+      {
+        label: 'Calendar',
+        icon: CalendarIcon,
+        to: 'Calendar',
+        condition: () => !props.mobile,
+      },
+      {
+        label: 'Call Logs',
+        icon: PhoneIcon,
+        to: 'Call Logs',
+      },
+    ],
   },
   {
-    label: 'Deals',
-    icon: DealsIcon,
-    to: 'Deals',
+    name: 'Channels',
+    links: [
+      {
+        label: 'WhatsApp',
+        icon: WhatsAppIcon,
+        to: 'WhatsApp',
+        // The shared inbox is meaningless without the frappe_whatsapp app.
+        condition: () => isWhatsappInstalled.value,
+      },
+    ],
   },
   {
-    label: 'Contacts',
-    icon: ContactsIcon,
-    to: 'Contacts',
+    name: 'Travel',
+    links: [
+      {
+        label: 'Itineraries',
+        icon: LucideMap,
+        to: 'Itineraries',
+        // Hidden from anyone who cannot read an itinerary. The list is row
+        // filtered on the server as well, so this only decides what is worth
+        // showing.
+        condition: () => canUseItineraries.value,
+      },
+    ],
   },
   {
-    label: 'Organizations',
-    icon: OrganizationsIcon,
-    to: 'Organizations',
-  },
-  {
-    label: 'Notes',
-    icon: NoteIcon,
-    to: 'Notes',
-  },
-  {
-    label: 'Tasks',
-    icon: TaskIcon,
-    to: 'Tasks',
-  },
-  {
-    label: 'Calendar',
-    icon: CalendarIcon,
-    to: 'Calendar',
-    condition: () => !props.mobile,
-  },
-  {
-    label: 'Call Logs',
-    icon: PhoneIcon,
-    to: 'Call Logs',
-  },
-  {
-    label: 'WhatsApp',
-    icon: WhatsAppIcon,
-    to: 'WhatsApp',
-    // The shared inbox is meaningless without the frappe_whatsapp app.
-    condition: () => isWhatsappInstalled.value,
-  },
-  {
-    label: 'Itineraries',
-    icon: LucideMap,
-    to: 'Itineraries',
-    // Hidden from anyone who cannot read an itinerary. The list is row filtered
-    // on the server as well, so this only decides what is worth showing.
-    condition: () => canUseItineraries.value,
+    name: 'More',
+    links: [
+      {
+        label: 'Data Import',
+        icon: LucideImport,
+        to: 'DataImportList',
+      },
+      {
+        label: 'Settings',
+        icon: SettingsIcon,
+        key: 'Settings',
+        // The settings modal is desktop only — it is not mounted on mobile, and
+        // UserDropdown hides its entry there for the same reason.
+        condition: () => !props.mobile,
+        onClick: () => (showSettings.value = true),
+      },
+    ],
   },
 ]
 
 const allViews = computed(() => {
-  let _views = [
-    {
-      name: 'All Views',
-      hideLabel: true,
-      opened: true,
-      views: links
+  let _views = linkGroups
+    .map((group) => ({
+      name: group.name,
+      // Feature groups remember their open state; saved-view sections do not.
+      storageKey: group.name,
+      opened: !collapsedGroups.value[group.name],
+      views: group.links
         .filter((link) => {
           if (link.condition) {
             return link.condition()
@@ -339,11 +393,13 @@ const allViews = computed(() => {
         .map((link) => ({
           label: link.label,
           icon: link.icon,
-          key: link.to,
-          to: { name: link.to },
+          key: link.key || link.to,
+          to: link.to ? { name: link.to } : undefined,
+          onClick: link.onClick,
         })),
-    },
-  ]
+    }))
+    .filter((group) => group.views.length)
+
   if (getPublicViews().length) {
     _views.push({
       name: 'Public Views',
@@ -361,6 +417,18 @@ const allViews = computed(() => {
   }
   return _views
 })
+
+// CollapsibleSection owns the open/closed ref once it is mounted, so the stored
+// value is written here on toggle instead of being watched. `opened` is the
+// state *before* the toggle, which is exactly the new collapsed state.
+function toggleSection(section, opened, toggle) {
+  toggle()
+  if (!section.storageKey) return
+  collapsedGroups.value = {
+    ...collapsedGroups.value,
+    [section.storageKey]: opened,
+  }
+}
 
 function parseView(views) {
   return views.map((view) => {
@@ -427,6 +495,19 @@ function selectItem(event, key) {
   }
 }
 
+// An entry either navigates (saved views and every routed page) or runs an
+// action, such as the Settings modal, which must not steal the active highlight.
+function onLinkClick(event, link) {
+  if (link.onClick) {
+    link.onClick()
+    if (props.mobile) {
+      mobileSidebarOpened.value = false
+    }
+    return
+  }
+  selectItem(event, link.key)
+}
+
 watch(
   () => [route.name, route.query.view],
   () => (activeItem.value = currentRouteKey()),
@@ -446,7 +527,6 @@ function toggleHelpModal() {
 }
 
 // onboarding
-const { user } = sessionStore()
 const { users, isManager } = usersStore()
 const { isOnboardingStepsCompleted, setUp } = useOnboarding('frappecrm')
 
