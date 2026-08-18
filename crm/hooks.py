@@ -139,12 +139,16 @@ permission_query_conditions = {
 	"CRM Lead": "crm.permissions.org_hierarchy.get_lead_permission_query_conditions",
 	"CRM Deal": "crm.permissions.org_hierarchy.get_deal_permission_query_conditions",
 	"CRM Notification": "crm.fcrm.doctype.crm_notification.crm_notification.get_permission_query_conditions",
+	"CRM WhatsApp Followup": "crm.api.followup_engine.get_followup_permission_query_conditions",
+	"CRM Itinerary": "crm.api.itinerary.get_itinerary_permission_query_conditions",
 }
 
 has_permission = {
 	"CRM Lead": "crm.permissions.org_hierarchy.has_lead_permission",
 	"CRM Deal": "crm.permissions.org_hierarchy.has_deal_permission",
 	"CRM Notification": "crm.fcrm.doctype.crm_notification.crm_notification.has_permission",
+	"CRM WhatsApp Followup": "crm.api.followup_engine.has_followup_permission",
+	"CRM Itinerary": "crm.api.itinerary.has_itinerary_permission",
 }
 
 # DocType Class
@@ -182,6 +186,7 @@ doc_events = {
 	"WhatsApp Message": {
 		"validate": ["crm.api.whatsapp.validate"],
 		"on_update": ["crm.api.whatsapp.on_update"],
+		"after_insert": ["crm.api.followup_engine.handle_message_after_insert"],
 	},
 	"CRM Deal": {
 		"on_update": [
@@ -226,6 +231,8 @@ scheduler_events = {
 	"hourly": [
 		"crm.api.event.trigger_hourly_event_notifications",
 		"crm.api.whatsapp_followups.notify_pending_followups",
+		"crm.api.followup_engine.process_followups",
+		"crm.api.itinerary.cleanup_public_itinerary_pdfs",
 	],
 	"daily": [
 		"crm.api.event.trigger_daily_event_notifications",
@@ -317,6 +324,9 @@ ignore_links_on_delete = ["Failed Lead Sync Log"]
 after_migrate = [
 	"crm.fcrm.doctype.fcrm_settings.fcrm_settings.after_migrate",
 	"crm.api.whatsapp.add_roles",
+	"crm.api.followup_engine.add_followup_roles",
+	"crm.api.itinerary.add_itinerary_roles",
+	"crm.api.itinerary.install_print_format",
 	"crm.domain_enrichment.install.seed_default_rules_and_mappings",
 	"crm.install.add_default_scripts",
 	"crm.install.add_web_form_custom_fields",

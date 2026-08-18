@@ -41,6 +41,11 @@
         </template>
       </Dropdown>
       <Button
+        :label="__('Itinerary')"
+        :loading="creatingItinerary"
+        @click="createItinerary"
+      />
+      <Button
         :label="__('Convert to Deal')"
         variant="solid"
         @click="showConvertToDealModal = true"
@@ -313,6 +318,7 @@ const props = defineProps({
 const reload = ref(false)
 const activities = ref(null)
 const errorTitle = ref('')
+const creatingItinerary = ref(false)
 const errorMessage = ref('')
 const showDeleteLinkedDocModal = ref(false)
 const showConvertToDealModal = ref(false)
@@ -561,6 +567,52 @@ function beforeStatusChange(data) {
 function onEnriched() {
   document.reload?.()
   sections.reload()
+}
+
+/**
+ * Open this lead's itinerary, or draft a new one.
+ *
+ * A second press must not leave two half-written itineraries for one trip, so
+ * an existing draft is offered first. No AI call happens here -- the agent
+ * starts the drafting from the editor.
+ */
+async function createItinerary() {
+  creatingItinerary.value = true
+  try {
+    const draft = await call('crm.api.itinerary.get_draft_for_lead', {
+      lead: props.leadId,
+    })
+
+    if (draft) {
+      const open = window.confirm(
+        __('This lead already has a draft itinerary: {0}. Open it?').replace(
+          '{0}',
+          draft.title || draft.name,
+        ),
+      )
+      if (open) {
+        router.push({
+          name: 'Itinerary',
+          params: { itineraryId: draft.name },
+        })
+        return
+      }
+    }
+
+    const itinerary = await call('crm.api.itinerary.create_from_lead', {
+      lead: props.leadId,
+    })
+    router.push({
+      name: 'Itinerary',
+      params: { itineraryId: itinerary.name },
+    })
+  } catch (error) {
+    toast.error(
+      error.messages?.[0] || __('Could not start an itinerary for this lead.'),
+    )
+  } finally {
+    creatingItinerary.value = false
+  }
 }
 
 function reloadResources(data) {

@@ -7,6 +7,22 @@ import { viewsStore } from '@/stores/views'
 let personaChecked = false
 export const PERSONA_DONE_KEY = 'crm_persona_captured'
 
+/** Keep the itinerary URLs closed to a user who cannot read an itinerary. */
+async function itineraryGuard() {
+  const { canUseItineraries } = await import('@/composables/itinerary')
+  if (canUseItineraries.value) return true
+
+  // The flag may simply not have arrived yet on a direct URL load, so ask
+  // before redirecting rather than bouncing a legitimate visit.
+  try {
+    const allowed = await call('crm.api.itinerary.can_use_itineraries')
+    canUseItineraries.value = Boolean(allowed)
+  } catch {
+    return { name: 'Home' }
+  }
+  return canUseItineraries.value ? true : { name: 'Home' }
+}
+
 async function shouldCapturePersona() {
   // Client-side flag guards against re-prompting if the server persist failed.
   if (localStorage.getItem(PERSONA_DONE_KEY)) return false
@@ -128,6 +144,23 @@ const routes = [
       }
       return isWhatsappInstalled.value ? true : { name: 'Home' }
     },
+  },
+  {
+    path: '/itineraries',
+    name: 'Itineraries',
+    component: () => import('@/pages/Itineraries.vue'),
+    // The sidebar hides the entry for a user who cannot read an itinerary, but
+    // the URL stayed reachable. Imported lazily for the same reason as the
+    // WhatsApp guard below: at module scope the `auto` resource would fire
+    // before `main.js` sets the resourceFetcher.
+    beforeEnter: itineraryGuard,
+  },
+  {
+    path: '/itinerary/:itineraryId',
+    name: 'Itinerary',
+    component: () => import('@/pages/Itinerary.vue'),
+    props: true,
+    beforeEnter: itineraryGuard,
   },
   {
     path: '/data-import',

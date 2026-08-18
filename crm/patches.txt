@@ -32,3 +32,5 @@ crm.patches.v1_0.add_enrichment_fields_to_layouts
 crm.patches.v1_0.reorder_address_quick_entry_layout
 crm.patches.v1_0.add_travel_lead_statuses
 crm.patches.v1_0.add_travel_fields_to_lead_layouts
+crm.patches.v1_0.create_default_followup_stages
+crm.patches.v1_0.backfill_followup_guardrail_defaults

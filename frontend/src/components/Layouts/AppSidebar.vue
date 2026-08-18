@@ -177,6 +177,7 @@
 <script setup>
 import BrushCleaningIcon from '~icons/lucide/brush-cleaning'
 import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
+import LucideMap from '~icons/lucide/map'
 import CRMLogo from '@/components/Icons/CRMLogo.vue'
 import InviteIcon from '@/components/Icons/InviteIcon.vue'
 import ConvertIcon from '@/components/Icons/ConvertIcon.vue'
@@ -216,6 +217,7 @@ import {
 } from '@/composables/settings'
 import { showChangePasswordModal } from '@/composables/modals'
 import { isWhatsappInstalled } from '@/composables/whatsapp'
+import { canUseItineraries } from '@/composables/itinerary'
 import { useBroadcast } from '@/composables/useBroadcast.js'
 import { call, Sidebar, SidebarItem, SidebarLabel, Tooltip } from 'frappe-ui'
 import {
@@ -310,6 +312,14 @@ const links = [
     to: 'WhatsApp',
     // The shared inbox is meaningless without the frappe_whatsapp app.
     condition: () => isWhatsappInstalled.value,
+  },
+  {
+    label: 'Itineraries',
+    icon: LucideMap,
+    to: 'Itineraries',
+    // Hidden from anyone who cannot read an itinerary. The list is row filtered
+    // on the server as well, so this only decides what is worth showing.
+    condition: () => canUseItineraries.value,
   },
 ]
 
