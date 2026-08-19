@@ -1274,26 +1274,52 @@ class TestPublicPdfSweep(ItineraryTestCase):
 			api.log_quietly("message", "title")
 
 	def test_a_single_failed_delete_does_not_stop_the_sweep(self):
+		"""One file that will not delete must not stop the next one.
+
+		Scoped to the two files THIS test attached, deliberately. The sweep is
+		site-wide: it reads every aged public File on every itinerary, so an
+		assertion on its total return value, or a `raise on the first call`
+		double, is really an assertion about whatever else the site happens to
+		hold. That made this test fail on a demo site with an old send copy on
+		it (stage5-2-notes.md open issue 2). The failure is now injected on one
+		of our OWN files, and the verdict is read off our own two rows.
+		"""
 		doc = self.new_itinerary()
 		self.attach(doc, self.send_copy_name(1), is_private=0, age_hours=5)
 		self.attach(doc, self.send_copy_name(2), is_private=0, age_hours=5)
 
-		real_delete = frappe.delete_doc
-		calls = {"n": 0}
+		mine = frappe.get_all(
+			"File",
+			filters={
+				"attached_to_doctype": ITINERARY_DOCTYPE,
+				"attached_to_name": doc.name,
+				"is_private": 0,
+			},
+			pluck="name",
+		)
+		self.assertEqual(len(mine), 2)
 
-		def flaky(*args, **kwargs):
-			calls["n"] += 1
-			if calls["n"] == 1:
+		real_delete = frappe.delete_doc
+		locked = []
+
+		def flaky(doctype=None, name=None, *args, **kwargs):
+			# Fail the first delete of one of OUR files, and only that one.
+			if doctype == "File" and name in mine and not locked:
+				locked.append(name)
 				raise Exception("locked")
-			return real_delete(*args, **kwargs)
+			return real_delete(doctype, name, *args, **kwargs)
 
 		with (
 			patch("crm.api.itinerary.frappe.delete_doc", side_effect=flaky),
 			patch("crm.api.itinerary.frappe.log_error") as mock_log,
 		):
-			removed = api.cleanup_public_itinerary_pdfs()
+			api.cleanup_public_itinerary_pdfs()
 
-		self.assertEqual(removed, 1)
+		survivors = [name for name in mine if frappe.db.exists("File", name)]
+		# One of ours was removed, so the sweep carried on past the failure.
+		self.assertEqual(len(survivors), 1)
+		# And the survivor is exactly the one whose delete raised.
+		self.assertEqual(survivors, locked)
 		mock_log.assert_called()
 
 	def test_the_sweep_is_wired_into_the_hourly_scheduler(self):
