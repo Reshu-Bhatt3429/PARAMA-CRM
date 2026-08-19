@@ -1482,9 +1482,39 @@ in `demo-package/specs/stage3b-notes.md`. Endpoint authorisation rows are in
 * `frontend/src/components/Layouts/AppSidebar.vue` — "Today" at the top of Sales, with a count badge
 * `frontend/src/router.js` — the `/today` route and the landing-route fallback
 
-Single-owner check: `crm/hooks.py` (+5), `crm/fcrm/doctype/fcrm_settings/fcrm_settings.json`
-(+36), `crm/feature_flags.py` (+6), `crm/patches.txt` (+1), `crm/api/dashboard.py`
-(+65), `crm/api/whatsapp_followups.py` (+81/-6), `frontend/src/router.js` (+26/-2)
+## Two Stage 3A entries carried into `crm/hooks.py`
+
+Stage 3A (commit `69865d21`) could not add these itself: `crm/hooks.py` is
+single-owner and Stage 3B holds it. Both were applied exactly as
+`demo-package/specs/stage3a-notes.md` §1a and §1b specify.
+
+```python
+# scheduler_events["hourly"], after crm.api.itinerary.cleanup_public_itinerary_pdfs
+"crm.api.quote.cleanup_quote_links",
+
+# after_migrate, after crm.api.itinerary.install_print_format
+"crm.api.quote.install_quote_print_format",
+```
+
+`crm/hooks.py` is therefore +14 lines, not +5: 5 for Stage 3B's own daily sweep
+and 9 for these two entries and their comments.
+
+Verified by resolving EVERY dotted path in `scheduler_events` and
+`after_migrate` against the running site, not by reading:
+
+```
+checked: 93 unresolvable: []
+crm.api.quote.cleanup_quote_links | registered: True
+crm.api.quote.install_quote_print_format | registered: True
+crm.deal_health.sweep_deal_health | registered: True
+```
+
+`crm.tests.test_quote` (67), `crm.tests.test_send_later` (58) and
+`crm.tests.test_form_auto_response` (42) were re-run after the change and are
+`OK`; they are in the final table below.
+
+Single-owner check: `crm/fcrm/doctype/fcrm_settings/fcrm_settings.json` (+36), `crm/feature_flags.py` (+6), `crm/patches.txt` (+1), `crm/api/dashboard.py`
+(+65), `crm/api/whatsapp_followups.py` (+85/-6), `frontend/src/router.js` (+26/-2)
 and `frontend/src/components/Layouts/AppSidebar.vue` (+32/-1) carry Stage 3B's
 changes ONLY — verified with `git diff` on each file. No file on the
 must-NOT-touch list was modified.
@@ -1527,37 +1557,49 @@ tar -cf - --exclude=__pycache__ --exclude='*.pyc' --exclude='crm/public' crm | \
 
 | Module | Result |
 | --- | --- |
-| `crm.fcrm.doctype.crm_invitation.test_crm_invitation` | `Ran 13 tests in 3.539s` `OK` |
-| `crm.fcrm.doctype.crm_product.test_product_item_sync` | `Ran 25 tests in 0.032s` `OK (skipped=18)` |
+| `crm.fcrm.doctype.crm_invitation.test_crm_invitation` | `Ran 13 tests in 4.205s` `OK` |
+| `crm.fcrm.doctype.crm_product.test_product_item_sync` | `Ran 25 tests in 0.027s` `OK (skipped=18)` |
 | `crm.fcrm.doctype.crm_products.test_crm_products` | `Ran 7 tests in 0.001s` `OK (skipped=6)` |
 | `crm.integrations.erpnext.test_utils` | `Ran 9 tests in 0.009s` `OK (skipped=2)` |
-| `crm.tests.test_ai_client` | `Ran 35 tests in 0.348s` `OK` |
-| `crm.tests.test_automation_context` | `Ran 20 tests in 0.323s` `OK` |
-| **`crm.tests.test_deal_health`** | `Ran 37 tests in 28.020s` `OK` |
-| `crm.tests.test_duplicates` | `Ran 18 tests in 4.378s` `OK` |
-| `crm.tests.test_email_compose` | `Ran 18 tests in 0.729s` `OK` |
-| `crm.tests.test_exchange_rate` | `Ran 16 tests in 0.557s` `OK` |
-| `crm.tests.test_followup_engine` | `Ran 99 tests in 18.752s` `OK` |
-| `crm.tests.test_form_auto_response` | `Ran 42 tests in 9.148s` `OK` |
-| `crm.tests.test_itinerary` | `Ran 112 tests in 42.994s` `OK` |
-| `crm.tests.test_outbound` | `Ran 46 tests in 2.512s` `OK` |
-| `crm.tests.test_quote` | `Ran 67 tests in 14.111s` `OK` |
-| `crm.tests.test_reminders` | `Ran 40 tests in 6.474s` `OK` |
-| `crm.tests.test_search` | `Ran 36 tests in 5.183s` `OK` |
-| `crm.tests.test_send_later` | `Ran 58 tests in 9.163s` `OK` |
-| `crm.tests.test_sequences` | `Ran 39 tests in 0.125s` `OK` |
-| `crm.tests.test_snippets` | `Ran 45 tests in 2.476s` `OK` |
-| `crm.tests.test_state_options` | `Ran 7 tests in 0.191s` `OK` |
-| `crm.tests.test_suppression` | `Ran 32 tests in 2.103s` `OK` |
-| `crm.tests.test_sweeps` | `Ran 31 tests in 48.881s` `OK` |
-| `crm.tests.test_tags` | `Ran 36 tests in 5.626s` `OK` |
-| **`crm.tests.test_target_meter`** | `Ran 23 tests in 4.527s` `OK` |
-| **`crm.tests.test_today`** | `Ran 28 tests in 40.131s` `OK` |
-| `crm.tests.test_whatsapp` | `Ran 62 tests in 0.205s` `OK` |
-| `crm.tests.test_whatsapp_demo` | `Ran 12 tests in 0.046s` `OK` |
+| `crm.tests.test_ai_client` | `Ran 35 tests in 0.286s` `OK` |
+| `crm.tests.test_automation_context` | `Ran 20 tests in 0.759s` `OK` |
+| **`crm.tests.test_deal_health`** | `Ran 38 tests in 25.046s` `OK` |
+| `crm.tests.test_duplicates` | `Ran 18 tests in 4.565s` `OK` |
+| `crm.tests.test_email_compose` | `Ran 18 tests in 0.875s` `OK` |
+| `crm.tests.test_exchange_rate` | `Ran 16 tests in 0.621s` `OK` |
+| `crm.tests.test_followup_engine` | `Ran 99 tests in 20.244s` `OK` |
+| `crm.tests.test_form_auto_response` | `Ran 42 tests in 8.941s` `OK` |
+| `crm.tests.test_itinerary` | `Ran 112 tests in 47.729s` `OK` |
+| `crm.tests.test_outbound` | `Ran 46 tests in 2.445s` `OK` |
+| `crm.tests.test_quote` | `Ran 67 tests in 15.728s` `OK` |
+| `crm.tests.test_reminders` | `Ran 40 tests in 7.658s` `OK` |
+| `crm.tests.test_search` | `Ran 36 tests in 5.883s` `OK` |
+| `crm.tests.test_send_later` | `Ran 58 tests in 12.182s` `OK` |
+| `crm.tests.test_sequences` | `Ran 39 tests in 0.140s` `OK` |
+| `crm.tests.test_snippets` | `Ran 45 tests in 3.505s` `OK` |
+| `crm.tests.test_state_options` | `Ran 7 tests in 0.315s` `OK` |
+| `crm.tests.test_suppression` | `Ran 32 tests in 2.250s` `OK` |
+| `crm.tests.test_sweeps` | `Ran 31 tests in 55.001s` `OK` |
+| `crm.tests.test_tags` | `Ran 36 tests in 7.216s` `OK` |
+| **`crm.tests.test_target_meter`** | `Ran 23 tests in 5.860s` `OK` |
+| **`crm.tests.test_today`** | `Ran 28 tests in 25.526s` `OK` |
+| `crm.tests.test_whatsapp` | `Ran 62 tests in 0.296s` `OK` |
+| `crm.tests.test_whatsapp_demo` | `Ran 12 tests in 0.051s` `OK` |
 
-**Total: 1013 tests, 0 failures, 0 errors, 26 skips.** 88 of those tests are new
-in Stage 3B.
+**Total: 1014 tests, 0 failures, 0 errors, 26 skips.** 89 of those tests are new
+in Stage 3B. This is the FINAL pass, run on the finished code including the two
+Stage 3A glue entries in `crm/hooks.py` (below); every module's full output was
+captured to a file rather than read off the terminal.
+
+**One transient failure is worth recording rather than hiding.** An earlier full
+pass reported `crm.tests.test_followup_engine` `FAILED (errors=1)` and
+`crm.tests.test_sweeps` `FAILED (errors=2)`, with every module running roughly
+twice as slowly as usual (`test_sweeps` 80s against 48s). Both modules passed
+immediately on re-run and in the two full passes since. The most likely cause is
+contention: another Stage-3 worker shares this container and this database. The
+error text was not captured, which is why every later pass logs to a file. Both
+modules are Stage 1A's and Stage 3B changed neither them nor the code they
+cover.
 
 `crm.tests.test_followup_engine` was at `FAILED (failures=2)` in the Stage-1A
 baseline (`Ran 99 tests in 22.050s`) and is `Ran 99 tests in 18.752s` `OK` here.
@@ -1617,15 +1659,15 @@ cd /home/kreshnith/CRM/frontend && npx vitest run
 ```
  RUN  v4.1.4 /home/kreshnith/CRM/frontend
 
- Test Files  19 passed (19)
-      Tests  395 passed (395)
-   Start at  01:28:12
-   Duration  3.68s (transform 981ms, setup 397ms, import 1.84s, tests 557ms, environment 14.05s)
+ Test Files  21 passed (21)
+      Tests  433 passed (433)
+   Start at  08:16:07
+   Duration  5.98s (transform 1.86s, setup 616ms, import 2.72s, tests 1.16s, environment 23.63s)
 ```
 
-19 files against Stage 2B's 16; the three new ones are Stage 3B's
+21 files against Stage 2B's 16: three are Stage 3B's
 (`targetMeter.test.js` 10, `dealHealth.test.js` 14, `today.test.js` 22 = 46
-tests). Stage 2B's note still holds and is worth repeating: **there are no
+tests) and two are Stage 3A's, which landed in the same tree. Stage 2B's note still holds and is worth repeating: **there are no
 component tests in this repo**, `@vue/test-utils` is not a dependency, and
 nothing under `frontend/tests/unit/` mounts anything. Every decision worth
 testing was therefore pushed into a pure function — the bar cap, the "no target"
@@ -1641,7 +1683,7 @@ NODE_OPTIONS="--max-old-space-size=6144" npx vite build --base=/assets/crm/front
 ```
 
 ```
-✓ built in 1m 18s
+✓ built in 1m 47s
 
 PWA v0.21.2
 mode      generateSW
@@ -2096,3 +2138,12 @@ The full list, with the `crm/hooks.py` diffs another worker must apply, is in
 2. **`outbound_engine_enabled` must be switched on at deploy** or a scheduled
    email is never delivered. Scheduling, listing, cancelling and Send-now all
    work with the flag off; only the hourly sweep is gated.
+
+## One coordination artefact, recorded rather than hidden
+
+Stage 3A's commit `69865d21` swept up the Stage 3B sections of this file and of
+`demo-package/specs/permission-matrix.md`, which were already written to disk
+when it committed. The content is intact and correct, but in both files the
+**Stage 3B section now sits BEFORE the Stage 3A section**. Reordering them would
+mean rewriting a committed file for a cosmetic gain, so it was left alone. A
+reader looking for Stage 3A should scroll past Stage 3B.

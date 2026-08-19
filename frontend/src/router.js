@@ -53,6 +53,14 @@ const routes = [
     component: () => import('@/pages/Dashboard.vue'),
   },
   {
+    // One page, desktop and mobile (master spec §5, item 24; UX §2.17): the
+    // list is a single column of rows with tap-sized actions, so there is no
+    // `Mobile*` variant to switch to.
+    path: '/today',
+    name: 'Today',
+    component: () => import('@/pages/Today.vue'),
+  },
+  {
     alias: '/leads',
     path: '/leads/view/:viewType?',
     name: 'Leads',
@@ -205,6 +213,22 @@ const handleMobileView = (componentName) => {
   return window.innerWidth < 768 ? `Mobile${componentName}` : componentName
 }
 
+/**
+ * Where `/` lands a user who has no saved default view.
+ *
+ * Master spec §5, item 24: Today becomes the Sales User's home, while a manager
+ * keeps the Dashboard. A saved default view still WINS over both — this is the
+ * fallback, not an override, because a user who chose a landing view chose it.
+ *
+ * On a phone everybody gets Today: the Dashboard is desktop-only in the nav
+ * (`condition: () => !props.mobile` in AppSidebar), so landing a manager there
+ * would put them on a page with no way back into the app.
+ */
+export function homeRouteFor({ isManager } = {}) {
+  if (window.innerWidth < 768) return 'Today'
+  return isManager?.() ? 'Dashboard' : 'Today'
+}
+
 let router = createRouter({
   history: createWebHistory('/crm'),
   routes,
@@ -214,7 +238,7 @@ router.beforeEach(async (to, from, next) => {
   router.previousRoute = from
 
   const { isLoggedIn, user } = sessionStore()
-  const { users, isCrmUser, isAdmin } = usersStore()
+  const { users, isCrmUser, isAdmin, isManager } = usersStore()
 
   if (isLoggedIn && !users.fetched) {
     try {
@@ -262,7 +286,7 @@ router.beforeEach(async (to, from, next) => {
 
     let defaultView = getDefaultView()
     if (!defaultView) {
-      next({ name: 'Leads' })
+      next({ name: homeRouteFor({ isManager }) })
       return
     }
 

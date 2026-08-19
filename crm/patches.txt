@@ -38,3 +38,4 @@ crm.patches.v1_0.create_parama_contact_key_fields #18-08-2026
 crm.patches.v1_0.backfill_parama_contact_keys #18-08-2026
 crm.patches.v1_0.add_task_reminder_index #18-08-2026
 crm.patches.v1_0.set_task_reminder_offset_default #19-08-2026
+crm.patches.v1_0.create_parama_deal_health_field #19-08-2026

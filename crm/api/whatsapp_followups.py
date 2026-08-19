@@ -7,6 +7,13 @@ failure is logged with `frappe.log_error` and the job reports zero work done.
 
 Nothing here talks to Meta. It only reads WhatsApp Message rows that already
 exist and writes CRM Notifications.
+
+The daily digest also carries the deal-health section (master spec §5, item 22).
+It is appended to the EXISTING digest rather than given a second notification,
+because UX §2.10 batches notifications and a manager who gets two scheduled
+messages every morning reads neither. It rides the same notification-only
+pattern: one CRM Notification, no email, no send. When `deal_health_enabled` is
+off the section is empty and the digest is byte-for-byte what it was before.
 """
 
 import frappe
@@ -19,10 +26,15 @@ from crm.api.whatsapp import (
 	get_unanswered_since,
 	is_unanswered,
 )
+from crm.deal_health import FLAG_DEAL_HEALTH, flagged_deals
 from crm.fcrm.doctype.crm_notification.crm_notification import notify_user
+from crm.feature_flags import is_enabled
 
 # How long an unanswered incoming message may sit before the assignee is nudged.
 FOLLOWUP_DUE_HOURS = 2
+
+# How many flagged deals the digest names before it says "and N more".
+DIGEST_DEAL_NAMES = 3
 
 # Window the daily digest summarises.
 DIGEST_HOURS = 24
@@ -168,15 +180,55 @@ def has_unread_followup(conversation: dict, user: str) -> bool:
 	)
 
 
-def send_daily_digest():
-	"""Daily: one summary of the WhatsApp pipeline for every manager."""
+def empty_digest_summary() -> dict:
+	"""The shape `build_digest_summary` returns, with nothing in it.
+
+	A site without the WhatsApp app still gets a digest, because the deal-health
+	half of it (master spec §5, item 22) does not go through Meta.
+	"""
+	return {
+		"new_leads": 0,
+		"needs_reply": 0,
+		"overdue": 0,
+		"reference_doctype": None,
+		"reference_name": None,
+		"flagged_deals": [],
+	}
+
+
+def get_flagged_deals() -> list[dict]:
+	"""Deals the health sweep flagged, for the digest. Empty when the flag is off.
+
+	Never raises: the digest is a scheduler job, and a deal-health problem must
+	not cost the manager their WhatsApp summary.
+	"""
 	try:
-		if not frappe.db.exists("DocType", "WhatsApp Message"):
+		if not is_enabled(FLAG_DEAL_HEALTH):
+			return []
+		return flagged_deals()
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "CRM WhatsApp: digest deal-health section failed")
+		return []
+
+
+def send_daily_digest():
+	"""Daily: one summary of the WhatsApp pipeline and deal health, per manager."""
+	try:
+		if frappe.db.exists("DocType", "WhatsApp Message"):
+			summary = build_digest_summary()
+		else:
+			summary = empty_digest_summary()
+
+		summary["flagged_deals"] = get_flagged_deals()
+
+		if not any(summary[key] for key in ("new_leads", "needs_reply", "overdue", "flagged_deals")):
 			return 0
 
-		summary = build_digest_summary()
-		if not any(summary[key] for key in ("new_leads", "needs_reply", "overdue")):
-			return 0
+		# A digest whose only content is deal health still needs somewhere to
+		# point, or the notification list renders an unclickable row.
+		if not summary.get("reference_name") and summary["flagged_deals"]:
+			summary["reference_doctype"] = "CRM Deal"
+			summary["reference_name"] = summary["flagged_deals"][0]["name"]
 
 		created = 0
 		for user in get_digest_recipients():
@@ -264,14 +316,41 @@ def get_digest_recipients() -> list[str]:
 	)
 
 
+def digest_deal_health_line(flagged: list[dict]) -> str:
+	"""One sentence naming the flagged deals, or "" when there are none.
+
+	At most three names, because this is a notification row and not a report;
+	the Today page is where the whole list lives.
+	"""
+	if not flagged:
+		return ""
+
+	names = ", ".join(deal["title"] for deal in flagged[:DIGEST_DEAL_NAMES])
+
+	if len(flagged) == 1:
+		return _("1 deal needs attention: {0}").format(names)
+
+	if len(flagged) > DIGEST_DEAL_NAMES:
+		return _("{0} deals need attention: {1} and {2} more").format(
+			len(flagged), names, len(flagged) - DIGEST_DEAL_NAMES
+		)
+
+	return _("{0} deals need attention: {1}").format(len(flagged), names)
+
+
 def create_digest_notification(summary: dict, user: str):
 	message = _(
 		"WhatsApp today: {0} new leads, {1} conversations need a reply, {2} waiting over {3}h"
 	).format(summary["new_leads"], summary["needs_reply"], summary["overdue"], FOLLOWUP_DUE_HOURS)
+
+	health_line = digest_deal_health_line(summary.get("flagged_deals") or [])
+	if health_line:
+		message = f"{message}. {health_line}"
+
 	notification_text = f"""
         <div class="mb-2 leading-5 text-ink-gray-5">
             <span class="font-medium text-ink-gray-9">{_("WhatsApp daily digest")}</span>
-            <span>{message}</span>
+            <span>{frappe.utils.escape_html(message)}</span>
         </div>
     """
 

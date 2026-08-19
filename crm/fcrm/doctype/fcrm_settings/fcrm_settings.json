@@ -20,11 +20,15 @@
   "feature_flags_section",
   "outbound_engine_enabled",
   "task_reminders_enabled",
+  "deal_health_enabled",
   "task_reminders_section",
   "task_reminder_offset_minutes",
   "task_reminder_email",
+  "deal_health_section",
+  "deal_health_stalled_days",
   "currency_tab",
   "currency",
+  "monthly_revenue_target",
   "exchange_rate_provider_section",
   "service_provider",
   "column_break_vqck",
@@ -105,6 +109,15 @@
    "in_list_view": 1,
    "label": "Currency",
    "options": "Currency"
+  },
+  {
+   "default": "0",
+   "description": "The revenue the team is expected to win in one CALENDAR MONTH, in the currency above. The dashboard's Target Meter measures won deal value against it. Leave it at 0 and the meter says no target is set rather than reporting 0%.",
+   "fieldname": "monthly_revenue_target",
+   "fieldtype": "Currency",
+   "label": "Monthly Revenue Target",
+   "non_negative": 1,
+   "options": "currency"
   },
   {
    "fieldname": "currency_tab",
@@ -240,6 +253,13 @@
    "label": "Task due-date reminders"
   },
   {
+   "default": "0",
+   "description": "Lets the nightly sweep work out which open deals need attention (close date passed, stalled, awaiting a reply) and store the answer on the deal. While this is off the sweep reads no deal row, no deal carries a Needs attention chip, and the manager digest says nothing about deal health. Registry: crm/feature_flags.py.",
+   "fieldname": "deal_health_enabled",
+   "fieldtype": "Check",
+   "label": "Deal health flags"
+  },
+  {
    "collapsible": 1,
    "depends_on": "eval:doc.task_reminders_enabled",
    "description": "How the reminders above behave. These are ORG-WIDE defaults, not per-user preferences.",
@@ -260,6 +280,22 @@
    "fieldname": "task_reminder_email",
    "fieldtype": "Check",
    "label": "Also email the reminder"
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:doc.deal_health_enabled",
+   "description": "How the deal-health sweep above behaves. ORG-WIDE, not a per-user preference.",
+   "fieldname": "deal_health_section",
+   "fieldtype": "Section Break",
+   "label": "Deal Health"
+  },
+  {
+   "default": "14",
+   "description": "How many days a deal may sit without a status change before it is flagged as stalled. Blank, zero or negative falls back to 14.",
+   "fieldname": "deal_health_stalled_days",
+   "fieldtype": "Int",
+   "label": "Stalled after this many days without a status change",
+   "non_negative": 1
   },
   {
    "default": "0",

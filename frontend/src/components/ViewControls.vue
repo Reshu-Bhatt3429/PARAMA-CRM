@@ -1371,6 +1371,30 @@ function applyTagFilter(tag) {
   updateFilter(filters)
 }
 
+/**
+ * Toggle the "Needs attention" filter on the Deals list (spec §5, item 22).
+ *
+ * `custom_parama_health_flags` holds JSON when a deal is flagged and is left
+ * EMPTY when it is healthy, so `["is", "set"]` is an exact predicate — no LIKE
+ * over a JSON blob, and no second boolean column to keep in step. Clicking the
+ * chip that is already applied clears it, like the like filter below.
+ */
+function applyHealthFilter(fieldname) {
+  if (!fieldname) return
+  let filters = { ...list.value.params.filters }
+
+  if (filters[fieldname]) {
+    delete filters[fieldname]
+  } else {
+    filters[fieldname] = ['is', 'set']
+  }
+  updateFilter(filters)
+}
+
+function healthFilterApplied(fieldname) {
+  return Boolean(list.value?.params?.filters?.[fieldname])
+}
+
 function applyLikeFilter() {
   let filters = { ...list.value.params.filters }
   if (!filters._liked_by) {
@@ -1394,6 +1418,8 @@ defineExpose({
   applyFilter,
   applyLikeFilter,
   applyTagFilter,
+  applyHealthFilter,
+  healthFilterApplied,
   likeDoc,
   updateKanbanSettings,
   fetchAndUpdateKanbanColumns,

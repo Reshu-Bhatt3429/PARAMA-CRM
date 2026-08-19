@@ -32,6 +32,12 @@ FLAGS = {
 		"While this is off the reminder sweep returns without reading a single task "
 		"row, so no notification and no email is ever produced."
 	),
+	"deal_health_enabled": (
+		"Lets the nightly sweep work out which open deals need attention (close date "
+		"passed, stalled, awaiting a reply) and store the answer on the deal. While "
+		"this is off the sweep reads no deal row, no deal carries a Needs attention "
+		"chip, and the manager digest says nothing about deal health."
+	),
 }
 
 

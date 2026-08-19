@@ -239,6 +239,11 @@ scheduler_events = {
 		"crm.api.whatsapp_followups.notify_pending_followups",
 		"crm.api.followup_engine.process_followups",
 		"crm.api.itinerary.cleanup_public_itinerary_pdfs",
+		# Item 25: retire expired quote links and delete the private PDF each one
+		# held. Never raises. Not covered by the itinerary sweep above: that one
+		# removes temporary PUBLIC files on CRM Itinerary, while a quote's file is
+		# private, lives on CRM Deal, and dies with its CRM Document Link row.
+		"crm.api.quote.cleanup_quote_links",
 		# Behind `outbound_engine_enabled`, default OFF. While the flag is off these
 		# return without reading a single job row.
 		"crm.outbound.process_scheduled_jobs",
@@ -252,6 +257,11 @@ scheduler_events = {
 		"crm.fcrm.doctype.crm_invitation.crm_invitation.expire_invitations",
 		"crm.fcrm.doctype.crm_view_settings.crm_view_settings.clear_old_versions",
 		"crm.telemetry.capture_feature_state",
+		# Deal-health flags. Behind `deal_health_enabled`, default OFF; while the
+		# flag is off this reads no deal row and writes nothing. It holds a
+		# per-job lock and resumes from a watermark, so a run that overlaps or
+		# crashes costs one batch rather than the night.
+		"crm.deal_health.sweep_deal_health",
 	],
 	"weekly": ["crm.api.event.trigger_weekly_event_notifications"],
 	"daily_long": ["crm.lead_syncing.background_sync.sync_leads_from_sources_daily"],
@@ -347,6 +357,10 @@ after_migrate = [
 	"crm.api.followup_engine.add_followup_roles",
 	"crm.api.itinerary.add_itinerary_roles",
 	"crm.api.itinerary.install_print_format",
+	# Item 25. Same contract as the itinerary's: the HTML lives in a file so it
+	# is reviewable in git, and the Print Format row is rewritten only when that
+	# file changed, so an administrator's own edit survives a migrate.
+	"crm.api.quote.install_quote_print_format",
 	"crm.domain_enrichment.install.seed_default_rules_and_mappings",
 	"crm.install.add_default_scripts",
 	"crm.install.add_web_form_custom_fields",

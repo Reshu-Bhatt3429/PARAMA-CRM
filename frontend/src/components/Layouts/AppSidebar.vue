@@ -108,7 +108,24 @@
                 @click="onLinkClick($event, link)"
               >
                 <template #prefix>
-                  <Icon :icon="link.icon" class="size-4 text-ink-gray-7" />
+                  <span class="relative grid size-4 place-items-center">
+                    <Icon :icon="link.icon" class="size-4 text-ink-gray-7" />
+                    <!-- On the collapsed rail there is no room for a pill, so
+                         the count becomes a dot, exactly as Notifications does
+                         above. -->
+                    <span
+                      v-if="isCollapsed && link.badge"
+                      class="absolute -right-1 -top-1 size-1.5 rounded-full bg-surface-gray-9 ring-1 ring-[var(--surface-gray-1)]"
+                    />
+                  </span>
+                </template>
+                <template #suffix>
+                  <span
+                    v-if="!isCollapsed && link.badge"
+                    class="crm-sidebar-badge mr-2"
+                  >
+                    {{ link.badge }}
+                  </span>
                 </template>
                 <Tooltip
                   :text="__(link.label)"
@@ -201,6 +218,7 @@ import BrushCleaningIcon from '~icons/lucide/brush-cleaning'
 import LucideImport from '~icons/lucide/import'
 import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
 import LucideMap from '~icons/lucide/map'
+import LucideSun from '~icons/lucide/sun'
 import CRMLogo from '@/components/Icons/CRMLogo.vue'
 import InviteIcon from '@/components/Icons/InviteIcon.vue'
 import ConvertIcon from '@/components/Icons/ConvertIcon.vue'
@@ -243,6 +261,7 @@ import { showChangePasswordModal } from '@/composables/modals'
 import { openCommandPalette } from '@/composables/commandPalette'
 import { isWhatsappInstalled } from '@/composables/whatsapp'
 import { canUseItineraries } from '@/composables/itinerary'
+import { todayCount } from '@/composables/today'
 import { useBroadcast } from '@/composables/useBroadcast.js'
 import { call, Sidebar, SidebarItem, SidebarLabel, Tooltip } from 'frappe-ui'
 import {
@@ -308,6 +327,15 @@ const linkGroups = [
   {
     name: 'Sales',
     links: [
+      {
+        // Top of the group on purpose (master spec §5, item 24): it is the
+        // Sales User's landing page, so it is also the first thing they see in
+        // the nav. `badge` names the ref the suffix slot renders.
+        label: 'Today',
+        icon: LucideSun,
+        to: 'Today',
+        badge: 'today',
+      },
       {
         label: 'Dashboard',
         icon: LucideLayoutDashboard,
@@ -429,6 +457,9 @@ const allViews = computed(() => {
           key: link.key || link.to,
           to: link.to ? { name: link.to } : undefined,
           onClick: link.onClick,
+          // 0 renders nothing: a badge that always says "0" is noise, and UX
+          // §2.13 keeps the nav from becoming a badge shelf.
+          badge: link.badge === 'today' ? todayCount.value : 0,
         })),
     }))
     .filter((group) => group.views.length)

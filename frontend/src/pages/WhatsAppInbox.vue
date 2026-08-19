@@ -748,8 +748,9 @@ import {
   usePageMeta,
 } from 'frappe-ui'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
+const route = useRoute()
 const router = useRouter()
 const { $socket } = globalStore()
 const { isManager } = usersStore()
@@ -948,6 +949,28 @@ const travelRows = computed(() => {
 function siteCurrency() {
   return window.sysdefaults?.currency || 'USD'
 }
+
+// Deep link from the Today page (master spec §5, item 24): `?doctype=&name=`
+// opens that thread as soon as the list has arrived. It fires ONCE — the list
+// reloads on every inbound message, and a second run would drag the reader back
+// to the thread they navigated away from.
+let deepLinkHandled = false
+watch(
+  allConversations,
+  (rows) => {
+    if (deepLinkHandled || !rows.length) return
+
+    const { doctype, name } = route.query || {}
+    if (!doctype || !name) return
+
+    deepLinkHandled = true
+    const match = rows.find(
+      (row) => row.reference_doctype === doctype && row.reference_name === name,
+    )
+    if (match) selectConversation(match)
+  },
+  { immediate: true },
+)
 
 function selectConversation(conversation) {
   if (conversationKey(conversation) === selectedKey.value) return
