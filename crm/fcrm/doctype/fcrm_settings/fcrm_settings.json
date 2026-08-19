@@ -22,6 +22,7 @@
   "email_sequences_enabled",
   "task_reminders_enabled",
   "deal_health_enabled",
+  "workflow_rules_enabled",
   "task_reminders_section",
   "task_reminder_offset_minutes",
   "task_reminder_email",
@@ -266,6 +267,13 @@
    "fieldname": "deal_health_enabled",
    "fieldtype": "Check",
    "label": "Deal health flags"
+  },
+  {
+   "default": "0",
+   "description": "Lets a workflow rule fire when a lead or a deal is created or changes. While this is off the engine stops on one cached read and no rule can act, whatever its own Enabled switch says. Both switches must be on. A rule that writes a field NEVER triggers another rule. Registry: crm/feature_flags.py.",
+   "fieldname": "workflow_rules_enabled",
+   "fieldtype": "Check",
+   "label": "Workflow rules"
   },
   {
    "collapsible": 1,

@@ -174,6 +174,20 @@ doc_events = {
 	},
 	"CRM Lead": {
 		"validate": ["crm.contact_keys.set_contact_keys"],
+		# Item 16: mini workflow rules. Behind `workflow_rules_enabled`, default
+		# OFF. `on_update` fires on every save of the hottest doctype in the app,
+		# so the engine's first two steps are a `frappe.local` attribute read
+		# (the depth ceiling) and one Redis read (the flag and the rule table).
+		# With the flag off, or with no rule for this doctype and event, it adds
+		# ZERO queries to a save. Actions run after the commit.
+		"after_insert": ["crm.workflows.after_insert"],
+		"on_update": ["crm.workflows.on_update"],
+	},
+	"FCRM Settings": {
+		# The workflow engine caches the master flag in Redis. Saving the settings
+		# is the ordinary way that flag moves, and this is what makes the cache
+		# correct rather than merely fast.
+		"on_update": ["crm.workflows.on_settings_update"],
 	},
 	"Notification Log": {
 		"before_insert": ["crm.extends.notification_log.before_insert"],
@@ -214,8 +228,11 @@ doc_events = {
 	},
 	"CRM Deal": {
 		"validate": ["crm.contact_keys.set_contact_keys"],
+		# Item 16: see the CRM Lead entry above for what this costs on a save.
+		"after_insert": ["crm.workflows.after_insert"],
 		"on_update": [
-			"crm.fcrm.doctype.erpnext_crm_settings.erpnext_crm_settings.create_customer_in_erpnext"
+			"crm.fcrm.doctype.erpnext_crm_settings.erpnext_crm_settings.create_customer_in_erpnext",
+			"crm.workflows.on_update",
 		],
 	},
 	"Sales Order": {
@@ -286,6 +303,12 @@ scheduler_events = {
 		# per-job lock and resumes from a watermark, so a run that overlaps or
 		# crashes costs one batch rather than the night.
 		"crm.deal_health.sweep_deal_health",
+		# Item 16: keep 90 days of workflow execution log. Bounded (500 rows per
+		# batch, 20 batches per night) so a site that was never cleaned catches
+		# up over several nights instead of holding one enormous transaction.
+		# Not behind the feature flag: rows written while the flag was on still
+		# have to age out after it is turned off.
+		"crm.workflows.cleanup_execution_log",
 	],
 	"weekly": ["crm.api.event.trigger_weekly_event_notifications"],
 	"daily_long": ["crm.lead_syncing.background_sync.sync_leads_from_sources_daily"],

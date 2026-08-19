@@ -2783,3 +2783,361 @@ rather than implied.
 5. **`crm/api/activities.py` and `crm/ai/client.py` were edited** although they
    were outside this stage's file list. Both edits are minimal and are explained
    in `stage5-1-notes.md` item 5.
+
+---
+
+# Stage 5.2 — Mini workflow rules (item 16)
+
+Design note: `demo-package/specs/design-16-workflow-rules.md`. Implementation
+notes and deviations: `demo-package/specs/stage5-2-notes.md`. Endpoint rows:
+`demo-package/specs/permission-matrix.md` § Stage 5.2.
+
+## What changed
+
+### Files added — backend
+
+| File | What it is |
+| --- | --- |
+| `crm/workflows.py` | The engine. Cached rule table, two document hooks, structural condition evaluator, after-commit executor, four actions, daily cleanup, six manager-only endpoints |
+| `crm/fcrm/doctype/crm_workflow_rule/` | The rule doctype and its controller (all validation lives there) |
+| `crm/fcrm/doctype/crm_workflow_action/` | The child action table |
+| `crm/fcrm/doctype/crm_workflow_execution_log/` | The append-only log with the unique `execution_key` |
+| `crm/tests/test_workflows.py` | 99 tests, six classes named for the six acceptance criteria |
+
+### Files changed — backend
+
+| File | Change |
+| --- | --- |
+| `crm/hooks.py` | `after_insert` + `on_update` on CRM Lead and CRM Deal; `on_update` on FCRM Settings for cache invalidation; `crm.workflows.cleanup_execution_log` on `daily`. The existing CRM Deal `on_update` entry was appended to, not replaced — asserted by `TestRegistration::test_the_existing_deal_hook_was_not_replaced` |
+| `crm/feature_flags.py` | `workflow_rules_enabled` added to `FLAGS` |
+| `crm/fcrm/doctype/fcrm_settings/fcrm_settings.json` | The matching `Check` field, `default: "0"`, in the Feature Flags section |
+
+### Files added — frontend
+
+`frontend/src/utils/workflows.js`, `frontend/src/components/Settings/Workflows/`
+(`WorkflowRulesPage.vue`, `WorkflowRules.vue`, `WorkflowRuleView.vue`,
+`WorkflowActionCard.vue`, `WorkflowRecentRuns.vue`),
+`frontend/tests/unit/workflows.test.js` (52 tests).
+
+### Files changed — frontend
+
+`frontend/src/components/Settings/Settings.vue` — one entry, "Workflow Rules",
+in the existing **Automation & Rules** group, which is already `isManager()`
+gated.
+
+### Schema
+
+Three new doctypes; one new `Check` field on FCRM Settings. **No patch was
+needed** — nothing to backfill, and the flag's default is correct for every
+existing site. No upstream core schema touched.
+
+The unique index was verified on the live database rather than assumed:
+
+```
+$ bench --site crm.localhost mariadb -e "show index from \`tabCRM Workflow Execution Log\`"
+Table                             Non_unique  Key_name            Column_name
+tabCRM Workflow Execution Log     0           PRIMARY             name
+tabCRM Workflow Execution Log     0           execution_key       execution_key
+tabCRM Workflow Execution Log     1           rule                rule
+tabCRM Workflow Execution Log     1           reference_docname   reference_docname
+```
+
+## Backend — every module that collects, run individually
+
+Same container (`crm-local-frappe-1`), same site (`crm.localhost`), same push
+method as every stage before.
+
+| Module | Result | Verdict |
+| --- | --- | --- |
+| `crm.tests.test_ai_brief` | `Ran 41 tests in 11.065s` | OK |
+| `crm.tests.test_ai_budget` | `Ran 9 tests in 0.590s` | OK |
+| `crm.tests.test_ai_client` | `Ran 35 tests in 0.272s` | OK |
+| `crm.tests.test_ai_draft` | `Ran 26 tests in 4.637s` | OK |
+| `crm.tests.test_automation_context` | `Ran 20 tests in 0.710s` | OK |
+| `crm.tests.test_dashboard` | — | DID NOT COLLECT |
+| `crm.tests.test_deal_health` | `Ran 38 tests in 21.171s` | OK |
+| `crm.tests.test_demo_data` | — | DID NOT COLLECT |
+| `crm.tests.test_digest_preferences` | `Ran 29 tests in 13.472s` | OK |
+| `crm.tests.test_duplicates` | `Ran 18 tests in 4.474s` | OK |
+| `crm.tests.test_email_compose` | `Ran 18 tests in 0.744s` | OK |
+| `crm.tests.test_email_sequences` | `Ran 69 tests in 15.149s` | OK |
+| `crm.tests.test_exchange_rate` | `Ran 16 tests in 0.542s` | OK |
+| `crm.tests.test_followup_engine` | `Ran 99 tests in 20.065s` | OK — unchanged file, unchanged count |
+| `crm.tests.test_form_api` | — | DID NOT COLLECT |
+| `crm.tests.test_form_auto_response` | `Ran 42 tests in 8.555s` | OK |
+| `crm.tests.test_integrations` | — | DID NOT COLLECT |
+| `crm.tests.test_itinerary` | `Ran 112 tests in 42.812s` | OK — see the note below |
+| `crm.tests.test_notification_log` | — | DID NOT COLLECT |
+| `crm.tests.test_outbound` | `Ran 46 tests in 2.508s` | OK |
+| `crm.tests.test_quote` | `Ran 67 tests in 14.277s` | OK |
+| `crm.tests.test_reminders` | `Ran 40 tests in 6.847s` | OK |
+| `crm.tests.test_search` | `Ran 36 tests in 5.409s` | OK |
+| `crm.tests.test_send_later` | `Ran 58 tests in 10.530s` | OK |
+| `crm.tests.test_sequences` | `Ran 39 tests in 0.131s` | OK |
+| `crm.tests.test_snippets` | `Ran 45 tests in 2.672s` | OK |
+| `crm.tests.test_state_options` | `Ran 7 tests in 0.201s` | OK |
+| `crm.tests.test_suppression` | `Ran 32 tests in 2.321s` | OK |
+| `crm.tests.test_sweeps` | `Ran 31 tests in 52.398s` | OK |
+| `crm.tests.test_tags` | `Ran 36 tests in 6.787s` | OK |
+| `crm.tests.test_target_meter` | `Ran 23 tests in 5.238s` | OK |
+| `crm.tests.test_today` | `Ran 28 tests in 21.246s` | OK |
+| `crm.tests.test_utils` | — | DID NOT COLLECT |
+| `crm.tests.test_whatsapp` | `Ran 62 tests in 0.156s` | OK |
+| `crm.tests.test_whatsapp_demo` | `Ran 12 tests in 0.056s` | OK |
+| **`crm.tests.test_workflows`** (new) | `Ran 99 tests in 19.836s` | OK |
+| `crm.permissions.test_org_hierarchy` | — | DID NOT COLLECT |
+
+**1233 tests, 30 modules, all OK. 7 modules do not collect**, the same seven as
+in Stage 5.1, with the same pre-existing v15/v16 error, verbatim:
+
+```
+ImportError: cannot import name 'IntegrationTestCase' from 'frappe.tests' (/home/frappe/frappe-bench/apps/frappe/frappe/tests/__init__.py)
+```
+
+Stage 5.1 reported 1134 tests over 29 modules. This stage adds one module and 99
+tests and removes none.
+
+### One itinerary failure, diagnosed to its cause and NOT caused by this stage
+
+On the first sweep of the final tree, `crm.tests.test_itinerary` reported
+`FAILED (failures=1)`:
+
+```
+FAIL: test_a_single_failed_delete_does_not_stop_the_sweep
+  (crm.tests.test_itinerary.TestPublicPdfSweep.test_a_single_failed_delete_does_not_stop_the_sweep)
+  self.assertEqual(removed, 1)
+AssertionError: 2 != 1
+```
+
+The test attaches two public PDFs and calls the SITE-WIDE sweep
+(`crm.api.itinerary.cleanup_public_itinerary_pdfs`), injecting a failure into the
+first delete, and asserts exactly one file was removed. The site itself holds a
+third candidate:
+
+```
+TTL_HOURS: 2
+AGED PUBLIC ITINERARY FILES ON THIS SITE: 1
+   ff8cac05d1  Kenya-Masai-Mara-Amara-Okafor-v1-1ef37362dbc03921349e3138.pdf
+               2026-08-19 08:37:33  send-copy-name: True
+```
+
+That file was created at 08:37, **before this stage touched the site**, and
+`PUBLIC_PDF_TTL_HOURS` is 2. The suite therefore passes while the file is under
+two hours old and fails once it crosses the line — which is exactly what
+happened: the same suite reported `Ran 112 tests ... OK` at 10:24 and failed at
+11:02 on an unchanged tree.
+
+Proved rather than argued. The file's `creation` was moved forward, the suite
+re-run on the identical tree, and the original timestamp put back to the
+microsecond:
+
+```
+ORIGINAL CREATION: 2026-08-19 08:37:33.771294
+TEMPORARILY MOVED TO: 2026-08-19 10:55:08.169477
+$ bench --site crm.localhost run-tests --module crm.tests.test_itinerary
+Ran 112 tests in 42.812s
+OK
+RESTORED CREATION: 2026-08-19 08:37:33.771294
+```
+
+The file survived intact (19388 bytes, same `file_url`). This is a pre-existing
+fragility in `crm/tests/test_itinerary.py` — a test that asserts an exact count
+from a site-wide sweep — and there is no code path from `crm/workflows.py` to
+that sweep. It is recorded in "Open issues" below and left unfixed, because that
+file belongs to another stage's owner.
+
+## The AC5 query-count measurement
+
+AC5 asks for "no queries beyond a cached flag read". Measured by wrapping
+`frappe.db.sql` — the single funnel every `get_value`, `get_all`, `exists` and
+query-builder `run()` passes through — around a direct call to the engine's
+entry points, so the framework's own save statements are not counted as the
+feature's.
+
+| State | Statements the engine adds | Test |
+| --- | --- | --- |
+| Flag OFF, cache warm | **0** | `test_ac5_with_the_flag_off_the_engine_runs_no_query_at_all` |
+| Flag OFF, cache cold | **1**, and it is the `Singles` read | `test_ac5_a_cold_cache_costs_exactly_one_flag_read_while_the_flag_is_off` |
+| Flag ON, no rules | **0** | `test_ac5_with_the_flag_on_and_no_rule_the_engine_runs_no_query` |
+| Rule exists but disabled | **0** | `test_ac5_a_disabled_rule_is_not_in_the_cache_and_costs_nothing` |
+| Rule for the other doctype | **0** | `test_ac5_a_rule_for_the_other_doctype_costs_a_lead_save_nothing` |
+| Enabled rule that MATCHES | **0** | `test_ac5_an_enabled_matching_rule_still_costs_no_query_at_the_hook` |
+
+## Live checks on the running demo site
+
+Flag turned on transiently, one real rule, one real transition, then everything
+removed. The background worker was running, so the after-commit job was executed
+by the real worker rather than called by hand.
+
+### The flag, the cache and AC6, live
+
+```
+FLAG: 1
+CACHE AFTER SETTINGS SAVE: None          <- the FCRM Settings hook dropped the blob
+
+AC6 LIST AS SALES USER: refused -> Only a sales manager can manage workflow rules.
+AC6 SAVE AS SALES USER: refused -> Only a sales manager can manage workflow rules.
+AC6 DOCTYPE READ FOR SALES USER: False
+RECENT RUNS AS SALES USER: refused -> Only a sales manager can manage workflow rules.
+
+RULE: hp7t2gq0ir  owner: crm.manager@example.com
+CACHE AFTER RULE SAVE: None              <- the rule hook dropped it too
+REBUILT: {'enabled': True, 'rules': {'CRM Lead': {'Stage changed': [
+    {'name': 'hp7t2gq0ir', 'title': 'SMOKE Qualified leads get a call-back task',
+     'watched_field': None, 'conditions': [['status', '==', 'Qualified']]}]}}}
+```
+
+### One real transition, made by a Sales User, executed by the real worker
+
+A save that did NOT move the stage first:
+
+```
+LOGS AFTER A NO-OP SAVE: 0
+```
+
+Then `New` → `Qualified`, saved by `crm.rep1@example.com`:
+
+```
+       rule_title: SMOKE Qualified leads get a call-back task
+reference_docname: CRM-LEAD-2026-00024
+            event: Stage changed
+      action_type: Create task
+           status: Executed
+           reason: (none)
+      executed_at: 2026-08-19 10:42:36.181996
+    execution_key: hp7t2gq0irCRM LeadCRM-LEAD-2026-00024Stage changed@2026-08-19 10:42:34.0873690:Create task
+
+             title: SMOKE call the customer back
+          priority: High
+            status: Todo
+          due_date: 2026-08-20 10:42:35.553386
+       assigned_to: crm.rep1@example.com
+ reference_doctype: CRM Lead
+ reference_docname: CRM-LEAD-2026-00024
+             owner: crm.manager@example.com      <- the ACTING USER switch, live
+
+          title: SMOKE Qualified leads get a call-back task
+  actions_today: 1
+    counter_day: 2026-08-19
+cap_notified_on: NULL
+```
+
+The task's `owner` is the proof that matters: the job was enqueued by a Sales
+User and the action ran as the rule's manager owner.
+
+A further save that did not move the stage:
+
+```
+LOGS AFTER A NO-OP SAVE: 1
+TASKS AFTER A NO-OP SAVE: 1
+RECENT RUN: SMOKE Qualified leads get a call-back task | Executed | Create task | CRM-LEAD-2026-00024
+```
+
+### The bug the live run found, and the unit test that now stops it
+
+The first live transition produced NO log row. The worker log had the reason:
+
+```
+2026-08-19 05:08:56 home-frappe-frappe-bench:short: frappe.utils.background_jobs.execute_job(
+  event='Stage changed', ..., method='crm.workflows.execute_rule', ...)
+TypeError: execute_rule() missing 1 required positional argument: 'event'
+```
+
+`frappe.enqueue` has a parameter of its OWN called `event`, so the engine's
+`event=` kwarg was consumed at the enqueue and never reached the job. Nothing in
+the app said so — no log row, no notification, just a rule that quietly never
+fired. The unit suite missed it because its `frappe.enqueue` double took
+`**kwargs` alone and therefore saw the argument the real function had eaten.
+
+Fixed by renaming to `workflow_event`. Two guards were added so it cannot come
+back: the test double now spells out `frappe.enqueue`'s real parameters, and
+`TestRegistration::test_no_job_argument_collides_with_enqueue` compares
+`crm.workflows.JOB_KWARGS` against `inspect.signature(frappe.enqueue)`.
+
+### The site was left clean, and every flag is OFF
+
+```
+FLAGS: {'workflow_rules_enabled': 0, 'deal_health_enabled': 0,
+        'email_sequences_enabled': 0, 'outbound_engine_enabled': 0,
+        'task_reminders_enabled': 0}
+RULES: 0
+LOGS: 0
+SMOKE TASKS: 0
+SMOKE LEAD EXISTS: False
+LEADS: 8          (8 before the smoke)
+TASKS: 1          (1 before the smoke)
+CACHE: None
+```
+
+Everything created for the smoke was removed: the rule, the execution-log rows,
+the task, the lead, and the workflow `Error Log` rows (10 of them, all written by
+the test suite and by the enqueue bug). The one failed RQ job left by the bug was
+removed from the failed-job registry (`FAILED REGISTRY NOW: 0`). Nothing else on
+the site was touched, except the one file timestamp in the itinerary diagnosis
+above, which was restored to the microsecond.
+
+## Frontend
+
+```
+$ yarn test:run
+ Test Files  25 passed (25)
+      Tests  525 passed (525)
+```
+
+52 of those 525 are new (`frontend/tests/unit/workflows.test.js`). Stage 5.1
+reported 473 over 24 files.
+
+### Production build
+
+```
+$ NODE_OPTIONS="--max-old-space-size=6144" yarn build
+✓ built in 1m 24s
+$ cp ../crm/public/frontend/index.html ../crm/www/crm.html
+Done in 88.45s.
+```
+
+The only icon warning is the pre-existing `github` placeholder; `~icons/lucide/workflow`
+resolves. `crm/www/crm.html` and `crm/public/frontend` were pushed into the
+container as a matched pair, as the environment note requires.
+
+## Lint
+
+```
+$ ruff check   crm/workflows.py crm/tests/test_workflows.py crm/fcrm/doctype/crm_workflow_*/ crm/hooks.py crm/feature_flags.py
+All checks passed!
+$ ruff format --check <the same files>
+9 files already formatted
+$ npx prettier --check src/utils/workflows.js src/components/Settings/Workflows/ tests/unit/workflows.test.js
+(clean after --write)
+$ npx eslint src/utils/workflows.js src/components/Settings/Workflows/
+(no output)
+```
+
+`ruff format --check crm/` still reports two files this stage did not touch and
+does not own: `crm/sequences/email.py` and `crm/tests/test_email_sequences.py`.
+
+## Open issues after Stage 5.2
+
+1. **The frappe v15 vs v16 mismatch stands** (Stage 1A open issue 1). The same 7
+   modules cannot be collected in this container. Unchanged by this stage.
+2. **`crm.tests.test_itinerary.TestPublicPdfSweep.test_a_single_failed_delete_does_not_stop_the_sweep`
+   is time-fragile.** It asserts an exact removal count from a site-wide sweep,
+   so any public itinerary send-copy PDF older than two hours on the site makes
+   it fail. Diagnosed and proved above; left unfixed because that file belongs to
+   another stage's owner. The fix is to scope the assertion to the files the test
+   created.
+3. **`crm.automation_context.queue_after_commit` has the enqueue-kwarg trap for
+   every future caller.** Stage 5.2 hit it, fixed it locally and added a
+   signature test, but the shared helper still lets the next consumer send a
+   kwarg named `event`, `queue`, `timeout` or `job_name` and lose it silently.
+   Putting the collision check inside that helper would fix it once for
+   everybody; the file is outside this stage's ownership.
+4. **A rule owned by `Administrator` runs as whoever saved the record**, because
+   switching a background job to Administrator would escalate every action past
+   the org hierarchy. Rules made from the UI are owned by the signed-in manager,
+   so this only affects rules created from a console. See
+   `stage5-2-notes.md` item 3.
+5. **The Redis cache is not dropped by a raw-SQL flag change.** A script that
+   flips `workflow_rules_enabled` with `frappe.db.set_value` instead of saving
+   FCRM Settings must call `crm.workflows.clear_cache()`. Stated in the module
+   docstring, the flag registry entry and the field description.

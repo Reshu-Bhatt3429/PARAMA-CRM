@@ -503,3 +503,43 @@ the scheduler and read by nobody through a list view.
 sequence did not send, and the lookup that produces it does not run at all while
 the flag is off. Authorization is unchanged: the same read check, on the same
 single record.
+
+---
+
+## Stage 5.2 — mini workflow rules (item 16)
+
+Six new whitelisted endpoints, all of them **managers only**. A workflow rule is
+site configuration, not a customer record: there is no row-level scope to derive
+from it, and "the caller may see the rules they own" would be the wrong answer —
+a rule an agent could not see is a rule that acts on their leads without their
+knowledge. So the answer is the whole table for a manager and nothing at all for
+anybody else, enforced twice: by `check_manager()` as the first line of every
+endpoint, and by the doctype's own role permissions, which grant `Sales User`
+nothing.
+
+| Endpoint | Roles | Scope derivation | Record checks | Tested in |
+| --- | --- | --- | --- | --- |
+| `crm.workflows.get_rules` (GET) | Sales Manager, System Manager | `check_manager()` on `frappe.get_roles()`, server-side. No filter is taken from the request. Scope is every rule, deliberately — see above | `CRM Workflow Rule`: role permissions grant Sales User none of read/create/write/delete | `test_workflows.py::TestAC6ManagersOnly::test_ac6_a_sales_user_cannot_list_rules`, `::test_ac6_a_manager_can_list_read_create_and_delete`, `::test_ac6_the_doctype_itself_grants_a_sales_user_nothing` |
+| `crm.workflows.get_rule` (GET) | Sales Manager, System Manager | `check_manager()`; the `name` argument reaches `frappe.get_doc` only after it | `CRM Workflow Rule` read | `::test_ac6_a_sales_user_cannot_read_one_rule` |
+| `crm.workflows.save_rule` (POST) | Sales Manager, System Manager | `check_manager()`. The payload is filtered to a fixed key allowlist (`title`, `apply_on`, `event`, `watched_field`, `enabled`, `daily_action_cap`, `condition_json`, `actions`), and each action row to `ALLOWED_ACTION_FIELDS`. `name` is used ONLY to choose insert vs update. `owner` is never taken from the request — the framework sets it to the session user | `CRM Workflow Rule` create/write via `doc.save()`, which applies the doctype's permissions again. `CRM Workflow Rule.validate` refuses a field name that is not on the target doctype and every framework-owned column | `::test_ac6_a_sales_user_cannot_create_or_edit_a_rule`, `TestRuleValidation` (11 tests) |
+| `crm.workflows.set_rule_enabled` (POST) | Sales Manager, System Manager | `check_manager()`; one boolean, on one named rule | `CRM Workflow Rule` write via `doc.save()` | `::test_ac6_a_sales_user_cannot_create_or_edit_a_rule` |
+| `crm.workflows.delete_rule` (POST) | Sales Manager, System Manager | `check_manager()`; `frappe.delete_doc` applies the doctype's delete permission | `CRM Workflow Rule` delete | `::test_ac6_a_sales_user_cannot_create_or_edit_a_rule`, `::test_ac6_a_manager_can_list_read_create_and_delete` |
+| `crm.workflows.get_recent_runs` (GET) | Sales Manager, System Manager | `check_manager()`; `limit` is clamped to 1..100 server-side; `rule` narrows the same manager-wide scope and cannot widen it. The rows name a lead or a deal but carry **no field of it** — no name, no address, no value — so the panel cannot leak a record the manager could not already list | `CRM Workflow Execution Log` read | `::test_ac6_a_sales_user_cannot_read_the_execution_log_endpoint`, `::test_ac6_the_recent_runs_panel_is_readable_by_a_manager` |
+
+### Non-endpoint entry points added in Stage 5.2
+
+| Entry point | Reached from | Authorization today | What a future endpoint must add |
+| --- | --- | --- | --- |
+| `crm.workflows.after_insert` / `on_update` | `doc_events` on CRM Lead and CRM Deal | Runs inside the document's own save, as whoever is saving. It decides only WHICH rules fire and enqueues them; it reads no row and writes none. Gated on `workflow_rules_enabled` (default OFF) and on the depth ceiling, both checked before anything else | n/a — hook only |
+| `crm.workflows.execute_rule` | Background worker, after the transaction commits | **Re-checks everything at execution time** (master spec §3): the flag, the rule's existence and `enabled`, the record's existence, and the acting user. It then switches to the RULE'S OWNER with `frappe.set_user`, but only after `acting_user()` confirms that owner still exists, is still enabled, and still holds a manager role. Every action then runs under the framework's ordinary permission checks for that user — `create_task` inserts a `CRM Task` normally, `update_field` calls `doc.save()` normally, and `send_template_email` goes through `crm.api.email.send_email`, whose `make` checks the `email` permission on the referenced record | A hand-triggered "run this rule now" endpoint must check `write` on the record first, and must not let the caller name the acting user |
+| `crm.workflows.on_settings_update` | `on_update` hook on FCRM Settings | Runs inside the settings save, which already needs manager permission. Drops one Redis key and nothing else | n/a — hook only |
+| `crm.workflows.cleanup_execution_log` | Frappe scheduler, daily | System job. Deletes execution-log rows older than 90 days in bounded batches. Reads and writes only its own doctype | n/a — scheduler only |
+| `crm.workflows.rule_cache` / `build_cache` / `clear_cache` | The hooks above, and the rule doctype's own hooks | No user data. The blob holds rule titles, doctypes, events, watched fields and conditions — configuration a manager wrote, never a customer's record | An endpoint that returned the blob would expose the rule list to whoever called it, so it needs the same `check_manager()` |
+
+### Doctype role permissions added in Stage 5.2
+
+| Doctype | System Manager | Sales Manager | Sales User | Why |
+| --- | --- | --- | --- | --- |
+| `CRM Workflow Rule` | read, create, write, delete | read, create, write, delete | **none** | Design note: managers only. AC6 |
+| `CRM Workflow Action` | — (child table) | — | — | Child of the rule; inherits the parent's permissions |
+| `CRM Workflow Execution Log` | read, create, write, delete | read, create, write, **no delete** | **none** | The `CRM Followup Send Log` precedent. The unique `execution_key` is what stops an action running twice; a manager who could delete the row could make it run again, so the log is append-only for them. The daily cleanup job deletes as a system job, not as a user |

@@ -1,0 +1,180 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-08-19 09:00:00.000000",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "apply_on",
+  "event",
+  "watched_field",
+  "column_break_when",
+  "enabled",
+  "daily_action_cap",
+  "condition_section",
+  "condition_json",
+  "action_section",
+  "actions",
+  "counter_section",
+  "actions_today",
+  "counter_day",
+  "column_break_counter",
+  "cap_notified_on"
+ ],
+ "fields": [
+  {
+   "description": "What this rule is for, in the words a manager would use. Shown in the rule list and on every execution log row.",
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Title",
+   "reqd": 1
+  },
+  {
+   "default": "CRM Lead",
+   "fieldname": "apply_on",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Apply On",
+   "options": "CRM Lead\nCRM Deal",
+   "reqd": 1
+  },
+  {
+   "default": "Stage changed",
+   "description": "Record created fires once, when the record is inserted. Stage changed and Field changed fire only on a REAL transition: a save that does not move the field does nothing.",
+   "fieldname": "event",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Event",
+   "options": "Record created\nField changed\nStage changed",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.event=='Field changed'",
+   "description": "The fieldname to watch, for the Field changed event. Stage changed always watches status.",
+   "fieldname": "watched_field",
+   "fieldtype": "Data",
+   "label": "Watched Field"
+  },
+  {
+   "fieldname": "column_break_when",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "OFF by default. Two switches must be on before a rule can fire: this one and Workflow rules in Settings, Feature Flags.",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Enabled"
+  },
+  {
+   "default": "500",
+   "description": "How many actions this rule may run in one day. The slot is reserved atomically, so two workers cannot spend the same last slot. 0 means unlimited. Reaching the cap notifies the rule's owner once a day.",
+   "fieldname": "daily_action_cap",
+   "fieldtype": "Int",
+   "label": "Daily Action Cap",
+   "non_negative": 1
+  },
+  {
+   "description": "Which records this rule applies to. Same shape as an assignment rule's condition: a JSON list of [field, operator, value] rows joined by and / or, with optional nested groups.",
+   "fieldname": "condition_section",
+   "fieldtype": "Section Break",
+   "label": "If"
+  },
+  {
+   "fieldname": "condition_json",
+   "fieldtype": "Long Text",
+   "label": "Condition (JSON)"
+  },
+  {
+   "fieldname": "action_section",
+   "fieldtype": "Section Break",
+   "label": "Then"
+  },
+  {
+   "fieldname": "actions",
+   "fieldtype": "Table",
+   "label": "Actions",
+   "options": "CRM Workflow Action"
+  },
+  {
+   "collapsible": 1,
+   "description": "Written by the engine. The counter and the day are updated in ONE statement, which is what makes the cap safe under two workers.",
+   "fieldname": "counter_section",
+   "fieldtype": "Section Break",
+   "label": "Daily Counter"
+  },
+  {
+   "default": "0",
+   "fieldname": "actions_today",
+   "fieldtype": "Int",
+   "label": "Actions Today",
+   "read_only": 1
+  },
+  {
+   "description": "The day the counter above belongs to. A counter from an older day is reset by the same statement that spends the next slot.",
+   "fieldname": "counter_day",
+   "fieldtype": "Date",
+   "label": "Counter Day",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_counter",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "The last day the owner was told this rule hit its cap. Claimed by one atomic update, so the owner is told once a day and not once per refused action.",
+   "fieldname": "cap_notified_on",
+   "fieldtype": "Date",
+   "label": "Cap Notified On",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-19 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CRM Workflow Rule",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "show_title_field_in_link": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "title"
+}

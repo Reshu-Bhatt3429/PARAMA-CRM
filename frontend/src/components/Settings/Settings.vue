@@ -94,7 +94,9 @@ import { Dialog, Avatar, SidebarItem } from 'frappe-ui'
 import { ref, markRaw, computed, watch, h } from 'vue'
 import AssignmentRulePage from './AssignmentRules/AssignmentRulePage.vue'
 import ShieldCheck from '~icons/lucide/shield-check'
+import LucideWorkflow from '~icons/lucide/workflow'
 import SlaConfig from './Sla/SlaConfig.vue'
+import WorkflowRulesPage from './Workflows/WorkflowRulesPage.vue'
 
 const { isManager, getUser } = usersStore()
 
@@ -205,6 +207,11 @@ const tabs = computed(() => {
           label: __('Assignment Rules'),
           icon: markRaw(h(SettingsIcon2, { class: 'rotate-90' })),
           component: markRaw(AssignmentRulePage),
+        },
+        {
+          label: __('Workflow Rules'),
+          icon: markRaw(h(LucideWorkflow)),
+          component: markRaw(WorkflowRulesPage),
         },
         {
           label: __('SLA Policies'),

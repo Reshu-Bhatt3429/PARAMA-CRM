@@ -46,6 +46,14 @@ FLAGS = {
 		"this is off the sweep reads no deal row, no deal carries a Needs attention "
 		"chip, and the manager digest says nothing about deal health."
 	),
+	"workflow_rules_enabled": (
+		"Lets a CRM Workflow Rule fire when a lead or a deal is created or changes. "
+		"While this is off the engine returns on one cached read and no rule can "
+		"act, whatever its own Enabled switch says. Both switches must be on: this "
+		"one arms the engine, the rule's own arms the rule. Note that "
+		"crm.workflows caches this flag in Redis, so a change made by raw SQL "
+		"rather than by saving FCRM Settings needs crm.workflows.clear_cache()."
+	),
 }
 
 
