@@ -69,7 +69,7 @@
 
 <script setup>
 import { TextEditor, createListResource } from 'frappe-ui'
-import { ref, computed, nextTick, watch, onMounted } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 
 const props = defineProps({
   doctype: { type: String, default: '' },
@@ -85,18 +85,27 @@ const search = ref('')
 const templates = createListResource({
   type: 'list',
   doctype: 'WhatsApp Templates',
-  cache: ['whatsappTemplates'],
+  // The doctype belongs in the key because it is part of the filter. With a
+  // single `['whatsappTemplates']` key, a lead's template list was served to a
+  // deal and the other way round.
+  cache: ['whatsappTemplates', props.doctype || 'all'],
   fields: ['name', 'template', 'footer'],
   filters: { status: 'APPROVED', for_doctype: ['in', [props.doctype, '']] },
   orderBy: 'modified desc',
   pageLength: 99999,
 })
 
-onMounted(() => {
-  if (templates.data == null) {
-    templates.fetch()
-  }
-})
+// Always refetch on open. The old `if (templates.data == null)` guard meant
+// that once IndexedDB held a list, a template added or approved afterwards
+// never appeared. The cached list still renders instantly while this runs —
+// that is frappe-ui's stale-while-revalidate behaviour.
+watch(
+  show,
+  (value) => {
+    if (value) templates.reload()
+  },
+  { immediate: true },
+)
 
 const filteredTemplates = computed(() => {
   return (

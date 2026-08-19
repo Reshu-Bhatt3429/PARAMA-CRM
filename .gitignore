@@ -27,3 +27,7 @@ AGENTS.md
 .claude
 .pi
 .patch
+
+# Rescue patches written at the repo root by docker/deploy-local.sh when the
+# container clone holds uncommitted work.
+.deploy-backup-*.patch

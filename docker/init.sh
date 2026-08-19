@@ -1,12 +1,17 @@
 #!/bin/bash
 
+# `set -e` plus the `exec` below are load bearing: without them a failing
+# `bench start` fell through to `bench new-site --force`, which DROPS the site
+# database of an existing bench.
+set -e
+
 if [ -d "/home/frappe/frappe-bench/apps/frappe" ]; then
     echo "Bench already exists, skipping init"
     cd frappe-bench
-    bench start
-else
-    echo "Creating new bench..."
+    exec bench start
 fi
+
+echo "Creating new bench..."
 
 bench init --skip-redis-config-generation frappe-bench --version version-15
 
