@@ -95,8 +95,12 @@ import { ref, markRaw, computed, watch, h } from 'vue'
 import AssignmentRulePage from './AssignmentRules/AssignmentRulePage.vue'
 import ShieldCheck from '~icons/lucide/shield-check'
 import LucideWorkflow from '~icons/lucide/workflow'
+import LucideBuilding2 from '~icons/lucide/building-2'
+import LucideReceipt from '~icons/lucide/receipt'
 import SlaConfig from './Sla/SlaConfig.vue'
 import WorkflowRulesPage from './Workflows/WorkflowRulesPage.vue'
+import CompanyProfile from './Invoicing/CompanyProfile.vue'
+import SacCodes from './Invoicing/SacCodes.vue'
 
 const { isManager, getUser } = usersStore()
 
@@ -227,6 +231,26 @@ const tabs = computed(() => {
           label: __('AI & Follow-ups'),
           component: markRaw(AIFollowupSettings),
           icon: SparkleIcon,
+        },
+      ],
+      condition: () => isManager(),
+    },
+    {
+      // Deliberately NOT behind `invoices_enabled`. The ops order is: fill the
+      // Company Profile and check the SAC codes with your CA, THEN switch the
+      // module on — `finalize` refuses while any Rule 46 supplier field is
+      // empty, so these pages have to be reachable before the flag is.
+      label: __('Invoicing'),
+      items: [
+        {
+          label: __('Company Profile'),
+          icon: markRaw(h(LucideBuilding2)),
+          component: markRaw(CompanyProfile),
+        },
+        {
+          label: __('SAC Codes'),
+          icon: markRaw(h(LucideReceipt)),
+          component: markRaw(SacCodes),
         },
       ],
       condition: () => isManager(),

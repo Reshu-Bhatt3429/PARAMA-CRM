@@ -131,6 +131,17 @@
               @click="showQuoteModal = true"
             />
 
+            <!-- Item 29, same placement as Create quote. Hidden while
+                 `invoices_enabled` is off; `convert_deal` refuses on its own,
+                 and it accepts a deal in any state. -->
+            <Button
+              v-if="invoicesEnabled"
+              :tooltip="__('Create invoice')"
+              :icon="LucideReceipt"
+              :loading="creatingInvoice"
+              @click="createInvoice"
+            />
+
             <Button
               v-if="canDelete"
               :tooltip="__('Delete')"
@@ -359,6 +370,7 @@
 import DeleteLinkedDocModal from '@/components/DeleteLinkedDocModal.vue'
 import QuoteModal from '@/components/Modals/QuoteModal.vue'
 import LucideFileText from '~icons/lucide/file-text'
+import LucideReceipt from '~icons/lucide/receipt'
 import ErrorPage from '@/components/ErrorPage.vue'
 import Icon from '@/components/Icon.vue'
 import Resizer from '@/components/Resizer.vue'
@@ -405,6 +417,7 @@ import { statusesStore } from '@/stores/statuses'
 import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
 import { whatsappEnabled } from '@/composables/whatsapp'
+import { invoicesEnabled } from '@/composables/invoices'
 import { callEnabled } from '@/composables/telephony'
 import { useBroadcast } from '@/composables/useBroadcast'
 import {
@@ -545,7 +558,30 @@ const showOrganizationModal = ref(false)
 const showFilesUploader = ref(false)
 // Item 25.
 const showQuoteModal = ref(false)
+// Item 29. One click raises a DRAFT: nothing is issued and nothing is sent, so
+// there is no confirmation to ask for. The draft is where the agent fixes the
+// customer address the conversion could not find.
+const creatingInvoice = ref(false)
 const _organization = ref({})
+
+async function createInvoice() {
+  creatingInvoice.value = true
+  try {
+    const invoice = await call('crm.api.invoices.convert_deal', {
+      deal: props.dealId,
+    })
+    toast.success(__('Draft invoice created'))
+    router.push({ name: 'Invoice', params: { invoiceId: invoice.name } })
+  } catch (error) {
+    toast.error(
+      error?.messages?.[0] ||
+        error?.message ||
+        __('Could not create the invoice'),
+    )
+  } finally {
+    creatingInvoice.value = false
+  }
+}
 
 const breadcrumbs = computed(() => {
   let items = [{ label: __('Deals'), route: { name: 'Deals' } }]

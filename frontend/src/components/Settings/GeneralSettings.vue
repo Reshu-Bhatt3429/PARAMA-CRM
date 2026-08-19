@@ -125,12 +125,65 @@
           />
         </div>
       </div>
+
+      <!-- Feature Flags. Every expansion feature ships behind a named switch
+           that is OFF by default (master spec C5, crm/feature_flags.py). -->
+      <div
+        class="mt-6 px-2 pb-1 text-xs-medium uppercase tracking-wide text-ink-gray-5"
+      >
+        {{ __('Feature Flags') }}
+      </div>
+      <div class="h-px border-t mx-2 border-outline-elevation-2" />
+      <div class="flex gap-4 items-center justify-between py-3 px-2">
+        <div class="flex flex-col">
+          <div class="text-p-base-medium text-ink-gray-7 truncate">
+            {{ __('Invoices') }}
+          </div>
+          <div class="text-p-sm text-ink-gray-5">
+            {{
+              __(
+                'The Invoices page, the Create invoice action on a deal, and every invoice endpoint. While this is off each of them refuses and the customer link answers like a dead token. Fill in Settings → Invoicing → Company Profile before you turn it on.',
+              )
+            }}
+          </div>
+        </div>
+        <div>
+          <Switch
+            v-model="settings.doc.invoices_enabled"
+            size="sm"
+            @click.stop="toggleInvoices()"
+          />
+        </div>
+      </div>
+      <div class="h-px border-t mx-2 border-outline-elevation-2" />
+      <div class="flex gap-4 items-center justify-between py-3 px-2">
+        <div class="flex flex-col">
+          <div class="text-p-base-medium text-ink-gray-7 truncate">
+            {{ __('Invoice reminders') }}
+          </div>
+          <div class="text-p-sm text-ink-gray-5">
+            {{
+              __(
+                'Chases unpaid invoices: one reminder ladder per instalment, on the due date, then after seven days, then after fourteen. Delivery also needs the outbound engine. Separate from Invoices on purpose — an agency may raise invoices long before it wants the app to chase them.',
+              )
+            }}
+          </div>
+        </div>
+        <div>
+          <Switch
+            v-model="settings.doc.invoice_reminders_enabled"
+            size="sm"
+            @click.stop="toggle('invoice_reminders_enabled')"
+          />
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { getSettings } from '@/stores/settings'
+import { refreshInvoicesFlag } from '@/composables/invoices'
 import { FormControl, Switch, toast } from 'frappe-ui'
 
 const { _settings: settings } = getSettings()
@@ -159,6 +212,21 @@ function toggle(settingKey) {
 function save() {
   settings.save.submit(null, {
     onSuccess: () => toast.success(__('Setting updated successfully')),
+  })
+}
+
+// The sidebar entry and the deal action read a cached copy of this flag. Refresh
+// it here so the module appears and disappears without a page reload.
+function toggleInvoices() {
+  settings.save.submit(null, {
+    onSuccess: () => {
+      refreshInvoicesFlag()
+      toast.success(
+        settings.doc.invoices_enabled
+          ? __('Setting enabled successfully')
+          : __('Setting disabled successfully'),
+      )
+    },
   })
 }
 </script>

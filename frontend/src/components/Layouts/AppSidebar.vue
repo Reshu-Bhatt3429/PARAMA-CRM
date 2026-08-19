@@ -218,6 +218,7 @@ import BrushCleaningIcon from '~icons/lucide/brush-cleaning'
 import LucideImport from '~icons/lucide/import'
 import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
 import LucideMap from '~icons/lucide/map'
+import LucideReceipt from '~icons/lucide/receipt'
 import LucideSun from '~icons/lucide/sun'
 import CRMLogo from '@/components/Icons/CRMLogo.vue'
 import InviteIcon from '@/components/Icons/InviteIcon.vue'
@@ -261,6 +262,7 @@ import { showChangePasswordModal } from '@/composables/modals'
 import { openCommandPalette } from '@/composables/commandPalette'
 import { isWhatsappInstalled } from '@/composables/whatsapp'
 import { canUseItineraries } from '@/composables/itinerary'
+import { invoicesEnabled } from '@/composables/invoices'
 import { todayCount } from '@/composables/today'
 import { useBroadcast } from '@/composables/useBroadcast.js'
 import { call, Sidebar, SidebarItem, SidebarLabel, Tooltip } from 'frappe-ui'
@@ -413,6 +415,15 @@ const linkGroups = [
         // filtered on the server as well, so this only decides what is worth
         // showing.
         condition: () => canUseItineraries.value,
+      },
+      {
+        label: 'Invoices',
+        icon: LucideReceipt,
+        to: 'Invoices',
+        // The module is behind a default-OFF flag (design note item 29,
+        // criterion 10). The endpoints refuse on their own while it is off, so
+        // this only decides what is worth showing.
+        condition: () => invoicesEnabled.value,
       },
     ],
   },

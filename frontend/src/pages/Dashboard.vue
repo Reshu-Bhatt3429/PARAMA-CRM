@@ -118,6 +118,10 @@
     </div>
 
     <div class="w-full overflow-y-scroll">
+      <!-- Item 29. Above the configurable grid rather than inside it: the grid's
+           layout is a stored document, and these three tiles come and go with a
+           feature flag. They render only while `invoices_enabled` is on. -->
+      <InvoiceTiles class="px-5 pb-1 pt-1" />
       <DashboardGrid
         v-if="!dashboardItems.loading && dashboardItems.data"
         v-model="dashboardItems.data"
@@ -139,6 +143,7 @@ import LucideRefreshCcw from '~icons/lucide/refresh-ccw'
 import LucideUndo2 from '~icons/lucide/undo-2'
 import LucidePenLine from '~icons/lucide/pen-line'
 import DashboardGrid from '@/components/Dashboard/DashboardGrid.vue'
+import InvoiceTiles from '@/components/Dashboard/InvoiceTiles.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import ViewBreadcrumbs from '@/components/ViewBreadcrumbs.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'

@@ -23,6 +23,24 @@ async function itineraryGuard() {
   return canUseItineraries.value ? true : { name: 'Home' }
 }
 
+/**
+ * Keep the invoice URLs closed while `invoices_enabled` is off.
+ *
+ * Acceptance criterion 10: OFF hides the sidebar entry AND refuses the
+ * endpoints. This guard is the third lock — it stops a bookmarked URL rendering
+ * an empty page full of permission errors. The endpoints refuse on their own.
+ */
+async function invoicesGuard() {
+  const { invoicesEnabled, refreshInvoicesFlag } = await import(
+    '@/composables/invoices'
+  )
+  if (invoicesEnabled.value) return true
+
+  // The flag may simply not have arrived yet on a direct URL load, so ask
+  // before redirecting rather than bouncing a legitimate visit.
+  return (await refreshInvoicesFlag()) ? true : { name: 'Home' }
+}
+
 async function shouldCapturePersona() {
   // Client-side flag guards against re-prompting if the server persist failed.
   if (localStorage.getItem(PERSONA_DONE_KEY)) return false
@@ -169,6 +187,22 @@ const routes = [
     component: () => import('@/pages/Itinerary.vue'),
     props: true,
     beforeEnter: itineraryGuard,
+  },
+  {
+    path: '/invoices',
+    name: 'Invoices',
+    component: () => import('@/pages/Invoices.vue'),
+    // Imported lazily for the same reason as the itinerary guard above: at
+    // module scope the `auto` resource would fire before `main.js` sets the
+    // resourceFetcher.
+    beforeEnter: invoicesGuard,
+  },
+  {
+    path: '/invoices/:invoiceId',
+    name: 'Invoice',
+    component: () => import('@/pages/Invoice.vue'),
+    props: true,
+    beforeEnter: invoicesGuard,
   },
   {
     path: '/data-import',
