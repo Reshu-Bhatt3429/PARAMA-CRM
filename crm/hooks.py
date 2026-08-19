@@ -142,6 +142,7 @@ permission_query_conditions = {
 	"CRM WhatsApp Followup": "crm.api.followup_engine.get_followup_permission_query_conditions",
 	"CRM Itinerary": "crm.api.itinerary.get_itinerary_permission_query_conditions",
 	"CRM Snippet": "crm.api.snippets.get_snippet_permission_query_conditions",
+	"CRM User Preference": "crm.fcrm.doctype.crm_user_preference.crm_user_preference.get_permission_query_conditions",
 }
 
 has_permission = {
@@ -151,6 +152,7 @@ has_permission = {
 	"CRM WhatsApp Followup": "crm.api.followup_engine.has_followup_permission",
 	"CRM Itinerary": "crm.api.itinerary.has_itinerary_permission",
 	"CRM Snippet": "crm.api.snippets.has_snippet_permission",
+	"CRM User Preference": "crm.fcrm.doctype.crm_user_preference.crm_user_preference.has_permission",
 }
 
 # DocType Class
@@ -237,6 +239,12 @@ scheduler_events = {
 	"hourly": [
 		"crm.api.event.trigger_hourly_event_notifications",
 		"crm.api.whatsapp_followups.notify_pending_followups",
+		# Moved off `daily` in Stage 4. `daily` fires at the start of the day,
+		# which is inside the follow-up engine's default quiet window, and master
+		# spec §5 item 22 requires the digest to respect it. The job is now
+		# at-most-once per manager per day by itself and returns immediately
+		# while quiet hours are open, so it shifts rather than repeats.
+		"crm.api.whatsapp_followups.send_daily_digest",
 		"crm.api.followup_engine.process_followups",
 		"crm.api.itinerary.cleanup_public_itinerary_pdfs",
 		# Item 25: retire expired quote links and delete the private PDF each one
@@ -253,7 +261,6 @@ scheduler_events = {
 	],
 	"daily": [
 		"crm.api.event.trigger_daily_event_notifications",
-		"crm.api.whatsapp_followups.send_daily_digest",
 		"crm.fcrm.doctype.crm_invitation.crm_invitation.expire_invitations",
 		"crm.fcrm.doctype.crm_view_settings.crm_view_settings.clear_old_versions",
 		"crm.telemetry.capture_feature_state",

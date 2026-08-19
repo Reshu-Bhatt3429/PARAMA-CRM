@@ -33,7 +33,12 @@ function showEvent(e) {
 }
 
 // Tasks
-function showTask(task) {
+//
+// `prefill` lets a caller open the modal with fields already filled in — the
+// Brief card's "Create task" passes the suggested description and due date that
+// way. The agent still presses Create, so nothing is written by the suggestion
+// itself.
+function showTask(task, prefill = {}) {
   showModal({
     name: task?.name,
     doctype: 'CRM Task',
@@ -41,6 +46,7 @@ function showTask(task) {
     defaults: {
       reference_doctype: props.doctype,
       reference_docname: props.doc?.name,
+      ...prefill,
     },
     callbacks: {
       afterInsert: (d) => afterDoctype(d, true),

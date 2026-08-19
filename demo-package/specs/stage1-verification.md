@@ -2147,3 +2147,355 @@ when it committed. The content is intact and correct, but in both files the
 **Stage 3B section now sits BEFORE the Stage 3A section**. Reordering them would
 mean rewriting a committed file for a cosmetic gain, so it was left alone. A
 reader looking for Stage 3A should scroll past Stage 3B.
+
+---
+
+# Stage 4 (AI slice) — verification record
+
+Scope: master spec §5 items **13 + 28 + 15 merged** (the timeline Brief card) and
+**14** (the AI email draft), plus the digest quiet-hours/per-user toggle and the
+AI budget-lock evaluation. Design decisions and deviations are in
+`demo-package/specs/stage4-notes.md`; endpoint rows are in
+`demo-package/specs/permission-matrix.md` under "## Stage 4".
+
+Branch `feat/feature-expansion`. Nothing committed.
+
+## What changed
+
+### Files added — backend
+
+| File | What it is |
+| --- | --- |
+| `crm/ai/api.py` | `crm.ai.api.is_available` — the one boolean a browser may ask about the provider, so a sparkle button knows its state before it is clicked |
+| `crm/api/ai_brief.py` | Items 13 + 28 + 15. One `complete()` call returning bullets, next step and tone |
+| `crm/api/ai_draft.py` | Item 14. One `complete()` call returning an email body, ≤ 2000 chars |
+| `crm/fcrm/doctype/crm_user_preference/` | The app's first per-user preference store: doctype JSON, controller with the closed key registry, two whitelisted endpoints, row-level permission hooks |
+| `crm/tests/test_ai_brief.py` | 41 tests |
+| `crm/tests/test_ai_draft.py` | 26 tests |
+| `crm/tests/test_ai_budget.py` | 9 tests, plus the four `bench execute` diagnostics used for the lock measurement |
+| `crm/tests/test_digest_preferences.py` | 29 tests |
+
+### Files changed — backend
+
+| File | Change |
+| --- | --- |
+| `crm/ai/client.py` | `complete(..., isolate_budget_claim=False)`; `reserve_request(..., isolate=False)`; a `commit()` seam. Default behaviour unchanged. Docstring gains the two new call sites and the budget-lock rule |
+| `crm/api/whatsapp_followups.py` | `send_daily_digest(now=None)` honours quiet hours, the per-user `daily_digest` switch and an at-most-once-per-day check; `in_digest_quiet_hours`, `digest_is_due`, `has_digest_today`, `digest_message_prefix` added; the digest notification title carries its date |
+| `crm/hooks.py` | `send_daily_digest` moved `daily` → `hourly`; `CRM User Preference` added to `permission_query_conditions` and `has_permission` |
+
+### Files added — frontend
+
+| File | What it is |
+| --- | --- |
+| `frontend/src/components/Activities/BriefCard.vue` | The one dismissible tinted card |
+| `frontend/src/composables/ai.js` | `aiReady` + `loadAiReady()`, asked once per session and shared |
+| `frontend/src/utils/aiBrief.js` | Due-date-from-hint, tone normalisation, the escaped Note HTML, the session-local cache |
+| `frontend/src/utils/aiDraft.js` | The three preset chips, plain text → escaped paragraphs, the disclosure line |
+| `frontend/tests/unit/aiBrief.test.js` | 21 tests |
+| `frontend/tests/unit/aiDraft.test.js` | 12 tests |
+
+### Files changed — frontend
+
+| File | Change |
+| --- | --- |
+| `frontend/src/components/Activities/Activities.vue` | Renders the Brief card above the timeline; generate / regenerate / dismiss / create-task / save-as-note handlers |
+| `frontend/src/components/Activities/ActivityHeader.vue` | The Summarize sparkle on the Activity tab, with the AI-off popover instead of an error toast |
+| `frontend/src/components/Activities/AllModals.vue` | `showTask(task, prefill)` — additive; the Brief's suggested step opens the modal filled in |
+| `frontend/src/components/EmailEditor.vue` | The composer's one sparkle: an inline popover with a prompt input, three chips and the disclosure line; insert at caret |
+| `frontend/src/components/Settings/PreferencesSettings.vue` | A "Notifications" section built from the server's preference registry |
+
+### Schema
+
+One new doctype, `CRM User Preference` (`user`, `preference_key`,
+`preference_value`, `preference_id` unique). **No patch and no backfill**: a user
+with no row gets the registry default, so there is nothing to migrate.
+Downgrade behaviour: with the code removed the rows are inert; the digest reverts
+to site-wide because `is_on` is the only reader.
+
+## Mobile parity (master spec C4)
+
+`Activities.vue` is the SAME component the mobile record pages use —
+`frontend/src/pages/MobileLead.vue` and `MobileDeal.vue` import it, as do
+`Lead.vue` and `Deal.vue`. The Brief card, the sparkle button and the AI-off
+popover therefore appear on mobile with no second implementation. The card is a
+plain block with `flex-wrap` on its action row. The composer is likewise shared.
+Verified by reading the imports; the touch walkthrough belongs to Stage 6.
+
+## Backend — every module that collects, run individually
+
+Container `crm-local-frappe-1`, site `crm.localhost`, host tree pushed first with
+both `crm/public` and `crm/www/crm.html` excluded. Re-run after the ruff format
+pass; these are the counts from that final run.
+
+| Module | Result |
+| --- | --- |
+| `crm.fcrm.doctype.crm_invitation.test_crm_invitation` | `Ran 13 tests in 4.093s` `OK` |
+| `crm.fcrm.doctype.crm_product.test_product_item_sync` | `Ran 25 tests in 0.030s` `OK (skipped=18)` |
+| `crm.fcrm.doctype.crm_products.test_crm_products` | `Ran 7 tests in 0.001s` `OK (skipped=6)` |
+| `crm.integrations.erpnext.test_utils` | `Ran 9 tests in 0.011s` `OK (skipped=2)` |
+| `crm.tests.test_ai_brief` | `Ran 41 tests in 10.286s` `OK` |
+| `crm.tests.test_ai_budget` | `Ran 9 tests in 0.641s` `OK` |
+| `crm.tests.test_ai_client` | `Ran 35 tests in 0.248s` `OK` |
+| `crm.tests.test_ai_draft` | `Ran 26 tests in 4.572s` `OK` |
+| `crm.tests.test_automation_context` | `Ran 20 tests in 0.703s` `OK` |
+| `crm.tests.test_deal_health` | `Ran 38 tests in 21.665s` `OK` |
+| `crm.tests.test_digest_preferences` | `Ran 29 tests in 11.743s` `OK` |
+| `crm.tests.test_duplicates` | `Ran 18 tests in 4.072s` `OK` |
+| `crm.tests.test_email_compose` | `Ran 18 tests in 0.719s` `OK` |
+| `crm.tests.test_exchange_rate` | `Ran 16 tests in 0.658s` `OK` |
+| `crm.tests.test_followup_engine` | `Ran 99 tests in 20.552s` `OK` |
+| `crm.tests.test_form_auto_response` | `Ran 42 tests in 8.435s` `OK` |
+| `crm.tests.test_itinerary` | `Ran 112 tests in 62.739s` `OK` |
+| `crm.tests.test_outbound` | `Ran 46 tests in 3.804s` `OK` |
+| `crm.tests.test_quote` | `Ran 67 tests in 21.059s` `OK` |
+| `crm.tests.test_reminders` | `Ran 40 tests in 8.897s` `OK` |
+| `crm.tests.test_search` | `Ran 36 tests in 6.800s` `OK` |
+| `crm.tests.test_send_later` | `Ran 58 tests in 11.596s` `OK` |
+| `crm.tests.test_sequences` | `Ran 39 tests in 0.141s` `OK` |
+| `crm.tests.test_snippets` | `Ran 45 tests in 2.713s` `OK` |
+| `crm.tests.test_state_options` | `Ran 7 tests in 0.204s` `OK` |
+| `crm.tests.test_suppression` | `Ran 32 tests in 2.473s` `OK` |
+| `crm.tests.test_sweeps` | `Ran 31 tests in 56.193s` `OK` |
+| `crm.tests.test_tags` | `Ran 36 tests in 5.739s` `OK` |
+| `crm.tests.test_target_meter` | `Ran 23 tests in 5.267s` `OK` |
+| `crm.tests.test_today` | `Ran 28 tests in 20.494s` `OK` |
+| `crm.tests.test_whatsapp` | `Ran 62 tests in 0.234s` `OK` |
+| `crm.tests.test_whatsapp_demo` | `Ran 12 tests in 0.051s` `OK` |
+
+**1139 tests, 0 failures, 26 skips.** 105 of them are new in this stage.
+
+### The two Stage 1A baseline failures are both gone
+
+`crm.tests.test_followup_engine` now reports `Ran 99 tests ... OK`. Both
+long-standing failures passed:
+
+* `test_client_refuses_to_run_while_ai_is_disabled` — closed by Stage 1B
+  (recorded there as open issue 2).
+* `test_quiet_hours_defer_instead_of_cancel` — passed at 08:53 local. It is the
+  wall-clock-sensitive test Stage 1A flagged, so this is one clean run and not a
+  proof it is no longer time-of-day sensitive. Stage 4's own quiet-hours tests
+  take no times from the clock, on purpose.
+
+### Modules that still do NOT collect in this container
+
+Unchanged from Stage 1A, and not touched by this stage. Six `crm/tests/` modules
+plus the 47 upstream ones abort at import:
+
+```
+crm.tests.test_dashboard, test_demo_data, test_form_api, test_integrations,
+test_notification_log, test_utils
+ImportError: cannot import name 'IntegrationTestCase' from 'frappe.tests'
+```
+
+Cause: frappe v15.117.0 in the container against `pyproject.toml`'s
+`frappe >= 16.0.0-dev`. Pre-existing environment mismatch, reported as
+not-collectable rather than as passes.
+
+## The budget-lock measurement (Stage 1B flag 1)
+
+Two `bench execute` processes, two real database connections. Process A claims
+and holds 8 s; process B starts ~3 s later and reports how long ITS claim took.
+Both run the real `crm.ai.client.claim_request`. Full reasoning in stage4-notes §5.
+
+```
+# in-transaction claim (the Stage 1B behaviour)
+{"role": "holder", "claimed": true, "claim_seconds": 0.229}
+{"role": "waiter", "claimed": true, "claim_seconds": 5.132}
+
+# isolated claim (this stage)
+{"role": "holder", "claimed": true, "claim_seconds": 0.218}
+{"role": "waiter", "claimed": true, "claim_seconds": 0.215}
+```
+
+5.132 s is the entire remaining hold: the second caller waited out the first
+caller's provider call. Isolated, the same measurement is 0.215 s.
+
+Budget counter around the measurement: **19 before → 21 after** (the isolated run
+commits two claims by design), restored to **19**. No provider call was made by
+the measurement.
+
+## Live check on the running demo site
+
+`CRM AI Settings` is enabled there (Gemini, `gemini-3.5-flash`). Every call below
+went over HTTP through the whitelisted endpoint, as `Administrator`.
+
+**Budget counter: 19 before → 22 after. Three provider calls spent** (the
+allowance was four). Nothing was deleted; one CRM Lead was created and rolled
+back only inside the test suites, never on the live path.
+
+### `crm.ai.api.is_available`
+
+```
+{"message":true}
+```
+
+### Item 13/28/15 — one real brief, on `CRM-LEAD-2026-00019`
+
+```
+$ curl -X POST .../api/method/crm.api.ai_brief.generate \
+    -d '{"doctype":"CRM Lead","name":"CRM-LEAD-2026-00019"}'
+{
+    "message": {
+        "bullets": [
+            "Amara Okafor requested a 9-day trip to Masai Mara, Kenya for a group of 4 starting on October 2, 2026.",
+            "The customer specified a budget of 9,500.0 and requested 4-star property accommodations.",
+            "The current lead status is Proposal Sent, and there is a backlog task to send the Kenya itinerary and final quote."
+        ],
+        "next_step": {
+            "description": "Send the Kenya itinerary and final quote with 4-star properties to the customer.",
+            "due_hint": "today"
+        },
+        "tone": null,
+        "generated_at": "2026-08-19 08:57:26.442671"
+    }
+}
+
+real	0m2.616s
+```
+
+Three bullets, a next step with a hint, and **`tone: null`** — that lead has a
+note and a task but no inbound message, which is exactly the case item 15's
+amendment requires to report nothing. One call: the counter moved 19 → 20.
+
+### Item 14 — the disclosure line, and one real draft
+
+```
+$ curl '.../api/method/crm.api.ai_draft.sent_fields?doctype=CRM%20Lead'
+{"message":["Full Name","First Name","Destination","Travel Start Date","Travel End Date","Group Size","Budget"]}
+```
+
+The first attempt hit the PROVIDER's own free-tier rate limit, and the failure
+path is worth recording verbatim because it is the one an agency will meet:
+
+```
+frappe.exceptions.ValidationError: The AI could not draft this email:
+The AI provider answered with HTTP 429: [{
+  "error": {
+    "code": 429,
+    "message": "You exceeded your current quota ...
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.5-flash
+Please retry in 10.8785916s.",
+    "status": "RESOURCE_EXHAUSTED",
+
+real	0m15.015s
+```
+
+The client retried the transient 429 three times with backoff (the 15 s), then
+raised, and `ask_model` turned it into one readable sentence with a `Draft Failed`
+title. **One budget claim, four HTTP attempts** — the claim is per `complete()`
+call, not per retry. Counter 20 → 21.
+
+After waiting out the provider's window, the same call again:
+
+```
+{
+  "body": "I wanted to follow up on your interest in planning a trip to the Masai Mara in Kenya for your group of four, departing on October 2, 2026.\n\nThe Masai Mara offers incredible wildlife viewing, and October is a fantastic time of year to experience the beauty of the region. With your budget of $9,500, we can look at some wonderful safari lodges and custom itineraries to make this an unforgettable adventure.\n\nCould you let me know if you have any specific experiences in mind, or if you would like me to put together a few initial itinerary options for you to review?",
+  "generated_at": "2026-08-19 08:59:24.060279"
+}
+```
+
+Plain text, paragraph breaks intact, no subject line, no signature block, no
+link, well under the 2000-character cap. Counter 21 → 22.
+
+### The per-user preference endpoint
+
+```
+$ curl '.../api/method/crm.fcrm.doctype.crm_user_preference.crm_user_preference.get_my_preferences'
+{"message":{"values":{"daily_digest":true},"registry":{"daily_digest":{"label":"Daily digest","description":"Send me the daily WhatsApp and deal-health digest. Turning this off stops the digest for this user only; everyone else keeps getting it."}}}}
+```
+
+Default ON with no row stored, and the label and description the settings page
+renders come from the server's registry.
+
+## Frontend
+
+```bash
+cd /home/kreshnith/CRM/frontend && npx vitest run
+```
+
+```
+ Test Files  23 passed (23)
+      Tests  466 passed (466)
+   Duration  4.63s
+```
+
+433 → 466: the 33 tests this stage added are `tests/unit/aiBrief.test.js` (21)
+and `tests/unit/aiDraft.test.js` (12).
+
+**One thing that is NOT asserted, and why.** Item 14's "immediate Undo" is the
+editor's own history, not code this app owns. Asserting it would mean importing
+`frappe-ui/editor`, which pulls `.vue` files this vitest config has no plugin
+for — the attempt failed with `Install @vitejs/plugin-vue to handle .vue files`.
+The evidence is instead: `RichTextKit` pushes `UndoRedo` unless
+`starterKit.undoRedo === false`
+(`node_modules/frappe-ui/src/molecules/editor/kits.ts:298`), `EmailEditor.vue`
+passes only `{ paragraph: false }`, and `undoRedo` is present in the shipped
+bundle. A human should still press Ctrl+Z once in Stage 6. A comment in the test
+file says all of this.
+
+### Production build
+
+```bash
+cd /home/kreshnith/CRM/frontend && \
+  NODE_OPTIONS="--max-old-space-size=6144" npx vite build --base=/assets/crm/frontend/
+```
+
+```
+✓ built in 1m 24s
+```
+
+The one warning, `An error occurred when globbing for files. '(0 , brace_expansion_1.expand) is not a function'`,
+comes from the PWA plugin and is pre-existing (recorded in Stage 2A).
+
+### The build is deployed, and both halves were pushed together
+
+`crm/www/crm.html` and `crm/public/frontend` were pushed to the container **in
+one tar, from one build**, then `bench clear-cache`. Re-checked afterwards:
+
+```
+crm page: 200
+/assets/crm/frontend/assets/index-DLdCzZyK.css -> 200
+/assets/crm/frontend/assets/index-rkAZcMHS.js  -> 200
+```
+
+`index-rkAZcMHS.js` is the hash `crm.html` references. Every earlier push in this
+stage excluded BOTH halves, so the container never held a mismatched pair.
+
+Present in the shipped bundle: `crm.api.ai_brief.generate`,
+`crm.api.ai_draft.generate`, `crm.ai.api.is_available`, `AI Brief`,
+`Suggested next step`, `Send pricing info`,
+`crm_user_preference.set_my_preference`, `undoRedo`.
+
+## Lint
+
+```bash
+uvx --from 'ruff==0.8.1' ruff check <the 11 Python files this stage touched>
+# All checks passed!
+uvx --from 'ruff==0.8.1' ruff format <the 9 non-hook Python files>
+# 4 files reformatted, 5 files left unchanged
+uvx --from 'ruff==0.8.1' ruff format --diff crm/ai/client.py crm/hooks.py
+# 2 files already formatted
+
+npx prettier@3.2.5 --write <the 11 frontend files this stage touched>
+npx oxlint@1.50.0 <the 9 frontend source files>
+# Found 0 warnings and 0 errors.
+# Finished in 29ms on 9 files with 93 rules using 8 threads.
+```
+
+Ruff was pointed at this stage's files rather than at `crm/`, for the reason
+Stage 2A recorded. The four backend modules were re-run after the format pass and
+those are the counts reported above.
+
+## Open issues handed on
+
+The full list is in `demo-package/specs/stage4-notes.md` §7. The three that
+matter most:
+
+1. **Ctrl+Z after inserting a draft has not been pressed by a human.** Verified
+   at code level and in the built bundle only.
+2. **The brief does not read WhatsApp messages**, which is this agency's main
+   channel — the demo site holds 28 WhatsApp messages and 0 email Communications.
+   Widening it is an owner decision.
+3. **The demo site has no email thread to demonstrate either feature properly.**
+   Seeding a two-sided email thread on one lead would make the Stage 6 UX
+   walkthrough show the tone line and the draft's thread awareness.

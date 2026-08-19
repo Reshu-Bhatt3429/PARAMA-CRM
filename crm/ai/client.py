@@ -50,8 +50,30 @@ table is kept in `demo-package/specs/permission-matrix.md`.
   Sends: the itinerary's `destination`, `start_date`, `num_days`, `group_size`,
   `budget`, `currency`, and the day titles and summaries already on the
   itinerary. No customer name, phone, email or lead reference is included.
+* `crm.api.ai_brief.generate` -- the timeline Brief card. Sends: the whitelisted
+  record fields in `crm.api.ai_brief.RECORD_FIELDS` and an excerpt of the
+  record's own timeline (emails, comments, calls, tasks, notes), capped by
+  `BRIEF_ACTIVITY_LIMIT` items and `BRIEF_PAYLOAD_BYTES` bytes. The customer's
+  email address, phone number, the record owner and every other field stay on
+  the site. The full list is in that module's docstring.
+* `crm.api.ai_draft.generate` -- the email composer's sparkle. Sends: the
+  whitelisted record fields in `crm.api.ai_draft.RECORD_FIELDS`, the agent's own
+  instruction, and up to `MESSAGE_HISTORY_LIMIT` email subjects/bodies from that
+  record, stripped of HTML, of links the record does not itself contain, and cut
+  to `MESSAGE_CHARS` characters each.
 
 Nothing else in the app calls `complete()`.
+
+Where the budget claim commits
+------------------------------
+`reserve_request` claims the budget slot with one atomic UPDATE. That UPDATE
+takes a row lock on the settings row and, by default, holds it until the
+CALLER's transaction ends -- which is after the provider answers. That is right
+for the follow-up engine, whose claim and whose send bookkeeping have to stand
+or fall together, and wrong for an interactive click, where it makes two agents
+who press the same button queue behind each other for the length of a model
+call. `isolate_budget_claim=True` commits the claim immediately and releases the
+lock. See `reserve_request` for the rule a caller must satisfy to pass it.
 """
 
 import json
@@ -151,6 +173,7 @@ def complete(
 	system: str | None = None,
 	max_tokens: int = 1024,
 	json_schema: dict | None = None,
+	isolate_budget_claim: bool = False,
 ) -> str | dict:
 	"""Send one prompt to the configured provider and return its answer.
 
@@ -160,6 +183,9 @@ def complete(
 	        max_tokens: ceiling on the generated answer.
 	        json_schema: when given, the model is told to answer with one JSON
 	                object matching the schema and the parsed object is returned.
+	        isolate_budget_claim: commit the budget claim before the network call
+	                instead of leaving it in the caller's transaction. Interactive
+	                endpoints pass True; see `reserve_request` for the rule.
 
 	Returns:
 	        The answer text, or the parsed object when `json_schema` is given.
@@ -181,7 +207,7 @@ def complete(
 	# Order matters: refuse an oversized request before spending a budget slot on
 	# it, and spend the slot before the network call rather than after it.
 	check_request_size(prompt, system)
-	reserve_request(settings, month, used)
+	reserve_request(settings, month, used, isolate=isolate_budget_claim)
 	text = dispatch(settings, prompt, system, max_tokens)
 
 	if not json_schema:
@@ -195,7 +221,7 @@ def complete(
 		retry_prompt = f"{prompt}\n\n{correction(first_error)}"
 		month, used = check_quota(settings)
 		check_request_size(retry_prompt, system)
-		reserve_request(settings, month, used)
+		reserve_request(settings, month, used, isolate=isolate_budget_claim)
 		text = dispatch(settings, retry_prompt, system, max_tokens)
 		return read_answer(text, json_schema)
 
@@ -309,7 +335,17 @@ def check_quota(settings) -> tuple[str, int]:
 	return month, used
 
 
-def reserve_request(settings, month: str, used: int) -> None:
+def commit():
+	"""The one commit in this module, behind a seam the tests can neutralise.
+
+	`crm.api.followup_engine` uses the same pattern and for the same reason: a
+	commit inside a `FrappeTestCase` would end the transaction the test harness
+	rolls back, so the tests replace this function rather than the database.
+	"""
+	frappe.db.commit()
+
+
+def reserve_request(settings, month: str, used: int, isolate: bool = False) -> None:
 	"""Spend one request from this month's budget, BEFORE the network call.
 
 	Two workers that both read "999 of 1000 used" must not both send. The claim
@@ -319,6 +355,29 @@ def reserve_request(settings, month: str, used: int) -> None:
 
 	The limit comes from the settings the caller loaded, so a manager who raises
 	the cap and a job that is mid-flight cannot disagree about which cap applied.
+
+	`isolate` and why it exists
+	---------------------------
+	The claim is an UPDATE, so it holds a row lock on the settings row until the
+	transaction that made it ends. By default that transaction is the caller's,
+	and it does not end until after the provider has answered -- seconds later.
+	For the follow-up engine that is correct and deliberate: its claim and the
+	bookkeeping of the message it is about to send belong to one transaction.
+
+	For an interactive endpoint it is a bug the user can feel. Two agents who
+	press "Summarize" at the same moment serialise on that lock, and the second
+	one waits out the first one's model call for no reason. `isolate=True`
+	commits the claim at once, releasing the lock before the request leaves.
+
+	The rule for passing `isolate=True`: the caller must have NO uncommitted
+	writes of its own, because this commits the whole transaction, not just the
+	counter. Both callers that pass it -- `crm.api.ai_brief.generate` and
+	`crm.api.ai_draft.generate` -- read records and write none.
+
+	Isolating also fixes the direction the failure leans. An in-transaction claim
+	is undone by a rollback, so a request that WAS sent can end up uncounted; a
+	committed claim survives, and the worst case is the over-count by one this
+	function was designed around.
 	"""
 	limit = frappe.utils.cint(settings.max_monthly_requests)
 
@@ -326,6 +385,14 @@ def reserve_request(settings, month: str, used: int) -> None:
 		raise AIConfigurationError(_("The monthly AI request limit of {0} is reached.").format(limit))
 
 	record_usage(month, used)
+
+	if isolate:
+		try:
+			commit()
+		except Exception:
+			# The slot is claimed either way; only the lock hold time is at stake.
+			# A commit that fails must not cost the user their answer.
+			frappe.log_error(frappe.get_traceback(), "CRM AI: budget claim commit failed")
 
 
 def claim_request(month: str, limit: int) -> bool:

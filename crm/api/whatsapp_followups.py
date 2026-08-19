@@ -1,9 +1,27 @@
 """Scheduled WhatsApp nudges: per-agent follow-up reminders and a manager digest.
 
-Both entry points are wired into `scheduler_events` in `crm/hooks.py`
-(hourly / daily). They run unattended, so neither is allowed to raise: a
-scheduler job that throws takes the rest of its queue down with it. Every
-failure is logged with `frappe.log_error` and the job reports zero work done.
+Both entry points are wired into `scheduler_events` in `crm/hooks.py` (both
+hourly). They run unattended, so neither is allowed to raise: a scheduler job
+that throws takes the rest of its queue down with it. Every failure is logged
+with `frappe.log_error` and the job reports zero work done.
+
+Why the digest is on the HOURLY schedule
+----------------------------------------
+It used to be `daily`, which fires at the start of the day -- inside the
+follow-up engine's default quiet window (21:00 to 09:00). Master spec §5 item 22
+says the digest respects quiet hours and a per-user toggle, and Stage 3B recorded
+both as missing.
+
+Quiet hours are honoured by SHIFTING the digest, not by cancelling it: the job
+now runs every hour, returns without reading anything while `now` is inside the
+window the follow-up engine is configured with, and delivers at the first tick
+after the window closes. `digest_is_due` makes that at-most-once per user per
+day, so twenty-four ticks still produce one digest. It reads the CRM
+Notification rows the digest itself writes, which means there is no new state to
+keep in step and a manually cleared notification cannot cause a second send on
+the same day.
+
+The per-user toggle is `daily_digest` in `CRM User Preference`, default ON.
 
 Nothing here talks to Meta. It only reads WhatsApp Message rows that already
 exist and writes CRM Notifications.
@@ -28,6 +46,7 @@ from crm.api.whatsapp import (
 )
 from crm.deal_health import FLAG_DEAL_HEALTH, flagged_deals
 from crm.fcrm.doctype.crm_notification.crm_notification import notify_user
+from crm.fcrm.doctype.crm_user_preference.crm_user_preference import is_on
 from crm.feature_flags import is_enabled
 
 # How long an unanswered incoming message may sit before the assignee is nudged.
@@ -52,10 +71,24 @@ DIGEST_EXCLUDED_USERS = ("Guest",)
 # here so `has_unread_followup` can match on its (translated) prefix instead.
 FOLLOWUP_MESSAGE = "Pending WhatsApp follow-up: {0} has been waiting since {1}"
 
+# The digest's own message template, kept here for the same reason: its leading
+# words are how `digest_is_due` recognises a digest it already sent today among
+# every other WhatsApp notification on the same user.
+DIGEST_MESSAGE = "WhatsApp today: {0} new leads, {1} conversations need a reply, {2} waiting over {3}h"
+
+# The per-user switch in `CRM User Preference`. Default ON: a manager who has
+# never opened the setting keeps the digest they had before this existed.
+DIGEST_PREFERENCE = "daily_digest"
+
 
 def followup_message_prefix() -> str:
 	"""The leading, conversation-independent part of a nudge message."""
 	return _(FOLLOWUP_MESSAGE).split("{0}")[0]
+
+
+def digest_message_prefix() -> str:
+	"""The leading, count-independent part of a digest message."""
+	return _(DIGEST_MESSAGE).split("{0}")[0]
 
 
 def notify_pending_followups():
@@ -211,11 +244,28 @@ def get_flagged_deals() -> list[dict]:
 		return []
 
 
-def send_daily_digest():
-	"""Daily: one summary of the WhatsApp pipeline and deal health, per manager."""
+def send_daily_digest(now=None):
+	"""Hourly: one summary of the WhatsApp pipeline and deal health, per manager.
+
+	At most one per manager per day. Silent inside the follow-up engine's quiet
+	hours, and silent for a manager who switched the digest off. See the module
+	docstring for why this is an hourly job rather than a daily one.
+	"""
 	try:
+		now = now or frappe.utils.now_datetime()
+
+		if in_digest_quiet_hours(now):
+			return 0
+
+		# Work out WHO before working out WHAT. On twenty-three of the day's
+		# twenty-four ticks this list is empty, and building the summary first
+		# would mean twenty-three pointless aggregate queries a day.
+		recipients = [user for user in get_digest_recipients() if digest_is_due(user, now)]
+		if not recipients:
+			return 0
+
 		if frappe.db.exists("DocType", "WhatsApp Message"):
-			summary = build_digest_summary()
+			summary = build_digest_summary(now)
 		else:
 			summary = empty_digest_summary()
 
@@ -231,9 +281,13 @@ def send_daily_digest():
 			summary["reference_name"] = summary["flagged_deals"][0]["name"]
 
 		created = 0
-		for user in get_digest_recipients():
-			create_digest_notification(summary, user)
-			created += 1
+		for user in recipients:
+			create_digest_notification(summary, user, now)
+			# `notify_user` drops a notification identical to one that is already
+			# there, so "I called it" is not the same as "it exists". Counting
+			# what is actually on the record keeps the job's return value true.
+			if has_digest_today(user, now):
+				created += 1
 
 		return created
 	except Exception:
@@ -242,6 +296,60 @@ def send_daily_digest():
 			"CRM WhatsApp: daily digest failed",
 		)
 		return 0
+
+
+def in_digest_quiet_hours(now) -> bool:
+	"""True while the follow-up engine's configured quiet window is open.
+
+	The SAME window the sequence engine defers sends into, read from the same
+	Single, so a manager who moves quiet hours moves both at once and cannot end
+	up with a digest arriving at 03:00 because it kept its own copy of the times.
+
+	Fails OPEN, with a log entry. A settings row this job cannot read is a
+	configuration problem; a digest that then never arrives again is a silent
+	one, and this notification costs nothing to deliver -- it sends no message,
+	spends no budget and reaches no customer.
+	"""
+	try:
+		from crm.api.followup_engine import get_settings
+		from crm.sequences import in_quiet_hours
+
+		return bool(in_quiet_hours(now, get_settings()))
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "CRM WhatsApp: digest quiet hours unreadable")
+		return False
+
+
+def digest_is_due(user: str, now) -> bool:
+	"""True when this user wants a digest and has not had today's yet."""
+	if not is_on(user, DIGEST_PREFERENCE):
+		return False
+
+	return not has_digest_today(user, now)
+
+
+def has_digest_today(user: str, now) -> bool:
+	"""Whether this user already has a digest notification dated today.
+
+	The digest's own notification is the record of the digest having been sent,
+	so there is no second table to keep in step and nothing to clean up. Matching
+	is on the message's leading words, for the same reason `has_unread_followup`
+	matches on the nudge's: an unread digest and an unread nudge are both
+	WhatsApp notifications on the same document.
+	"""
+	day_start = frappe.utils.get_datetime(frappe.utils.getdate(now))
+
+	return bool(
+		frappe.db.exists(
+			"CRM Notification",
+			{
+				"to_user": user,
+				"type": "WhatsApp",
+				"creation": [">=", frappe.utils.get_datetime_str(day_start)],
+				"message": ["like", f"{digest_message_prefix()}%"],
+			},
+		)
+	)
 
 
 def build_digest_summary(now=None) -> dict:
@@ -338,18 +446,27 @@ def digest_deal_health_line(flagged: list[dict]) -> str:
 	return _("{0} deals need attention: {1}").format(len(flagged), names)
 
 
-def create_digest_notification(summary: dict, user: str):
-	message = _(
-		"WhatsApp today: {0} new leads, {1} conversations need a reply, {2} waiting over {3}h"
-	).format(summary["new_leads"], summary["needs_reply"], summary["overdue"], FOLLOWUP_DUE_HOURS)
+def create_digest_notification(summary: dict, user: str, now=None):
+	now = now or frappe.utils.now_datetime()
+
+	message = _(DIGEST_MESSAGE).format(
+		summary["new_leads"], summary["needs_reply"], summary["overdue"], FOLLOWUP_DUE_HOURS
+	)
 
 	health_line = digest_deal_health_line(summary.get("flagged_deals") or [])
 	if health_line:
 		message = f"{message}. {health_line}"
 
+	# The date is in the title for two reasons. It tells a manager scrolling
+	# yesterday's notifications which morning they are looking at, and it makes
+	# two days' digests different documents: `notify_user` silently drops a
+	# notification whose every field matches one that already exists, so two
+	# quiet days running would otherwise produce one digest between them.
+	title = _("WhatsApp daily digest · {0}").format(frappe.utils.format_date(now, "d MMM"))
+
 	notification_text = f"""
         <div class="mb-2 leading-5 text-ink-gray-5">
-            <span class="font-medium text-ink-gray-9">{_("WhatsApp daily digest")}</span>
+            <span class="font-medium text-ink-gray-9">{frappe.utils.escape_html(title)}</span>
             <span>{frappe.utils.escape_html(message)}</span>
         </div>
     """

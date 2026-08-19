@@ -77,6 +77,37 @@
             :options="getTimezoneOptions()"
           />
         </div>
+
+        <!--
+          Per-user notification switches (master spec §5 item 22). They live on
+          this page because they are this person's choice, not the agency's —
+          the site-wide digest settings stay in Settings → AI & Follow-ups.
+          Each switch saves on change; there is nothing to press Save for.
+        -->
+        <div v-if="preferenceRows.length" class="mt-8">
+          <div class="text-base-semibold text-ink-gray-9">
+            {{ __('Notifications') }}
+          </div>
+          <div
+            v-for="row in preferenceRows"
+            :key="row.key"
+            class="flex items-center justify-between gap-8 mt-6"
+          >
+            <div class="flex flex-col gap-1">
+              <span class="text-base-medium text-ink-gray-8">
+                {{ row.label }}
+              </span>
+              <span class="text-p-sm text-ink-gray-6">
+                {{ row.description }}
+              </span>
+            </div>
+            <FormControl
+              type="checkbox"
+              :modelValue="row.value"
+              @update:modelValue="(value) => savePreference(row.key, value)"
+            />
+          </div>
+        </div>
       </div>
     </template>
   </SettingsLayoutBase>
@@ -92,6 +123,8 @@ import { getSettings } from '@/stores/settings'
 import {
   Combobox,
   Badge,
+  FormControl,
+  call,
   toast,
   createResource,
   createDocumentResource,
@@ -135,6 +168,44 @@ const timeZones = createResource({
 
 function getTimezoneOptions() {
   return timeZones.data?.timezones.map((tz) => ({ label: tz, value: tz })) || []
+}
+
+// --- per-user preferences --------------------------------------------------
+//
+// The list is built from the server's registry rather than hard-coded here, so
+// the next preference someone adds to `CRM User Preference` appears on this page
+// without a second edit.
+
+const preferences = createResource({
+  url: 'crm.fcrm.doctype.crm_user_preference.crm_user_preference.get_my_preferences',
+  auto: true,
+})
+
+const preferenceRows = computed(() => {
+  const data = preferences.data
+  if (!data?.registry) return []
+  return Object.entries(data.registry).map(([key, entry]) => ({
+    key,
+    label: entry.label,
+    description: entry.description,
+    value: Boolean(data.values?.[key]),
+  }))
+})
+
+async function savePreference(key, value) {
+  // Paint first, then persist: a switch that waits for a round trip before it
+  // moves feels broken. A failure puts it back and says so.
+  const previous = preferences.data.values[key]
+  preferences.data.values[key] = Boolean(value)
+  try {
+    await call(
+      'crm.fcrm.doctype.crm_user_preference.crm_user_preference.set_my_preference',
+      { key, value: value ? 1 : 0 },
+    )
+  } catch (error) {
+    preferences.data.values[key] = previous
+    toast.error(error.messages?.[0] || __('Could not save this preference'))
+  }
 }
 
 useKeyboardShortcuts({

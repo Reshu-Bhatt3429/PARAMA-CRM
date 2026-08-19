@@ -368,3 +368,74 @@ These are not whitelisted and cannot be called from a client.
 Communication `name` and `read_by_recipient_on`, plus two new activity types
 (`scheduled_email`, `quote_view`). All additive; no field was removed or renamed.
 Its permission check is unchanged and is still the first thing it does.
+
+---
+
+## Stage 4 — the Brief card, the AI email draft, per-user preferences
+
+Five whitelisted endpoints. Three of them spend the agency's AI budget, so each
+row states the budget consequence as well as the data one.
+
+| Endpoint | Roles | Scope derivation | Record checks | Tested in |
+| --- | --- | --- | --- | --- |
+| `crm.api.ai_brief.generate` (POST) | Any authenticated CRM user who can READ the record. No Guest — `frappe.whitelist()` refuses it | `require_record` takes the doctype and name from the request and checks them with `frappe.has_permission(doctype, "read", doc=name)`. No filter, no list, no client-supplied condition. The timeline data is then read through `crm.api.activities`, which repeats the same check itself | `CRM Lead` / `CRM Deal`: `read`, before anything is read, built or spent. A name that does not exist raises the SAME `PermissionError` as one that is forbidden, so the endpoint cannot enumerate records | `crm/tests/test_ai_brief.py::TestPermissions` (four cases, incl. "spends no budget on a refusal") |
+| `crm.api.ai_draft.generate` (POST) | As above | As above. The message history is read with `frappe.get_all("Communication", …)` filtered to that one `reference_doctype`/`reference_name` — the pair that was just permission-checked | `CRM Lead` / `CRM Deal`: `read`. Same identical-failure rule | `crm/tests/test_ai_draft.py::TestPermissions` |
+| `crm.api.ai_draft.sent_fields` (GET) | Any authenticated CRM user | No record is touched. It maps the module's own `RECORD_FIELDS` constant to field LABELS from the doctype meta | None needed — it returns no record data. An unsupported doctype returns `[]` | `crm/tests/test_ai_draft.py::TestSentFields` |
+| `crm.ai.api.is_available` (GET) | Any authenticated CRM user | None to derive: it returns one boolean | None. It says whether an AI provider is configured, and nothing about which, which model, or how much budget is left | `crm/tests/test_ai_client.py` covers `is_configured`; the endpoint is a one-line wrapper and is exercised live (stage4-notes §5) |
+| `crm.fcrm.doctype.crm_user_preference.crm_user_preference.get_my_preferences` (GET) / `set_my_preference` (POST) | Any authenticated CRM user | **There is no user parameter.** The row read and written is always `frappe.session.user`'s. The key must be in the module's `PREFERENCES` registry or the call is refused | `CRM User Preference`: the row is found by `user + preference_key` and written with `ignore_permissions`, which is safe precisely because the user cannot be chosen by the caller | `crm/tests/test_digest_preferences.py::TestUserPreferenceStore` |
+
+### Why the AI endpoints need only `read`, stated plainly
+
+Both write nothing. `generate` on either module returns text to the browser and
+touches no record — asserted in both test modules
+(`test_nothing_is_written_to_the_record`). The acts that DO write are separate,
+later, and explicit: the task comes from the ordinary CRM Task modal after the
+agent presses Create, and "Save as note" is a `frappe.client.insert` of an FCRM
+Note, which carries its own create permission. That is master spec C6 as a code
+layout, not as a promise.
+
+The consequence to be honest about: anyone who can read a record can spend one
+request of the agency's AI budget on it. That is inherent to a per-record AI
+feature; it is bounded by `max_monthly_requests` in CRM AI Settings, which is
+claimed atomically before the network call, and every refusal path is asserted
+to spend nothing.
+
+### What leaves the site on an AI call — Stage 4 additions
+
+Extends the Stage 1B table. The authoritative copy is in `crm/ai/client.py`.
+
+| Call site | Record fields sent | Other content sent | Never sent |
+| --- | --- | --- | --- |
+| `crm.api.ai_brief.generate` | `CRM Lead`: `lead_name`, `first_name`, `status`, `source`, `destination`, `travel_start_date`, `travel_end_date`, `group_size`, `budget`. `CRM Deal`: `lead_name`, `first_name`, `organization`, `status`, `currency`, `deal_value`, `expected_deal_value`, `expected_closure_date`, `next_step`. Empty fields are dropped | An excerpt of that record's own timeline — email subjects and bodies, comments, call direction/status/duration/note, task titles and due dates, note titles and bodies. HTML stripped, ≤ 400 chars per item, ≤ 25 items, ≤ 12 000 bytes | The customer's email address, phone and mobile; the record's owner and assignees; attachments and file names; **field-change history rows** (an "email changed to …" row carries an address, so version rows are not read at all); WhatsApp messages |
+| `crm.api.ai_draft.generate` | `CRM Lead`: exactly `crm.api.followup_engine.AI_LEAD_FIELDS`, imported rather than copied. `CRM Deal`: `lead_name`, `first_name`, `organization`, `status`, `currency`, `deal_value`, `expected_closure_date`, `next_step` | The agent's own typed instruction (≤ 500 chars) and up to 10 emails from that record — subject and body, HTML stripped, ≤ 600 chars each, **with every link the record's own whitelisted fields do not contain removed before the prompt is built** | As above, plus: any link the record does not itself hold, in either direction |
+
+### Non-endpoint entry points added in Stage 4
+
+| Entry point | Reached from | Authorization today | What a future endpoint must add |
+| --- | --- | --- | --- |
+| `crm.fcrm.doctype.crm_user_preference.crm_user_preference.get_preference` / `is_on` / `get_all_for` | `crm.api.whatsapp_followups.digest_is_due`, and future per-user switches | None needed — a scheduler job asking "does this user want this?" has no session user to check. Reads one row by `user + key` and returns a boolean. Never raises | An endpoint that reads ANOTHER user's preference needs a manager check; `get_my_preferences` deliberately has no user parameter |
+| `crm.fcrm.doctype.crm_user_preference.crm_user_preference.set_preference` | `set_my_preference`, and future settings paths | Writes with `ignore_permissions=True`, safe because the caller above pins the user to the session user. Refuses an unregistered key | Any new caller MUST pin the user itself. Passing a user from a request would make this a write-anyone's-preference endpoint |
+| `crm.api.whatsapp_followups.in_digest_quiet_hours` / `digest_is_due` / `has_digest_today` | `send_daily_digest`, hourly scheduler | Scheduler only. `has_digest_today` reads CRM Notification rows for one named user; nothing reaches a request | n/a — scheduler only |
+| `crm.api.ai_brief.timeline_items` / `message_directions` | `crm.api.ai_brief.generate`, after its permission check | `timeline_items` delegates to `crm.api.activities`, which checks read permission itself. `message_directions` reads `Communication.sent_or_received` for names that came out of that already-checked read | Never call either with a name a caller supplied without checking it first |
+| `crm.ai.client.reserve_request(..., isolate=True)` | `crm.api.ai_brief`, `crm.api.ai_draft` | Commits the caller's transaction. Only a caller with NO uncommitted writes may pass it | A caller that writes before calling `complete()` must NOT isolate; the docstring says so and names both current callers |
+
+### Doctype role permissions added in Stage 4
+
+| Doctype | System Manager | Sales Manager | Sales User |
+| --- | --- | --- | --- |
+| `CRM User Preference` | create, read, write, delete | create, read, write, delete | create, read, write, delete |
+
+The grants look wide and are not: `get_permission_query_conditions` and
+`has_permission` (registered in `crm/hooks.py`) restrict every role except
+System Manager to rows whose `user` is the session user. A Sales User can create
+and delete their own preference rows, which is exactly what a preferences screen
+does, and cannot see that anyone else has any.
+
+### One behaviour change to an existing path
+
+`crm.api.whatsapp_followups.send_daily_digest` moved from the `daily` schedule to
+the `hourly` one. It is not an endpoint and its authorization is unchanged
+(scheduler only). What changed is WHEN it delivers: it returns without reading
+anything while the follow-up engine's quiet window is open, skips a user who has
+switched `daily_digest` off, and skips a user who already has today's digest —
+so twenty-four ticks still produce at most one digest per manager per day.
