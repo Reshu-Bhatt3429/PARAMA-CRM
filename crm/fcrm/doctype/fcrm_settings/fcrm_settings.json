@@ -251,35 +251,35 @@
   },
   {
    "default": "0",
-   "description": "Lets a follow-up stage set to the Email channel build and schedule its message. While this is off every email stage parks with a stated reason and no outbound job is created. Delivery also needs the outbound engine above. Registry: crm/feature_flags.py.",
+   "description": "Lets a follow-up stage set to the Email channel build and schedule its message. While this is off every email stage parks with a stated reason and no outbound job is created. Delivery also needs the outbound engine above.",
    "fieldname": "email_sequences_enabled",
    "fieldtype": "Check",
    "label": "Email sequences"
   },
   {
    "default": "0",
-   "description": "Lets the scheduler remind assignees about tasks that are about to fall due. While this is off the reminder sweep returns without reading a single task row, so no notification and no email is ever produced. Registry: crm/feature_flags.py.",
+   "description": "Lets the scheduler remind assignees about tasks that are about to fall due. While this is off the reminder sweep returns without reading a single task row, so no notification and no email is ever produced.",
    "fieldname": "task_reminders_enabled",
    "fieldtype": "Check",
    "label": "Task due-date reminders"
   },
   {
    "default": "0",
-   "description": "Lets the nightly sweep work out which open deals need attention (close date passed, stalled, awaiting a reply) and store the answer on the deal. While this is off the sweep reads no deal row, no deal carries a Needs attention chip, and the manager digest says nothing about deal health. Registry: crm/feature_flags.py.",
+   "description": "Lets the nightly sweep work out which open deals need attention (close date passed, stalled, awaiting a reply) and store the answer on the deal. While this is off the sweep reads no deal row, no deal carries a Needs attention chip, and the manager digest says nothing about deal health.",
    "fieldname": "deal_health_enabled",
    "fieldtype": "Check",
    "label": "Deal health flags"
   },
   {
    "default": "0",
-   "description": "Lets a workflow rule fire when a lead or a deal is created or changes. While this is off the engine stops on one cached read and no rule can act, whatever its own Enabled switch says. Both switches must be on. A rule that writes a field NEVER triggers another rule. Registry: crm/feature_flags.py.",
+   "description": "Lets a workflow rule fire when a lead or a deal is created or changes. While this is off the engine stops on one cached read and no rule can act, whatever its own Enabled switch says. Both switches must be on. A rule that writes a field NEVER triggers another rule.",
    "fieldname": "workflow_rules_enabled",
    "fieldtype": "Check",
    "label": "Workflow rules"
   },
   {
    "default": "0",
-   "description": "Lets the invoice module be used at all: the Invoices page, Convert to invoice on a deal, and every endpoint in crm.api.invoices. While this is off those endpoints refuse and a tokenised customer link answers exactly like a dead token. Registry: crm/feature_flags.py.",
+   "description": "Lets the invoice module be used at all: the Invoices page, Convert to invoice on a deal, and every endpoint in crm.api.invoices. While this is off those endpoints refuse and a tokenised customer link answers exactly like a dead token.",
    "fieldname": "invoices_enabled",
    "fieldtype": "Check",
    "label": "Invoices"
@@ -287,7 +287,7 @@
   {
    "default": "0",
    "depends_on": "eval:doc.invoices_enabled",
-   "description": "Lets the hourly sweep chase unpaid invoices: one ladder per payment-schedule row, on the due date, then +7 days, then +14. Suppression-checked and quiet-hours aware, and pausable per invoice. Separate from Invoices above on purpose. Delivery also needs the Outbound engine switch. Registry: crm/feature_flags.py.",
+   "description": "Lets the hourly sweep chase unpaid invoices: one ladder per payment-schedule row, on the due date, then +7 days, then +14. Suppression-checked and quiet-hours aware, and pausable per invoice. Separate from Invoices above on purpose. Delivery also needs the Outbound engine switch.",
    "fieldname": "invoice_reminders_enabled",
    "fieldtype": "Check",
    "label": "Invoice payment reminders"
