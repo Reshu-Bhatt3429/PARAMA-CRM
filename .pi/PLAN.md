@@ -4,6 +4,12 @@
 > **Completed phases**: [ARCHIVE.md](./ARCHIVE.md)  
 > **Stable API contracts**: [SPEC.md](./SPEC.md)
 
+> **⏸️ SUPERSESSION NOTE (2026-08-18, owner decision):** Phases 3B and 4 are PARKED.
+> The feature-expansion program in `demo-package/specs/feature-expansion-master-spec.md`
+> proceeds first. Expansion workers must not modify `Field.vue` / `Grid.vue` internals;
+> if a task seems to require that, stop and escalate instead. Resume 3B/4 after the
+> expansion program ships.
+
 ---
 
 ## Implementation Order
