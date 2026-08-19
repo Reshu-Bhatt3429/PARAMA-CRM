@@ -143,6 +143,10 @@ permission_query_conditions = {
 	"CRM Itinerary": "crm.api.itinerary.get_itinerary_permission_query_conditions",
 	"CRM Snippet": "crm.api.snippets.get_snippet_permission_query_conditions",
 	"CRM User Preference": "crm.fcrm.doctype.crm_user_preference.crm_user_preference.get_permission_query_conditions",
+	# Item 29: an invoice has no scope of its own. It belongs to the deal it bills,
+	# and the deal's org-hierarchy conditions are the answer -- the same shape the
+	# itinerary uses for its lead.
+	"CRM Invoice": "crm.fcrm.doctype.crm_invoice.crm_invoice.get_invoice_permission_query_conditions",
 }
 
 has_permission = {
@@ -153,6 +157,7 @@ has_permission = {
 	"CRM Itinerary": "crm.api.itinerary.has_itinerary_permission",
 	"CRM Snippet": "crm.api.snippets.has_snippet_permission",
 	"CRM User Preference": "crm.fcrm.doctype.crm_user_preference.crm_user_preference.has_permission",
+	"CRM Invoice": "crm.fcrm.doctype.crm_invoice.crm_invoice.has_invoice_permission",
 }
 
 # DocType Class
@@ -286,6 +291,16 @@ scheduler_events = {
 		# removes temporary PUBLIC files on CRM Itinerary, while a quote's file is
 		# private, lives on CRM Deal, and dies with its CRM Document Link row.
 		"crm.api.quote.cleanup_quote_links",
+		# Item 29: the same for invoice links, which have their own, longer TTL --
+		# a customer opens an invoice again when they pay the balance, which on a
+		# travel booking is weeks after the deposit.
+		"crm.api.invoices.cleanup_invoice_links",
+		# Item 29: one payment-reminder ladder per payment-schedule row (due date,
+		# +7 days, +14 days). Behind `invoice_reminders_enabled` AND
+		# `invoices_enabled`, both default OFF; while either is off this reads no
+		# invoice row. It only CREATES outbound jobs -- delivery still needs
+		# `outbound_engine_enabled` and the sweep below.
+		"crm.invoice_reminders.send_invoice_reminders",
 		# Behind `outbound_engine_enabled`, default OFF. While the flag is off these
 		# return without reading a single job row.
 		"crm.outbound.process_scheduled_jobs",
@@ -408,6 +423,13 @@ after_migrate = [
 	# is reviewable in git, and the Print Format row is rewritten only when that
 	# file changed, so an administrator's own edit survives a migrate.
 	"crm.api.quote.install_quote_print_format",
+	# Item 29. Same contract as the quote's format: the HTML lives in a file and
+	# the Print Format row is rewritten only when that file changed.
+	"crm.api.invoices.install_invoice_print_format",
+	"crm.fcrm.doctype.crm_invoice.crm_invoice.add_invoice_roles",
+	# Placeholder SAC codes, each flagged "verify with your CA". Idempotent by
+	# code: a row an administrator edited is never overwritten.
+	"crm.fcrm.doctype.crm_sac_code.crm_sac_code.seed_sac_codes",
 	"crm.domain_enrichment.install.seed_default_rules_and_mappings",
 	"crm.install.add_default_scripts",
 	"crm.install.add_web_form_custom_fields",

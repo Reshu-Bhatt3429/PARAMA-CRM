@@ -23,6 +23,8 @@
   "task_reminders_enabled",
   "deal_health_enabled",
   "workflow_rules_enabled",
+  "invoices_enabled",
+  "invoice_reminders_enabled",
   "task_reminders_section",
   "task_reminder_offset_minutes",
   "task_reminder_email",
@@ -274,6 +276,21 @@
    "fieldname": "workflow_rules_enabled",
    "fieldtype": "Check",
    "label": "Workflow rules"
+  },
+  {
+   "default": "0",
+   "description": "Lets the invoice module be used at all: the Invoices page, Convert to invoice on a deal, and every endpoint in crm.api.invoices. While this is off those endpoints refuse and a tokenised customer link answers exactly like a dead token. Registry: crm/feature_flags.py.",
+   "fieldname": "invoices_enabled",
+   "fieldtype": "Check",
+   "label": "Invoices"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.invoices_enabled",
+   "description": "Lets the hourly sweep chase unpaid invoices: one ladder per payment-schedule row, on the due date, then +7 days, then +14. Suppression-checked and quiet-hours aware, and pausable per invoice. Separate from Invoices above on purpose. Delivery also needs the Outbound engine switch. Registry: crm/feature_flags.py.",
+   "fieldname": "invoice_reminders_enabled",
+   "fieldtype": "Check",
+   "label": "Invoice payment reminders"
   },
   {
    "collapsible": 1,

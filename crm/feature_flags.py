@@ -54,6 +54,22 @@ FLAGS = {
 		"crm.workflows caches this flag in Redis, so a change made by raw SQL "
 		"rather than by saving FCRM Settings needs crm.workflows.clear_cache()."
 	),
+	"invoices_enabled": (
+		"Lets the invoice module be used at all: the Invoices page, the Convert to "
+		"invoice action on a deal, and every endpoint in crm.api.invoices. While "
+		"this is off each of those endpoints refuses with a permission error and "
+		"the tokenised customer link answers exactly like a dead token, so a page "
+		"that was hidden cannot be reached by typing its URL."
+	),
+	"invoice_reminders_enabled": (
+		"Lets the hourly sweep chase unpaid invoices: one reminder ladder per "
+		"payment-schedule row, on the due date, then after seven days, then after "
+		"fourteen. While this is off the sweep reads no invoice row and no ladder "
+		"exists. Separate from 'Invoices' above on purpose -- an agency may want "
+		"to raise invoices long before it wants the app to chase them. Delivery "
+		"ALSO needs 'Outbound engine': this flag creates the job, that one lets "
+		"the sweep send it."
+	),
 }
 
 

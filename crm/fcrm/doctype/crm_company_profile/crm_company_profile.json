@@ -1,0 +1,212 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-08-19 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "identity_section",
+  "legal_name",
+  "trade_name",
+  "gstin",
+  "column_break_identity",
+  "phone",
+  "email",
+  "logo",
+  "address_section",
+  "address",
+  "column_break_address",
+  "state",
+  "state_code",
+  "invoicing_section",
+  "invoice_number_prefix",
+  "default_sac",
+  "column_break_invoicing",
+  "tour_package_mode_default",
+  "upi_vpa",
+  "terms_section",
+  "terms_default",
+  "einvoice_section",
+  "einvoice_threshold",
+  "einvoice_note"
+ ],
+ "fields": [
+  {
+   "fieldname": "identity_section",
+   "fieldtype": "Section Break",
+   "label": "Agency"
+  },
+  {
+   "description": "The registered legal name, exactly as it appears on the GST registration. GST Rule 46(a) requires this on the face of every invoice.",
+   "fieldname": "legal_name",
+   "fieldtype": "Data",
+   "label": "Legal Name"
+  },
+  {
+   "description": "The name customers know you by, if it differs from the legal name. Printed under the legal name.",
+   "fieldname": "trade_name",
+   "fieldtype": "Data",
+   "label": "Trade Name"
+  },
+  {
+   "description": "Your 15-character GSTIN. Its first two characters must match the state code below.",
+   "fieldname": "gstin",
+   "fieldtype": "Data",
+   "label": "GSTIN"
+  },
+  {
+   "fieldname": "column_break_identity",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "phone",
+   "fieldtype": "Data",
+   "label": "Phone"
+  },
+  {
+   "fieldname": "email",
+   "fieldtype": "Data",
+   "label": "Email",
+   "options": "Email"
+  },
+  {
+   "fieldname": "logo",
+   "fieldtype": "Attach Image",
+   "label": "Logo"
+  },
+  {
+   "fieldname": "address_section",
+   "fieldtype": "Section Break",
+   "label": "Registered Address"
+  },
+  {
+   "description": "The full registered address, one line per line. Printed as-is on the invoice.",
+   "fieldname": "address",
+   "fieldtype": "Small Text",
+   "label": "Address"
+  },
+  {
+   "fieldname": "column_break_address",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "state",
+   "fieldtype": "Data",
+   "label": "State"
+  },
+  {
+   "description": "The two-digit GST state code. This is what decides CGST+SGST versus IGST on every invoice, so it has to be right.",
+   "fieldname": "state_code",
+   "fieldtype": "Data",
+   "label": "State Code"
+  },
+  {
+   "fieldname": "invoicing_section",
+   "fieldtype": "Section Break",
+   "label": "Invoicing"
+  },
+  {
+   "default": "INV/",
+   "description": "Invoice numbers are built as prefix + financial year + serial, for example INV/25-26/0001. GST Rule 46(b) allows at most 16 characters in total, so keep the prefix short.",
+   "fieldname": "invoice_number_prefix",
+   "fieldtype": "Data",
+   "label": "Invoice Number Prefix"
+  },
+  {
+   "description": "The SAC code new invoice lines start with. Verify it with your CA before you issue invoices.",
+   "fieldname": "default_sac",
+   "fieldtype": "Link",
+   "label": "Default SAC Code",
+   "options": "CRM SAC Code"
+  },
+  {
+   "fieldname": "column_break_invoicing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "Start new invoices in tour-package mode: 5% on the gross amount, no input tax credit, and the mandatory tour-operator statement printed on the invoice. Leave off to bill commission at the standard rate.",
+   "fieldname": "tour_package_mode_default",
+   "fieldtype": "Check",
+   "label": "Default To Tour Package Mode"
+  },
+  {
+   "description": "Your UPI address, for example agency@okbank. A payment QR code for the remaining balance is printed on every invoice PDF while this is set. No payment gateway is involved and no fee is charged.",
+   "fieldname": "upi_vpa",
+   "fieldtype": "Data",
+   "label": "UPI ID (VPA)"
+  },
+  {
+   "fieldname": "terms_section",
+   "fieldtype": "Section Break",
+   "label": "Default Terms"
+  },
+  {
+   "description": "Printed at the foot of every invoice. One term per line.",
+   "fieldname": "terms_default",
+   "fieldtype": "Small Text",
+   "label": "Terms"
+  },
+  {
+   "fieldname": "einvoice_section",
+   "fieldtype": "Section Break",
+   "label": "E-Invoicing"
+  },
+  {
+   "default": "50000000",
+   "description": "The aggregate annual turnover above which GST e-invoicing (IRN) becomes mandatory. Seeded with the last figure this project could establish and left editable on purpose: confirm the current threshold with your CA.",
+   "fieldname": "einvoice_threshold",
+   "fieldtype": "Currency",
+   "label": "E-Invoicing Turnover Threshold"
+  },
+  {
+   "description": "Set automatically from the threshold above.",
+   "fieldname": "einvoice_note",
+   "fieldtype": "Small Text",
+   "label": "Note",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-08-19 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CRM Company Profile",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Sales User"
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
