@@ -19,6 +19,7 @@
   "crm_timeline_sort_order",
   "feature_flags_section",
   "outbound_engine_enabled",
+  "email_sequences_enabled",
   "task_reminders_enabled",
   "deal_health_enabled",
   "task_reminders_section",
@@ -244,6 +245,13 @@
    "fieldname": "outbound_engine_enabled",
    "fieldtype": "Check",
    "label": "Outbound engine"
+  },
+  {
+   "default": "0",
+   "description": "Lets a follow-up stage set to the Email channel build and schedule its message. While this is off every email stage parks with a stated reason and no outbound job is created. Delivery also needs the outbound engine above. Registry: crm/feature_flags.py.",
+   "fieldname": "email_sequences_enabled",
+   "fieldtype": "Check",
+   "label": "Email sequences"
   },
   {
    "default": "0",

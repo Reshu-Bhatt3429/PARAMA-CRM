@@ -29,16 +29,22 @@ The same table is kept in `crm/ai/client.py` and in
   `deal_value`, `expected_deal_value`, `expected_closure_date`, `next_step`.
   Empty fields are dropped rather than sent as blanks.
 * An excerpt of that record's own timeline: email subjects and bodies, comments,
-  call direction/status/duration/note, task titles and due dates, and note
-  titles and bodies. HTML is stripped, each item is cut to `ITEM_CHARS`
-  characters, at most `ACTIVITY_LIMIT` items are sent, and the whole excerpt is
-  cut to `PAYLOAD_BYTES` bytes from the oldest end.
+  call direction/status/duration/note, task titles and due dates, note titles
+  and bodies, and the newest `WHATSAPP_LIMIT` WhatsApp messages of that record's
+  conversation. HTML is stripped, each item is cut to `ITEM_CHARS` characters, at
+  most `ACTIVITY_LIMIT` items are sent, and the whole excerpt is cut to
+  `PAYLOAD_BYTES` bytes from the oldest end.
+
+WhatsApp is in that list as of Stage 5.1, and it is not an afterthought: this
+agency is WhatsApp-first, so a brief that read only Communications summarised a
+record whose entire conversation it could not see and judged the tone of a
+customer whose words it had never read. The message TEXT is sent; the number is
+not, and neither is anything else about the WhatsApp row.
 
 What NEVER leaves the site: the customer's email address, phone number, mobile
 number; the record's owner, assignees and every other user; attachments and file
-names; field-change history (a "email changed to ..." version row carries an
-address, so version rows are not in the excerpt at all); and WhatsApp messages,
-which this endpoint does not read.
+names; and field-change history (a "email changed to ..." version row carries an
+address, so version rows are not in the excerpt at all).
 
 Authorization (master spec §3)
 ------------------------------
@@ -113,6 +119,14 @@ PAYLOAD_BYTES = 12_000
 # Inbound messages are what the tone line is about, so the newest few are kept
 # even when they fall outside the newest `ACTIVITY_LIMIT` items.
 INBOUND_FLOOR = 3
+
+# How many WhatsApp messages of the record's conversation are read before the
+# shared caps above trim them. Deliberately close to `ACTIVITY_LIMIT`: on a
+# WhatsApp-first record the conversation IS the timeline, and reading fewer would
+# hand the model an excerpt that starts in the middle of a sentence.
+WHATSAPP_LIMIT = 20
+
+WHATSAPP_DOCTYPE = "WhatsApp Message"
 
 BRIEF_TOKENS = 900
 
@@ -288,9 +302,61 @@ def timeline_items(doctype: str, name: str) -> list[dict]:
 	items += call_items(calls)
 	items += task_items(tasks)
 	items += note_items(notes)
+	items += whatsapp_items(doctype, name)
 
 	items.sort(key=lambda item: item["at"], reverse=True)
 	return trim(items)
+
+
+def whatsapp_items(doctype: str, name: str) -> list[dict]:
+	"""The record's WhatsApp conversation, as timeline items. Never raises.
+
+	`frappe_whatsapp` is optional -- it is not installed in CI and may not be
+	installed on a customer's site -- so a missing doctype returns nothing rather
+	than failing a brief that has plenty else to say.
+
+	A Deal's conversation is read on the Deal alone. A converted lead's older
+	messages sit on the Lead, and the Brief summarises the record it was asked
+	about; pulling a second record's history in would tell an agent things the
+	timeline in front of them does not show, which is exactly the rule the
+	Communication excerpt already follows.
+
+	Permission note (master spec 3): the caller's read permission on `name` was
+	checked by `require_record` before anything here ran, and the filter is that
+	one record. Nothing widens it.
+	"""
+	try:
+		if not frappe.db.exists("DocType", WHATSAPP_DOCTYPE):
+			return []
+
+		rows = frappe.get_all(
+			WHATSAPP_DOCTYPE,
+			filters={"reference_doctype": doctype, "reference_name": name},
+			fields=["type", "message", "creation"],
+			order_by="creation desc",
+			limit=WHATSAPP_LIMIT,
+		)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "CRM brief: WhatsApp excerpt failed")
+		return []
+
+	items = []
+	for row in rows:
+		text = join_text(row.get("message"))
+		if not text:
+			continue
+
+		inbound = row.get("type") == "Incoming"
+		items.append(
+			item(
+				at=row.get("creation"),
+				speaker=_("Customer") if inbound else _("Agency"),
+				kind=_("whatsapp"),
+				text=text,
+				inbound=inbound,
+			)
+		)
+	return items
 
 
 def communication_items(activities: list) -> list[dict]:

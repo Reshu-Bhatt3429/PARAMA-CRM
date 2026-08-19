@@ -16,6 +16,14 @@
           variant="subtle"
           theme="green"
         />
+        <!-- Item 21: says the sequence sent this, not the agent. Nothing else
+             on the card changes: a sequence email IS an ordinary email. -->
+        <Badge
+          v-if="sequenceChip"
+          :label="sequenceChip"
+          variant="subtle"
+          theme="gray"
+        />
       </div>
       <div class="flex items-center gap-2 shrink-0">
         <Tooltip v-if="indicator" :text="indicator.tooltip">
@@ -99,6 +107,7 @@ import {
   emailStateTimestamp,
   showEmailState,
 } from '@/utils/emailStatus'
+import { sequenceChipLabel } from '@/utils/emailSequence'
 import { formatDate, timeAgo } from '@/utils'
 import { reactive, computed } from 'vue'
 
@@ -108,6 +117,10 @@ const props = defineProps({
 })
 
 const emailBox = reactive(props.emailBox)
+
+// Item 21. Null for every message a follow-up sequence did not send, which is
+// every message on a site that does not use them.
+const sequenceChip = computed(() => sequenceChipLabel(props.activity))
 
 function reply(email, reply_all = false) {
   emailBox.show = true

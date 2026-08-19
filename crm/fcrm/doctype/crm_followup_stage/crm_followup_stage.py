@@ -14,6 +14,9 @@ class CRMFollowupStage(Document):
 		from frappe.types import DF
 
 		ai_instruction: DF.SmallText | None
+		channel: DF.Literal["WhatsApp", "Email"]
+		email_subject_override: DF.Data | None
+		email_template: DF.Link | None
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data
@@ -23,4 +26,9 @@ class CRMFollowupStage(Document):
 		use_ai: DF.Check
 	# end: auto-generated types
 
+	# `channel` is deliberately NOT mandatory. Stage rows saved before Stage 5.1
+	# hold no value for it, and a mandatory field would refuse to save the
+	# settings on every site that already configured a sequence. An empty channel
+	# reads as WhatsApp in `crm.api.followup_engine.get_stages`, and
+	# `crm.patches.v1_0.backfill_followup_stage_channel` writes the value in.
 	pass

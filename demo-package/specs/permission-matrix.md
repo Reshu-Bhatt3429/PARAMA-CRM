@@ -439,3 +439,67 @@ the `hourly` one. It is not an endpoint and its authorization is unchanged
 anything while the follow-up engine's quiet window is open, skips a user who has
 switched `daily_digest` off, and skips a user who already has today's digest —
 so twenty-four ticks still produce at most one digest per manager per day.
+
+---
+
+## Stage 5.1 — email sequences (item 21)
+
+Master spec §5 item 21 and `demo-package/specs/design-21-email-sequences.md`.
+Every row below is asserted by the named test, not merely described.
+
+| Endpoint | Roles | Scope derivation | Record checks | Tested in |
+| --- | --- | --- | --- | --- |
+| `crm.api.followup_engine.get_email_template_options` (GET/POST) | `System Manager` or `Sales Manager`. Any other signed-in user gets `PermissionError`; `Guest` is rejected by `@frappe.whitelist()` itself | Roles are read from `frappe.get_roles()` on the SERVER. There is no scope to derive and no filter reaches the query: an `Email Template` is site configuration, not a customer record, and the endpoint returns only `name` and `subject` for the ENABLED ones | `Email Template`: read, gated by the role check above. No customer record is read | `crm/tests/test_email_sequences.py::TestPermissions::test_a_sales_user_cannot_read_the_email_template_list`, `::test_a_manager_gets_only_enabled_templates` |
+| `/unsubscribe` — `crm/www/unsubscribe.py::get_context` (**GET, www route, Guest**) | **`Guest`**, deliberately. A customer withdrawing consent has no account and never will | **The token IS the authorization.** It is an HMAC-SHA256 (128 bits kept) over the normalised address, signed with the site's own encryption key, so it cannot be guessed for another address or forged for an address we never wrote to. `read_token` answers `None` identically for a missing token, a malformed one, an unsigned one, an edited one and a stale version, so the route cannot be used to learn which addresses the CRM holds. No caller-supplied doctype, name, filter or field reaches any query — the token is the whole request. Rate limited per IP (10 per 5 minutes, atomic `incrby`), which fails OPEN because refusing a genuine unsubscribe is a compliance failure while an extra request is only load | `CRM Suppression`: ONE row written with `ignore_permissions=True`, channel Email, state Opted Out, source `unsubscribe_link`, idempotent on a repeat click. `CRM Lead`: **not read at all** — the reference on the row comes out of the token, and no lead field is loaded, returned or shown | `crm/tests/test_email_sequences.py::TestUnsubscribeToken::test_a_token_cannot_be_edited_to_name_another_address`, `::test_an_unsigned_token_is_refused`, `::test_garbage_is_refused_without_raising`, `TestUnsubscribeRoute::test_an_invalid_token_and_an_unknown_address_are_answered_identically`, `::test_the_rate_limit_refuses_a_scripted_caller`, `::test_the_rate_limiter_fails_open_when_the_cache_is_down`, plus the live Guest check in `stage1-verification.md` §"Stage 5.1" |
+
+### Why the second Guest route exists, stated plainly
+
+`/unsubscribe` is the second Guest surface this program has added, after
+`crm.api.quote.view`. It exists because master spec §7 requires an unsubscribe
+link on every promotional path, and a link that needs a login is not one.
+
+What bounds it:
+
+* the token is signed, not stored. There is no table to enumerate, no id to
+  increment, and a token for `victim@example.com` cannot be produced without the
+  site's encryption key;
+* it does exactly one thing — suppress one address on one channel. It cannot
+  read a record, list anything, or reverse a suppression. Reversal stays where it
+  was: `crm.suppression.unsuppress`, which needs a reason and writes an audit
+  Comment;
+* an unknown address is suppressed exactly like a known one, so the answer never
+  says whether we hold the address;
+* it is rate limited per IP, and the page renders the same four outcomes with no
+  detail a prober could use.
+
+Known limitation, recorded rather than hidden: it is a GET that writes, so a mail
+client or scanner that prefetches links unsubscribes the customer on their
+behalf. The failure is in the safe direction — a message not sent, never a
+message sent. RFC 8058 one-click (`List-Unsubscribe-Post`) is deliberately NOT
+advertised, because that requires the URL to accept POST and this route does not.
+
+### Non-endpoint entry points added in Stage 5.1
+
+| Entry point | Reached from | Authorization today | What a future endpoint must add |
+| --- | --- | --- | --- |
+| `crm.sequences.email.EmailSequenceAdapter` | `crm.sequences.router.ChannelRouter`, driven by the hourly follow-up sweep | Scheduler only. It writes a `CRM Outbound Job` with `ignore_permissions=True` and sets `owner_user` to the lead's own assignee (falling back to its owner, then Administrator). `crm.outbound.execute_job` re-reads that user AT EXECUTION TIME and refuses a disabled one; `crm.api.email.email_adapter` then switches to them, so the `email` permission check inside `make` is the check on the person the agency would have had send it by hand | Any endpoint that triggers a stage by hand must check `write` on the lead first, exactly as `approve_pending` does through `check_followup_permission` |
+| `crm.sequences.email.handle_inbound_reply` | `Communication` `after_insert` hook | Runs inside the framework's own insert of a received email. Gated on `email_sequences_enabled` (default OFF), returns before reading a row while the flag is off, and never raises. It only ever moves a follow-up row to `Replied`; it cannot send, and it never downgrades an opt-out | n/a — hook only |
+| `crm.sequences.unsubscribe.make_token` / `link_for` | The send path, when a sequence email is built | None needed — it mints a link for an address the send path already resolved from the lead | A caller that mints a token for an address a REQUEST supplied would turn this into a suppress-anyone tool. Mint only for an address the server derived |
+| `crm.sequences.unsubscribe.add_list_unsubscribe_header` | `Email Queue` `before_insert` hook | Reads one request-local flag that `crm.outbound.deliver_recipient` sets for the length of one adapter call. With no flag it returns without touching the message. Never raises | n/a — hook only |
+| `crm.api.activities.sequence_stages` | `get_lead_activities` / `get_deal_activities`, after their read check | Returns `{}` while `email_sequences_enabled` is off. The Communication names come from the already permission-checked docinfo of ONE record, and the reply is a stage number per name — no address, no job, no recipient | Never call it with names a caller supplied without checking them first |
+
+### Doctype role permissions added in Stage 5.1
+
+**None.** The stage adds no doctype. `CRM Followup Stage` gains three fields and
+is a child table of `CRM Followup Settings`, whose grants are unchanged
+(`crm.api.followup_engine.add_followup_roles`). `CRM Outbound Job` and
+`CRM Outbound Recipient` keep their Stage-1 grants: sequence jobs are written by
+the scheduler and read by nobody through a list view.
+
+### One behaviour change to an existing path
+
+`crm.api.activities.get_lead_activities` / `get_deal_activities` now put
+`sequence_stage` in each communication's `data`. It is `null` for every message a
+sequence did not send, and the lookup that produces it does not run at all while
+the flag is off. Authorization is unchanged: the same read check, on the same
+single record.

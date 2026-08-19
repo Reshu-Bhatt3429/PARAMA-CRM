@@ -52,10 +52,12 @@ table is kept in `demo-package/specs/permission-matrix.md`.
   itinerary. No customer name, phone, email or lead reference is included.
 * `crm.api.ai_brief.generate` -- the timeline Brief card. Sends: the whitelisted
   record fields in `crm.api.ai_brief.RECORD_FIELDS` and an excerpt of the
-  record's own timeline (emails, comments, calls, tasks, notes), capped by
-  `BRIEF_ACTIVITY_LIMIT` items and `BRIEF_PAYLOAD_BYTES` bytes. The customer's
-  email address, phone number, the record owner and every other field stay on
-  the site. The full list is in that module's docstring.
+  record's own timeline (emails, comments, calls, tasks, notes, and since Stage
+  5.1 the newest `WHATSAPP_LIMIT` WhatsApp messages of that record's
+  conversation), capped by `ACTIVITY_LIMIT` items and `PAYLOAD_BYTES` bytes. The
+  customer's email address, phone number, WhatsApp number, the record owner and
+  every other field stay on the site -- a WhatsApp message contributes its TEXT
+  and nothing else. The full list is in that module's docstring.
 * `crm.api.ai_draft.generate` -- the email composer's sparkle. Sends: the
   whitelisted record fields in `crm.api.ai_draft.RECORD_FIELDS`, the agent's own
   instruction, and up to `MESSAGE_HISTORY_LIMIT` email subjects/bodies from that

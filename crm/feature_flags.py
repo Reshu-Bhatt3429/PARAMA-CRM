@@ -32,6 +32,14 @@ FLAGS = {
 		"While this is off the reminder sweep returns without reading a single task "
 		"row, so no notification and no email is ever produced."
 	),
+	"email_sequences_enabled": (
+		"Lets a follow-up stage set to the Email channel build and schedule its "
+		"message. While this is off every email stage parks its row with a stated "
+		"reason, no outbound job is created, and an inbound email stops nothing -- "
+		"so the sequence machine stays exactly as it was before email stages "
+		"existed. Delivery ALSO needs 'Outbound engine' above: this flag creates "
+		"the job, that one lets the sweep send it."
+	),
 	"deal_health_enabled": (
 		"Lets the nightly sweep work out which open deals need attention (close date "
 		"passed, stalled, awaiting a reply) and store the answer on the deal. While "

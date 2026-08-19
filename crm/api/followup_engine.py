@@ -60,6 +60,14 @@ the split is that the email sequences in a later stage get this module's
 guarantees without a second copy of them, and that a bug fixed in the ordering is
 fixed for both channels at once.
 
+Stage 5.1 collected on that. A stage now carries a `channel`, and a stage set to
+Email is served by `crm.sequences.email.EmailSequenceAdapter` over the F2
+outbound machine instead of by Meta. `get_channel_adapter` hands the core a
+`crm.sequences.router.ChannelRouter` when -- and only when -- one of the
+configured stages says Email; every other site, and every call that does not
+carry the stage list, gets the WhatsApp adapter and the code path it always had.
+The email half is behind `email_sequences_enabled`, default OFF.
+
 Consent
 -------
 CRM Lead carries no do-not-contact field, so the `Opted Out` state on the
@@ -102,8 +110,9 @@ from crm.permissions.org_hierarchy import (
 	has_lead_permission,
 )
 from crm.sequences import core as sequence_core
+from crm.sequences import router
 from crm.sequences.whatsapp import WhatsAppFollowupAdapter
-from crm.suppression import CHANNEL_WHATSAPP
+from crm.suppression import CHANNEL_EMAIL, CHANNEL_WHATSAPP
 from crm.suppression import STATE_OPTED_OUT as LEDGER_OPTED_OUT
 from crm.suppression import suppress as suppress_address
 from crm.suppression import unsuppress as unsuppress_address
@@ -114,6 +123,7 @@ SEND_LOG_DOCTYPE = "CRM Followup Send Log"
 SETTINGS_DOCTYPE = "CRM Followup Settings"
 MESSAGE_DOCTYPE = "WhatsApp Message"
 TEMPLATE_DOCTYPE = "WhatsApp Templates"
+EMAIL_TEMPLATE_DOCTYPE = "Email Template"
 LEAD_DOCTYPE = "CRM Lead"
 DEAL_DOCTYPE = "CRM Deal"
 
@@ -216,17 +226,29 @@ def lock_followup(name: str):
 _adapter = None
 
 
-def get_channel_adapter():
-	"""The WhatsApp adapter the sequence core drives this engine through.
+def get_channel_adapter(stages=None):
+	"""The adapter the sequence core drives this engine through.
 
-	Built once and held, because it is stateless: it carries a reference to this
-	module and nothing else, and every rule it applies is read off this module at
-	call time.
+	With no email stage configured -- which is every site that has not used Stage
+	5.1, and every call that does not carry the stage list -- this is the WhatsApp
+	adapter, built once and held, exactly as before. It is stateless: it carries a
+	reference to this module and nothing else, and every rule it applies is read
+	off this module at call time.
+
+	As soon as ONE configured stage sends on email, the caller gets a
+	`crm.sequences.router.ChannelRouter` instead, which owns no rules of its own
+	and hands each call to the channel that owns it. The router is built per call
+	rather than cached, because it holds the stage list it was built for and that
+	list changes whenever a manager saves the settings.
 	"""
 	global _adapter
 
 	if _adapter is None:
 		_adapter = WhatsAppFollowupAdapter(sys.modules[__name__])
+
+	if stages and router.uses_email(stages):
+		return router.ChannelRouter(sys.modules[__name__], stages, _adapter)
+
 	return _adapter
 
 
@@ -279,13 +301,23 @@ def get_settings():
 
 
 def get_stages(settings) -> list:
-	"""Configured stages in send order, as plain dicts."""
+	"""Configured stages in send order, as plain dicts.
+
+	`channel` is read defensively. A stage row saved before Stage 5.1 has no
+	value stored for it, and a Single only applies a field default while nothing
+	at all has been saved, so an unset channel reads back as None. That means
+	WhatsApp -- the channel every stage sent on before the field existed -- and
+	never an empty channel nothing can serve.
+	"""
 	rows = [
 		frappe._dict(
 			{
 				"stage_number": frappe.utils.cint(row.stage_number),
 				"silence_days": max(frappe.utils.cint(row.silence_days), 1),
+				"channel": (row.get("channel") or CHANNEL_WHATSAPP).strip(),
 				"template": (row.template or "").strip(),
+				"email_template": (row.get("email_template") or "").strip(),
+				"email_subject_override": (row.get("email_subject_override") or "").strip(),
 				"use_ai": bool(row.use_ai),
 				"ai_instruction": row.ai_instruction or "",
 				"idx": row.idx,
@@ -315,7 +347,7 @@ def enroll_conversations(settings, stages) -> int:
 	The loop itself -- the per-lead savepoint that stops one unenrollable lead
 	from costing the whole hour its sweep -- is `crm.sequences.core.enroll`.
 	"""
-	return sequence_core.enroll(get_channel_adapter(), settings, stages)
+	return sequence_core.enroll(get_channel_adapter(stages), settings, stages)
 
 
 def enroll_one(lead: str, aggregate: dict, stages, cutoff, keywords) -> bool:
@@ -476,7 +508,7 @@ def sweep_due_followups(settings, stages) -> int:
 	and that isolation are `crm.sequences.core.sweep`; the query that decides
 	which rows are due is the adapter's.
 	"""
-	return sequence_core.sweep(get_channel_adapter(), settings, stages)
+	return sequence_core.sweep(get_channel_adapter(stages), settings, stages)
 
 
 def process_one(name: str, settings, stages) -> bool:
@@ -489,7 +521,7 @@ def process_one(name: str, settings, stages) -> bool:
 	worker committed while this job was running, and we would message a customer
 	who had already answered.
 	"""
-	return sequence_core.process_row(get_channel_adapter(), name, settings, stages)
+	return sequence_core.process_row(get_channel_adapter(stages), name, settings, stages)
 
 
 def agency_spoke_last(last_agency_message, latest_incoming) -> bool:
@@ -535,7 +567,9 @@ def send_stage(followup, settings, stages, stage_number: int, now) -> bool:
 	sequence exhausted, an unsendable template, a missing number, draft mode --
 	and the adapter answers each one with the WhatsApp rule for it.
 	"""
-	return sequence_core.send_stage(get_channel_adapter(), followup, settings, stages, stage_number, now)
+	return sequence_core.send_stage(
+		get_channel_adapter(stages), followup, settings, stages, stage_number, now
+	)
 
 
 def deliver(followup, stage_number: int, template, params: dict, stages, recipient: str, now) -> bool:
@@ -547,13 +581,13 @@ def deliver(followup, stage_number: int, template, params: dict, stages, recipie
 	commits is this channel's Send Log row.
 	"""
 	return sequence_core.deliver(
-		get_channel_adapter(), followup, stage_number, template, params, stages, recipient, now
+		get_channel_adapter(stages), followup, stage_number, template, params, stages, recipient, now
 	)
 
 
 def advance_after_stage(followup, stage_number: int, stages, now, sent_at=None):
 	"""Move the state machine past a stage, sent or not."""
-	sequence_core.advance(get_channel_adapter(), followup, stage_number, stages, now, sent_at=sent_at)
+	sequence_core.advance(get_channel_adapter(stages), followup, stage_number, stages, now, sent_at=sent_at)
 
 
 def park_followup(followup, reason: str):
@@ -1204,6 +1238,9 @@ def approve_pending(followup: str):
 	if not stages or stage_number < 1 or stage_number > len(stages):
 		frappe.throw(_("This follow-up stage is no longer configured."))
 
+	if stages[stage_number - 1].channel == CHANNEL_EMAIL:
+		return approve_pending_email(doc, stages, stage_number, now)
+
 	template, problem = resolve_template(stages[stage_number - 1])
 	if problem:
 		frappe.throw(problem)
@@ -1222,6 +1259,36 @@ def approve_pending(followup: str):
 		params = {str(index): value for index, value in enumerate(deterministic_params(lead, names), start=1)}
 
 	deliver(doc, stage_number, template, params, stages, recipient, now)
+	return doc.name
+
+
+def approve_pending_email(doc, stages, stage_number: int, now):
+	"""Approve a parked EMAIL stage. Reached only from `approve_pending`.
+
+	The three guards -- sequence on, outside quiet hours, cap not spent -- have
+	already run in the caller and are not repeated.
+
+	The message is REBUILT from the template rather than read back out of
+	`pending_params`, which is the opposite of the WhatsApp branch above and is
+	right for the opposite reason. A WhatsApp draft may hold AI-written values
+	that cost a model call and cannot be reproduced, so the stored copy is the
+	message. An email stage has no AI in it at all: subject and body are a pure
+	function of the template and the lead, so rebuilding produces the same message
+	AND picks up a template the manager corrected while the draft was parked.
+	"""
+	adapter = get_channel_adapter(stages)
+	stage = stages[stage_number - 1]
+
+	content, problem = adapter.resolve_content(stage)
+	if problem:
+		frappe.throw(problem)
+
+	destination = adapter.resolve_destination(doc)
+	if not destination:
+		frappe.throw(adapter.no_destination_reason())
+
+	payload = adapter.build_payload(doc, stage, content)
+	sequence_core.deliver(adapter, doc, stage_number, content, payload, stages, destination, now)
 	return doc.name
 
 
@@ -1336,6 +1403,29 @@ def get_template_options():
 		filters={"status": APPROVED_STATUS},
 		fields=["name", "template_name", "category"],
 		order_by="template_name asc",
+	)
+
+
+@frappe.whitelist()
+def get_email_template_options():
+	"""Enabled Email Templates, for the settings screen's email stage picker.
+
+	Authorization (master spec §3): the same bar as `get_template_options` above
+	-- a sales manager or a system manager, checked against `frappe.get_roles()`
+	on the SERVER. There is no row-level scope to derive: an Email Template is a
+	site-wide configuration object, not a customer record, and the endpoint
+	returns only its name and subject. No filter arrives from the client.
+	"""
+	roles = frappe.get_roles()
+	if "System Manager" not in roles and "Sales Manager" not in roles:
+		frappe.throw(_("Only a sales manager can read the template list."), frappe.PermissionError)
+
+	return frappe.get_all(
+		EMAIL_TEMPLATE_DOCTYPE,
+		filters={"enabled": 1},
+		fields=["name", "subject"],
+		order_by="name asc",
+		limit_page_length=200,
 	)
 
 

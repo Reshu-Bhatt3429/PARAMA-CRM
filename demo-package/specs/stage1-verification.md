@@ -2499,3 +2499,287 @@ matter most:
 3. **The demo site has no email thread to demonstrate either feature properly.**
    Seeding a two-sided email thread on one lead would make the Stage 6 UX
    walkthrough show the tone line and the draft's thread awareness.
+
+---
+
+# Stage 5.1 (Email sequences — item 21) — verification record
+
+Scope: master spec §5 item 21, built to `demo-package/specs/design-21-email-sequences.md`,
+plus that note's disjoint fix (the Brief card reads WhatsApp). Design decisions,
+deviations and open issues: `demo-package/specs/stage5-1-notes.md`.
+
+Branch: `feat/feature-expansion`. Nothing is committed by this stage.
+
+## Backend — every module that collects, run individually
+
+Same container (`crm-local-frappe-1`), same site (`crm.localhost`), same push,
+and `--app crm` still cannot be used: see "How the suites are run".
+
+```bash
+cd /home/kreshnith/CRM
+tar -cf - --exclude=__pycache__ --exclude='*.pyc' crm | \
+  docker exec -i crm-local-frappe-1 bash -lc 'cd ~/frappe-bench/apps/crm && tar -xf -'
+
+docker exec crm-local-frappe-1 bash -lc 'cd ~/frappe-bench && \
+  bench --site crm.localhost run-tests --module crm.tests.<module>'
+```
+
+| Module | Result | Verdict |
+| --- | --- | --- |
+| `crm.tests.test_ai_brief` | `Ran 41 tests in 10.537s` | OK |
+| `crm.tests.test_ai_budget` | `Ran 9 tests in 0.578s` | OK |
+| `crm.tests.test_ai_client` | `Ran 35 tests in 0.259s` | OK |
+| `crm.tests.test_ai_draft` | `Ran 26 tests in 4.277s` | OK |
+| `crm.tests.test_automation_context` | `Ran 20 tests in 0.669s` | OK |
+| `crm.tests.test_dashboard` | — | DID NOT COLLECT |
+| `crm.tests.test_deal_health` | `Ran 38 tests in 23.572s` | OK |
+| `crm.tests.test_demo_data` | — | DID NOT COLLECT |
+| `crm.tests.test_digest_preferences` | `Ran 29 tests in 14.111s` | OK |
+| `crm.tests.test_duplicates` | `Ran 18 tests in 4.108s` | OK |
+| `crm.tests.test_email_compose` | `Ran 18 tests in 1.069s` | OK |
+| **`crm.tests.test_email_sequences`** (new) | `Ran 69 tests in 13.649s` | OK |
+| `crm.tests.test_exchange_rate` | `Ran 16 tests in 0.533s` | OK |
+| **`crm.tests.test_followup_engine`** | `Ran 99 tests in 19.083s` | OK — **unchanged file, unchanged count** |
+| `crm.tests.test_form_api` | — | DID NOT COLLECT |
+| `crm.tests.test_form_auto_response` | `Ran 42 tests in 8.375s` | OK |
+| `crm.tests.test_integrations` | — | DID NOT COLLECT |
+| `crm.tests.test_itinerary` | `Ran 112 tests in 39.782s` | OK |
+| `crm.tests.test_notification_log` | — | DID NOT COLLECT |
+| `crm.tests.test_outbound` | `Ran 46 tests in 2.321s` | OK |
+| `crm.tests.test_quote` | `Ran 67 tests in 13.109s` | OK |
+| `crm.tests.test_reminders` | `Ran 40 tests in 6.920s` | OK |
+| `crm.tests.test_search` | `Ran 36 tests in 6.139s` | OK |
+| `crm.tests.test_send_later` | `Ran 58 tests in 10.755s` | OK |
+| `crm.tests.test_sequences` | `Ran 39 tests in 0.143s` | OK |
+| `crm.tests.test_snippets` | `Ran 45 tests in 2.493s` | OK |
+| `crm.tests.test_state_options` | `Ran 7 tests in 0.192s` | OK |
+| `crm.tests.test_suppression` | `Ran 32 tests in 2.489s` | OK |
+| `crm.tests.test_sweeps` | `Ran 31 tests in 47.982s` | OK |
+| `crm.tests.test_tags` | `Ran 36 tests in 5.305s` | OK |
+| `crm.tests.test_target_meter` | `Ran 23 tests in 4.394s` | OK |
+| `crm.tests.test_today` | `Ran 28 tests in 17.333s` | OK |
+| `crm.tests.test_utils` | — | DID NOT COLLECT |
+| `crm.tests.test_whatsapp` | `Ran 62 tests in 0.203s` | OK |
+| `crm.tests.test_whatsapp_demo` | `Ran 12 tests in 0.050s` | OK |
+| `crm.permissions.test_org_hierarchy` | — | DID NOT COLLECT |
+
+**1134 tests, 29 modules, all OK. 7 modules do not collect**, every one of them
+with the same pre-existing v15/v16 error, verbatim:
+
+```
+ImportError: cannot import name 'IntegrationTestCase' from 'frappe.tests' (/home/frappe/frappe-bench/apps/frappe/frappe/tests/__init__.py)
+```
+
+That is Stage 1A open issue 1, unchanged by this stage. `crm.permissions.test_org_hierarchy`
+is in the set and always has been (Stage 2B recorded the same error for it); this
+stage adds no test to the set and removes none.
+
+### Five suites re-run on the FINAL tree
+
+Two cosmetic edits landed after the sweep above (a wrapped string literal in
+`crm/sequences/unsubscribe.py`, a character in a comment in
+`crm/api/activities.py`). The suites that touch them were re-run on the exact
+tree that is being reported:
+
+```
+crm.tests.test_email_sequences   Ran 69 tests in 14.658s   OK
+crm.tests.test_followup_engine   Ran 99 tests in 19.477s   OK
+crm.tests.test_outbound          Ran 46 tests in 2.420s    OK
+crm.tests.test_send_later        Ran 58 tests in 10.230s   OK
+crm.tests.test_ai_brief          Ran 41 tests in 10.538s   OK
+```
+
+### The WhatsApp engine's 99 tests are unchanged, and that is a design property
+
+`crm/tests/test_followup_engine.py` was not edited — `git status` shows it
+unmodified — and it reports the same 99 tests it reported in Stage 4. That is not
+luck. `crm.api.followup_engine.get_channel_adapter(stages)` returns the plain
+WhatsApp adapter unless a configured stage says Email, so a site with no email
+stage executes exactly the code it executed before this stage, and every one of
+those 99 tests configures WhatsApp stages only.
+
+### What the 69 new tests actually assert
+
+Every acceptance criterion in the design note has at least one test named after
+it. `crm/tests/test_email_sequences.py`:
+
+| AC | Tests |
+| --- | --- |
+| 1. Stage 1 sends via the outbound sweep; a reply stops it, by header AND by address alone | `TestAC1Sending::test_ac1_a_two_stage_email_sequence_sends_stage_one_via_the_outbound_sweep`, `TestAC1ReplyStop::test_ac1_a_reply_matched_by_header_stops_the_sequence`, `::test_ac1_a_reply_matched_by_address_only_stops_the_sequence` |
+| 2. The link suppresses the address; the next step is skipped with a reason; source is `unsubscribe_link` | `TestAC2Unsubscribe::test_ac2_the_unsubscribe_link_suppresses_the_address`, `::test_ac2_the_next_due_step_is_skipped_with_a_blocked_reason`, `::test_ac2_the_ledger_row_carries_the_unsubscribe_link_source` |
+| 3. Draft-for-approval parks email steps like WhatsApp steps | `TestAC3DraftMode::test_ac3_draft_for_approval_parks_an_email_step`, `::test_ac3_the_parked_draft_holds_the_message_a_manager_will_approve` |
+| 4. A double claim cannot double-send | `TestAC4Idempotency::test_ac4_a_second_claim_of_the_same_stage_collides_on_the_key`, `::test_ac4_a_replayed_stage_advances_instead_of_sending_twice`, `::test_ac4_two_recipients_of_one_job_cannot_both_be_delivered` |
+| 5. A mixed sequence runs both channels in order | `TestAC5MixedSequence::test_ac5_a_mixed_sequence_runs_both_channels_in_order` |
+| 6. Flag OFF = nothing sends; the foundation stays send-free | `TestAC6FlagOff::test_ac6_with_the_flag_off_an_email_stage_is_parked_and_nothing_is_claimed`, `::test_ac6_with_the_flag_off_an_inbound_email_stops_nothing`, `::test_ac6_the_outbound_foundation_sends_nothing_with_no_adapter_registered`, `::test_ac6_the_scheduled_sweep_reads_nothing_while_the_outbound_flag_is_off`, `::test_ac6_the_flag_is_off_by_default_in_the_registry` |
+
+Nothing in the suite can send. `engine.commit` / `rollback` and
+`outbound.commit` / `rollback` are neutralised as in `test_followup_engine.py`
+and `test_outbound.py`, the outbound Email adapter is replaced by a recorder, and
+the WhatsApp half of the mixed test patches `engine.create_template_message`.
+"The sweep delivered it" is asserted by reading what the recorder was handed.
+
+## Frontend
+
+```bash
+cd /home/kreshnith/CRM/frontend && npx vitest run
+```
+
+```
+ Test Files  24 passed (24)
+      Tests  473 passed (473)
+   Duration  4.91s
+```
+
+11 of those are new (`frontend/tests/unit/emailSequence.test.js`), covering the
+timeline chip's stage parsing — including the string-not-number case a JSON
+boundary produces and the "Stage NaN" case a careless chip would print.
+
+```bash
+cd /home/kreshnith/CRM/frontend && \
+  NODE_OPTIONS="--max-old-space-size=6144" npx vite build --base=/assets/crm/frontend/
+```
+
+```
+vite v5.4.21 building for production...
+✓ 3022 modules transformed.
+✓ built in 1m 17s
+warnings
+  An error occurred when globbing for files. '(0 , brace_expansion_1.expand) is not a function'
+```
+
+Same `NODE_OPTIONS` requirement and the same pre-existing glob warning as every
+stage since 1A. `crm/www/crm.html` and `crm/public/frontend` were pushed into the
+container **as a matched pair**, and the pairing was verified after the push:
+
+```
+matched pair ok: frontend/assets/index-LCzNR-Tv.js
+```
+
+## Live checks on the running demo site
+
+Every one of these ran against `crm.localhost` over the real request path, and
+every artifact was deleted afterwards.
+
+### The unsubscribe route, AS GUEST, over real HTTP
+
+```
+$ curl -s -o /dev/null -w '%{http_code}' 'http://localhost:8000/unsubscribe'
+200
+$ curl -s 'http://localhost:8000/unsubscribe' | head -c 120
+<!doctype html> … <title>This link is not valid</title>
+```
+
+No login, no CSRF token, no session: the page renders for Guest. Then a real
+token, minted on the site and clicked over HTTP:
+
+```
+$ bench --site crm.localhost execute crm.sequences.unsubscribe.link_for \
+    --kwargs "{'address': 'live-check@example.com'}"
+"http://crm.localhost:8000/unsubscribe?token=eyJhIjoibGl2ZS1jaGVja0BleGFtcGxlLmNvbSIsImRuIjoiIiwiZHQiOiIiLCJ2IjoidTEifQ.ycLeMuedq5OVRYAQafwFoQ"
+
+$ curl -s -o /dev/null -w 'first click: %{http_code}' '…/unsubscribe?token=…'
+first click: 200
+$ curl -s '…/unsubscribe?token=…' | grep -E '<h1>|<p>'
+      <h1>You are already unsubscribed</h1>
+      <p>live-check@example.com was already removed from our email list.</p>
+```
+
+The second click says "already", which is the idempotency working. The F1 ledger
+row it wrote, read straight out of MariaDB:
+
+```
+   name: g7ua4pvhtq
+channel: Email
+address: live-check@example.com
+  state: Opted Out
+ source: unsubscribe_link
+ active: 1
+```
+
+That is AC2's "the ledger row carries source `unsubscribe_link`", asserted on the
+live site rather than only in a test.
+
+### The rate limit, on the same live route
+
+Eleven requests from one IP, after four earlier ones in the same window:
+
+```
+1:200 2:200 3:200 4:200 5:200 6:200 7:429 8:429 9:429 10:429
+      <h1>Too many requests</h1>
+```
+
+The limit is 10 per 5 minutes per IP; the eleventh request in the window is the
+first to be refused, and it is refused with a plain page and HTTP 429 rather than
+a stack trace.
+
+### Hooks, schema, patch and endpoint, on the live site
+
+```
+$ bench --site crm.localhost execute frappe.get_hooks --kwargs "{'hook': 'doc_events'}"
+Communication after_insert: ['crm.utils.on_communication_insert', 'crm.sequences.email.handle_inbound_reply']
+Email Queue before_insert: ['crm.sequences.unsubscribe.add_list_unsubscribe_header']
+
+$ bench --site crm.localhost mariadb -e "describe \`tabCRM Followup Stage\`"
+channel                 varchar(140)  YES      WhatsApp
+email_template          varchar(140)  YES      NULL
+email_subject_override  varchar(140)  YES      NULL
+
+$ bench --site crm.localhost migrate   # the backfill patch
+Executing crm.patches.v1_0.backfill_followup_stage_channel #19-08-2026 in crm.localhost
+Success: Done in 0.077s
+
+$ bench --site crm.localhost mariadb -e "select stage_number, channel from \`tabCRM Followup Stage\`"
+3  WhatsApp
+2  WhatsApp
+1  WhatsApp
+
+>>> get_email_template_options()
+RESULT: []            # the demo site has 0 Email Templates, so [] is the right answer
+RESULT-count: 0
+```
+
+### The site was left clean, and every flag is OFF
+
+```
+$ bench --site crm.localhost mariadb -e "select field, value from tabSingles
+    where doctype='FCRM Settings' and field like '%_enabled'"
+deal_health_enabled       0
+email_sequences_enabled   0
+outbound_engine_enabled   0
+task_reminders_enabled    0
+
+$ … "select count(*) from \`tabCRM Suppression\`"          -> 0
+$ … "select count(*) from \`tabCRM Outbound Job\`"          -> 0 rows
+$ … "select count(*) from \`tabCRM Lead\` where last_name='Sequence'"  -> 0
+$ … "select count(*) from \`tabEmail Template\` where name like 'seq-template-%'" -> 0
+```
+
+The live unsubscribe row was deleted after it was read. No test fixture survived.
+**No email sequence can send on this site**: both flags it needs are off, and the
+site has no Email Template to send anyway.
+
+### What was NOT checked live, and why
+
+No end-to-end sequence email was delivered on the demo site. That would need
+`email_sequences_enabled` AND `outbound_engine_enabled` on, plus a real outgoing
+Email Account, and would put a real message in a real queue. The delivery half is
+covered by `TestAC1Sending::test_ac1_...` with a recorder standing in for the
+adapter, which is the same standard Stage 3A used for Send Later. Stated here
+rather than implied.
+
+## Open issues after Stage 5.1
+
+1. **The frappe v15 vs v16 mismatch stands** (Stage 1A open issue 1). 7 modules
+   in this app cannot be collected in this container. Unchanged by this stage.
+2. **The unsubscribe route is a GET that writes**, so a link-prefetching mail
+   client can unsubscribe a customer on their behalf. Failure is in the safe
+   direction. RFC 8058 one-click POST is not advertised. See
+   `stage5-1-notes.md` §"Open issues and deviations" item 1.
+3. **Deliverability (SPF/DKIM) is an ops task**, out of code scope, and must be
+   done before the flag is turned on for real customers. One line for the
+   runbook is in `stage5-1-notes.md` §"Ops: deliverability".
+4. **One daily cap covers both channels** rather than a cap per channel. Stricter
+   than the spec's wording, never looser; flagged in `stage5-1-notes.md` item 4.
+5. **`crm/api/activities.py` and `crm/ai/client.py` were edited** although they
+   were outside this stage's file list. Both edits are minimal and are explained
+   in `stage5-1-notes.md` item 5.

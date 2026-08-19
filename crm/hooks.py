@@ -183,8 +183,25 @@ doc_events = {
 		"on_update": ["crm.api.todo.on_update"],
 	},
 	"Communication": {
-		"after_insert": ["crm.utils.on_communication_insert"],
+		"after_insert": [
+			"crm.utils.on_communication_insert",
+			# Item 21: a customer who answers stops their email sequence. Matched on
+			# In-Reply-To first, then on the lead's normalised address, because mail
+			# clients strip headers and a new thread is still an answer. Behind
+			# `email_sequences_enabled`, default OFF: with the flag off this returns
+			# before it reads a row.
+			"crm.sequences.email.handle_inbound_reply",
+		],
 		"on_update": ["crm.utils.on_communication_update"],
+	},
+	"Email Queue": {
+		# Item 21 / master spec §7: every promotional message carries a
+		# List-Unsubscribe header. Frappe v15 has no machinery for it, and the
+		# header has to go on the built MIME message, which is what an Email Queue
+		# row holds. Armed for the length of one adapter call by
+		# `crm.outbound.deliver_recipient`; a message that is not a sequence send
+		# never sees this hook do anything.
+		"before_insert": ["crm.sequences.unsubscribe.add_list_unsubscribe_header"],
 	},
 	"Comment": {
 		"after_insert": ["crm.utils.on_comment_insert"],

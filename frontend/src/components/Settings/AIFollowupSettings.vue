@@ -9,7 +9,7 @@
         <p class="text-p-base text-ink-gray-6">
           {{
             __(
-              'Plug in an AI key and set the WhatsApp follow-up sequence for leads who stop replying',
+              'Plug in an AI key and set the WhatsApp and email follow-up sequence for leads who stop replying',
             )
           }}
         </p>
@@ -101,12 +101,12 @@
       <section v-if="followup.doc" class="flex flex-col gap-3">
         <div>
           <div class="text-p-base-medium text-ink-gray-7">
-            {{ __('WhatsApp Follow-ups') }}
+            {{ __('Follow-ups') }}
           </div>
           <div class="text-p-sm text-ink-gray-5">
             {{
               __(
-                'Outside the 24 hour reply window WhatsApp accepts approved templates only, so every stage sends a template',
+                'Outside the 24 hour reply window WhatsApp accepts approved templates only, so every WhatsApp stage sends a template. These guardrails apply to both channels',
               )
             }}
           </div>
@@ -184,7 +184,11 @@
               {{ __('Stop Keywords') }}
             </div>
             <div class="text-p-sm text-ink-gray-5">
-              {{ __('One per line. A reply that contains one stops the sequence for good') }}
+              {{
+                __(
+                  'One per line. A reply that contains one stops the sequence for good',
+                )
+              }}
             </div>
           </div>
           <FormControl
@@ -231,12 +235,33 @@
             <span class="text-p-sm text-ink-gray-5 shrink-0">
               {{ __('days of silence') }}
             </span>
+            <FormControl
+              :modelValue="stage.channel || 'WhatsApp'"
+              type="select"
+              class="w-32 shrink-0"
+              :options="channelOptions"
+              @update:modelValue="(value) => (stage.channel = value)"
+            />
+            <!-- One picker slot, whichever channel the stage is on. Two pickers
+                 side by side would be a settings screen that asks the manager to
+                 ignore half of it (§2). -->
             <Autocomplete
+              v-if="!isEmail(stage)"
               class="flex-1"
               :modelValue="stage.template"
               :options="templateOptions"
               :placeholder="__('Approved template')"
               @update:modelValue="(option) => (stage.template = option?.value)"
+            />
+            <Autocomplete
+              v-else
+              class="flex-1"
+              :modelValue="stage.email_template"
+              :options="emailTemplateOptions"
+              :placeholder="__('Email template')"
+              @update:modelValue="
+                (option) => (stage.email_template = option?.value)
+              "
             />
             <Button
               icon="lucide-x"
@@ -244,7 +269,18 @@
               @click="followup.doc.stages.splice(index, 1)"
             />
           </div>
-          <div class="flex items-center gap-2">
+          <div v-if="isEmail(stage)" class="flex items-center gap-2">
+            <div class="text-p-sm text-ink-gray-5 w-20 shrink-0">
+              {{ __('Subject') }}
+            </div>
+            <FormControl
+              v-model="stage.email_subject_override"
+              type="text"
+              class="flex-1"
+              :placeholder="__(`Leave empty to use the template's own subject`)"
+            />
+          </div>
+          <div v-else class="flex items-center gap-2">
             <div class="text-p-sm text-ink-gray-5 w-20 shrink-0">
               {{ __('Use AI') }}
             </div>
@@ -263,6 +299,14 @@
           {{
             __(
               'No approved WhatsApp templates found. Sync templates from Meta first — a stage without an approved template is skipped',
+            )
+          }}
+        </div>
+
+        <div v-if="hasEmailStage" class="text-p-sm text-ink-gray-5">
+          {{
+            __(
+              'Email stages send only while both "Email sequences" and "Outbound engine" are on in Settings → Feature Flags. Every sequence email carries an unsubscribe link',
             )
           }}
         </div>
@@ -311,10 +355,16 @@ const suggestedModels = {
   Gemini: 'gemini-2.0-flash',
 }
 
-
 const sendModeOptions = computed(() => [
   { label: __('Auto-send'), value: 'Auto-send' },
   { label: __('Draft for approval'), value: 'Draft for approval' },
+])
+
+// The values are the doctype's own Select options and are NOT translated. The
+// labels are.
+const channelOptions = computed(() => [
+  { label: __('WhatsApp'), value: 'WhatsApp' },
+  { label: __('Email'), value: 'Email' },
 ])
 
 const ai = createDocumentResource({
@@ -336,12 +386,36 @@ const templates = createResource({
   auto: true,
 })
 
+const emailTemplates = createResource({
+  url: 'crm.api.followup_engine.get_email_template_options',
+  auto: true,
+})
+
 const templateOptions = computed(() =>
   (templates.data || []).map((template) => ({
     label: template.template_name || template.name,
     value: template.name,
   })),
 )
+
+const emailTemplateOptions = computed(() =>
+  (emailTemplates.data || []).map((template) => ({
+    label: template.subject
+      ? `${template.name} — ${template.subject}`
+      : template.name,
+    value: template.name,
+  })),
+)
+
+const hasEmailStage = computed(() =>
+  (followup.doc?.stages || []).some((stage) => isEmail(stage)),
+)
+
+// An empty channel means WhatsApp: every stage saved before Stage 5.1 has one,
+// and the server reads it the same way (`crm.api.followup_engine.get_stages`).
+function isEmail(stage) {
+  return (stage?.channel || 'WhatsApp') === 'Email'
+}
 
 const suggestedModel = computed(
   () => suggestedModels[ai.doc?.provider] || suggestedModels.Anthropic,
@@ -360,6 +434,7 @@ function addStage() {
   followup.doc.stages.push({
     stage_number: followup.doc.stages.length + 1,
     silence_days: 2,
+    channel: 'WhatsApp',
     use_ai: 0,
   })
 }

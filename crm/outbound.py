@@ -127,6 +127,11 @@ MESSAGE_ID_PATTERN = re.compile(r"<([^<>@\s]+@[^<>\s]+)>")
 
 MAX_ERROR_LENGTH = 200
 
+# Set for the length of one adapter call when the job's payload asks for an
+# unsubscribe link. Read by `crm.sequences.unsubscribe.add_list_unsubscribe_header`
+# on Email Queue `before_insert`.
+UNSUBSCRIBE_FLAG = "crm_unsubscribe_url"
+
 
 class InvalidTransition(frappe.ValidationError):
 	"""A state change the machine does not allow. Never caught to retry."""
@@ -560,6 +565,32 @@ def sender_is_active(job) -> bool:
 	return bool(enabled)
 
 
+def arm_unsubscribe_header(job) -> None:
+	"""Let the Email Queue hook add List-Unsubscribe to THIS job's message.
+
+	A compliance header belongs to the job that asked for one, not to every mail
+	the site sends, and the only place it can be added is on the built MIME
+	string an Email Queue row carries (Frappe v15 has no unsubscribe machinery of
+	its own -- see `crm.sequences.unsubscribe`). The adapter call is the narrowest
+	window that certainly contains that insert, so the flag is set here and
+	cleared in the caller's `finally`.
+
+	Never raises: an unreadable payload must not fail a send that is already paid
+	for by a spent idempotency key.
+	"""
+	try:
+		payload = frappe.parse_json(job.payload or "{}") or {}
+		url = frappe.utils.cstr(payload.get("unsubscribe_url") or "")
+	except Exception:
+		url = ""
+
+	frappe.local.flags[UNSUBSCRIBE_FLAG] = url or None
+
+
+def disarm_unsubscribe_header() -> None:
+	frappe.local.flags[UNSUBSCRIBE_FLAG] = None
+
+
 def deliver_recipient(job, name: str, adapter) -> str:
 	"""Claim, commit, send, record. Returns 'sent', 'failed' or 'suppressed'.
 
@@ -587,6 +618,7 @@ def deliver_recipient(job, name: str, adapter) -> str:
 	commit()
 
 	try:
+		arm_unsubscribe_header(job)
 		result = adapter(job, row) or {}
 	except Exception:
 		rollback()
@@ -602,6 +634,8 @@ def deliver_recipient(job, name: str, adapter) -> str:
 		commit()
 		frappe.log_error(frappe.get_traceback(), f"CRM outbound: send failed for recipient {name}")
 		return "failed"
+	finally:
+		disarm_unsubscribe_header()
 
 	frappe.db.set_value(
 		RECIPIENT_DOCTYPE,
