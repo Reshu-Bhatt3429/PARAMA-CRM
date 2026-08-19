@@ -30,6 +30,7 @@ this stage; this is the library Stage 5 builds on, tested on its own.
 """
 
 import hashlib
+import inspect
 from contextlib import contextmanager
 
 import frappe
@@ -42,7 +43,9 @@ from crm.counters import reserve_daily_slot
 # it. `crm.counters` explains why a read-then-write cannot do this job.
 __all__ = [
 	"DepthExceeded",
+	"KwargCollision",
 	"current_depth",
+	"enqueue_parameters",
 	"execution_depth",
 	"execution_key",
 	"has_changed",
@@ -176,7 +179,31 @@ def execution_key(rule: str, doctype: str, name: str, source: str, action: str) 
 # --- side effects after commit ---------------------------------------------
 
 
-def queue_after_commit(method: str, queue: str = "short", **kwargs) -> None:
+class KwargCollision(frappe.ValidationError):
+	"""A job argument whose name `frappe.enqueue` would eat. Raised, never sent."""
+
+
+def enqueue_parameters() -> frozenset[str]:
+	"""Every parameter name `frappe.enqueue` consumes for itself.
+
+	Read from the live signature rather than hard-coded, so an upgrade that adds
+	a parameter to `frappe.enqueue` widens the guard automatically instead of
+	silently re-opening the hole. `**kwargs` is excluded: that is the pass-through
+	bucket, and it is the only name a job argument is allowed to land in.
+
+	NOT read off `frappe.enqueue` itself: on this framework build that attribute
+	is a lazy re-export whose signature is `(*args, **kwargs)`, which would make
+	this guard an empty set that refuses nothing. The implementation lives in
+	`frappe.utils.background_jobs.enqueue`, and `frappe.enqueue` hands every call
+	to it, so its parameter names are the ones that eat job arguments. `unwrap`
+	then sees through any decorator either function may gain later.
+	"""
+	from frappe.utils.background_jobs import enqueue as real_enqueue
+
+	return frozenset(inspect.signature(inspect.unwrap(real_enqueue)).parameters) - {"kwargs"}
+
+
+def queue_after_commit(method: str, queue: str = "short", /, **kwargs) -> None:
 	"""Enqueue an automation side effect for AFTER this transaction commits.
 
 	`enqueue_after_commit` is the whole point. A job enqueued inside the
@@ -184,7 +211,41 @@ def queue_after_commit(method: str, queue: str = "short", **kwargs) -> None:
 	it reads are visible, and a transaction that later rolls back leaves a worker
 	acting on a state that never existed. Both failures send a real message to a
 	real customer.
+
+	Why `method` and `queue` are positional-ONLY
+	--------------------------------------------
+	Everything after them is a JOB argument, forwarded to the worker. While those
+	two were ordinary keyword parameters this helper had a trap of its own: a
+	caller who meant `queue="Sales"` as a job argument silently set the RQ queue
+	instead, and the worker was then called without the argument it required.
+	Positional-only removes that shadowing entirely -- this function contributes
+	no reserved names of its own, and a caller who writes `queue=` means the job
+	argument and is told so by the check below.
+
+	Why a collision RAISES
+	----------------------
+	`frappe.enqueue` consumes `event`, `timeout`, `job_name`, `now`, `at_front`
+	and the rest before `**kwargs` sees them. A job argument named after one of
+	them is swallowed at the enqueue and the worker then raises `TypeError:
+	missing 1 required positional argument` into a log nobody reads -- an
+	automation that quietly never fires. That happened once on a live site with
+	`event` (see `crm.workflows.JOB_KWARGS` and
+	`test_no_job_argument_collides_with_enqueue`), and the fix there was local to
+	one caller. This is the same check, once, for every caller: a name that would
+	be eaten fails LOUDLY at the enqueue instead of vanishing.
+
+	The raise happens before `frappe.enqueue` is reached, so a refused call
+	enqueues nothing at all.
 	"""
+	collisions = sorted(enqueue_parameters() & set(kwargs))
+	if collisions:
+		raise KwargCollision(
+			_(
+				"These job arguments would be consumed by the enqueue and never reach "
+				"the worker: {0}. Rename them."
+			).format(", ".join(collisions))
+		)
+
 	frappe.enqueue(method, queue=queue, enqueue_after_commit=True, **kwargs)
 
 

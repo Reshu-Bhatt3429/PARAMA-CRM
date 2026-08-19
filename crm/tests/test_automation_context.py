@@ -152,6 +152,74 @@ class TestAfterCommit(FrappeTestCase):
 		self.assertEqual(kwargs["rule"], "RULE-1")
 		self.assertEqual(enqueue_mock.call_args[0][0], "crm.tests.test_automation_context.noop")
 
+	def test_the_reserved_names_are_read_from_the_live_enqueue_signature(self):
+		"""Hard-coding the list would go stale on the next framework upgrade."""
+		reserved = context.enqueue_parameters()
+
+		self.assertIn("queue", reserved)
+		self.assertIn("timeout", reserved)
+		self.assertIn("enqueue_after_commit", reserved)
+		# The pass-through bucket is the one name a job argument may land in.
+		self.assertNotIn("kwargs", reserved)
+
+	def test_a_job_argument_that_enqueue_would_eat_is_refused(self):
+		"""The bug this helper used to pass on: a swallowed argument, no error.
+
+		`frappe.enqueue` consumes `event` for itself, so a job argument of that
+		name never reached the worker and the worker raised `TypeError` into a
+		log nobody read. It now fails at the call site instead.
+		"""
+		with patch.object(frappe, "enqueue") as enqueue_mock:
+			with self.assertRaises(context.KwargCollision):
+				context.queue_after_commit(
+					"crm.tests.test_automation_context.noop", rule="RULE-1", event="won"
+				)
+
+		# Refused BEFORE the enqueue, so nothing at all was queued.
+		enqueue_mock.assert_not_called()
+
+	def test_the_refusal_names_every_colliding_argument(self):
+		"""A caller with two bad names must not have to find them one at a time."""
+		with patch.object(frappe, "enqueue"):
+			with self.assertRaises(context.KwargCollision) as caught:
+				context.queue_after_commit(
+					"crm.tests.test_automation_context.noop", event="won", timeout=30
+				)
+
+		message = str(caught.exception)
+		self.assertIn("event", message)
+		self.assertIn("timeout", message)
+
+	def test_queue_is_positional_only_so_it_cannot_shadow_a_job_argument(self):
+		"""`queue=` used to silently set the RQ queue instead of the job argument.
+
+		Positional-only makes this helper contribute no reserved name of its
+		own: a caller who writes `queue=` means the job argument, and the
+		collision check then tells them `frappe.enqueue` owns that name.
+		"""
+		import inspect
+
+		parameters = inspect.signature(context.queue_after_commit).parameters
+		self.assertEqual(parameters["method"].kind, inspect.Parameter.POSITIONAL_ONLY)
+		self.assertEqual(parameters["queue"].kind, inspect.Parameter.POSITIONAL_ONLY)
+
+		with patch.object(frappe, "enqueue"):
+			with self.assertRaises(context.KwargCollision):
+				context.queue_after_commit("crm.tests.test_automation_context.noop", queue="short")
+
+	def test_the_rq_queue_is_still_settable_positionally(self):
+		"""Closing the hole must not take the feature away."""
+		with patch.object(frappe, "enqueue") as enqueue_mock:
+			context.queue_after_commit("crm.tests.test_automation_context.noop", "long", rule="RULE-1")
+
+		self.assertEqual(enqueue_mock.call_args[1]["queue"], "long")
+
+	def test_the_existing_workflow_consumer_still_passes_the_guard(self):
+		"""crm.workflows is the one live caller; its argument names must survive."""
+		from crm import workflows
+
+		self.assertEqual(context.enqueue_parameters() & set(workflows.JOB_KWARGS), set())
+
 
 class TestDailyCapReservation(FrappeTestCase):
 	"""The atomic reservation, on a real row, through the real statement."""

@@ -1359,10 +1359,17 @@ class TestRegistration(FrappeTestCase):
 		raised `TypeError: execute_rule() missing 1 required positional
 		argument: 'event'`, and NOTHING in the app said so -- no log row, no
 		notification, just a rule that quietly never fired.
-		"""
-		import inspect
 
-		reserved = set(inspect.signature(frappe.enqueue).parameters) - {"kwargs"}
+		The reserved names come from `enqueue_parameters()`, not from
+		`inspect.signature(frappe.enqueue)`: that attribute is a lazy re-export
+		whose signature is `(*args, **kwargs)`, so reading it here made this
+		test pass vacuously against an empty reserved set.
+		"""
+		from crm.automation_context import enqueue_parameters
+
+		reserved = enqueue_parameters()
+		# Prove the guard sees the real parameter list, not the shim's.
+		self.assertIn("event", reserved)
 		collisions = reserved & set(workflows.JOB_KWARGS)
 		self.assertEqual(collisions, set(), f"these job arguments would be eaten: {collisions}")
 
