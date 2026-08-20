@@ -183,6 +183,12 @@ You need Docker, docker-compose and git setup on your machine. Refer [Docker doc
 -   Username: Administrator
 -   Password: admin
 
+Already have a local Docker site? A `git pull` does not update the separate CRM
+clone or database stored in the existing bench. Follow
+[Updating an Existing Local Docker Site](docs/local-docker-feature-sync.md) to
+deploy new code, migrate DocTypes, rebuild assets, verify WhatsApp, and enable
+site-level feature flags.
+
 ## Learn and connect
 
 -   [Telegram Public Group](https://t.me/frappecrm)
