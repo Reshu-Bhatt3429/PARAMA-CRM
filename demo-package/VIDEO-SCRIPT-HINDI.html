@@ -1,0 +1,411 @@
+<title>PARAMA-CRM आवाज़ स्क्रिप्ट</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Public+Sans:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --canvas: #f6f6fb;
+    --card: #ffffff;
+    --ink: #232336;
+    --ink-soft: #5b5b74;
+    --ink-faint: #8d8da4;
+    --accent: #4f46e5;
+    --accent-soft: #eceafd;
+    --wa: #1fa855;
+    --wa-soft: #e4f6ec;
+    --hot: #c2410c;    --hot-soft: #feeadd;
+    --warm: #a16207;   --warm-soft: #fdf3d7;
+    --cold: #47569e;   --cold-soft: #e8ecfa;
+    --line: #e3e3f0;
+    --panel: #f1f1f9;
+    --caution: #b45309;
+    --caution-soft: #fef4e2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --canvas: #14141f;
+      --card: #1d1d2c;
+      --ink: #e8e8f2;
+      --ink-soft: #a9a9c0;
+      --ink-faint: #7c7c96;
+      --accent: #8b84f5;
+      --accent-soft: #2a2749;
+      --wa: #4cc47e;
+      --wa-soft: #1c3327;
+      --hot: #f0925c;    --hot-soft: #3c2417;
+      --warm: #e0b34a;   --warm-soft: #37301a;
+      --cold: #93a3e8;   --cold-soft: #232a45;
+      --line: #30304a;
+      --panel: #23233555;
+      --caution: #e2a04a;
+      --caution-soft: #33270f;
+    }
+  }
+  :root[data-theme="dark"] {
+    --canvas: #14141f;
+    --card: #1d1d2c;
+    --ink: #e8e8f2;
+    --ink-soft: #a9a9c0;
+    --ink-faint: #7c7c96;
+    --accent: #8b84f5;
+    --accent-soft: #2a2749;
+    --wa: #4cc47e;
+    --wa-soft: #1c3327;
+    --hot: #f0925c;    --hot-soft: #3c2417;
+    --warm: #e0b34a;   --warm-soft: #37301a;
+    --cold: #93a3e8;   --cold-soft: #232a45;
+    --line: #30304a;
+    --panel: #23233555;
+    --caution: #e2a04a;
+    --caution-soft: #33270f;
+  }
+  body {
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: "Public Sans", "Noto Sans Devanagari", system-ui, sans-serif;
+    line-height: 1.6;
+    margin: 0;
+    padding: 2.5rem 1.25rem 5rem;
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; }
+  header.masthead { margin-bottom: 2.25rem; }
+  .kicker {
+    font-family: "Spline Sans Mono", monospace;
+    font-size: .75rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 .6rem;
+  }
+  h1 {
+    font-family: "Noto Sans Devanagari", "Public Sans", sans-serif;
+    font-size: clamp(1.7rem, 4vw, 2.3rem);
+    font-weight: 700;
+    line-height: 1.3;
+    margin: 0 0 .75rem;
+    text-wrap: balance;
+  }
+  .lede { color: var(--ink-soft); font-size: 1rem; max-width: 60ch; margin: 0 0 1.2rem; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .chip {
+    font-family: "Spline Sans Mono", monospace;
+    font-size: .72rem;
+    padding: .28rem .65rem;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .chip.wa { background: var(--wa-soft); color: var(--wa); }
+
+  .callout {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--caution);
+    background: var(--caution-soft);
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+    margin: 0 0 2.5rem;
+    font-size: .92rem;
+  }
+  .callout strong { color: var(--caution); }
+  .callout ul { margin: .5rem 0 0; padding-left: 1.2rem; }
+  .callout li { margin: .3rem 0; }
+
+  .scene {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.5rem 1.7rem 1.7rem;
+    margin: 0 0 1.6rem;
+  }
+  .scene-head {
+    display: flex;
+    align-items: baseline;
+    gap: .8rem;
+    flex-wrap: wrap;
+    margin-bottom: .35rem;
+  }
+  .scene-num {
+    font-family: "Spline Sans Mono", monospace;
+    font-size: .8rem;
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .scene h2 {
+    font-family: "Noto Sans Devanagari", "Public Sans", sans-serif;
+    font-size: 1.22rem;
+    font-weight: 700;
+    margin: 0;
+    flex: 1 1 auto;
+    text-wrap: balance;
+  }
+  .timing {
+    font-family: "Spline Sans Mono", monospace;
+    font-size: .75rem;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .screen-action {
+    background: var(--panel);
+    border-radius: 10px;
+    padding: .85rem 1.1rem;
+    font-size: .88rem;
+    color: var(--ink-soft);
+    margin: .9rem 0 1.2rem;
+  }
+  .screen-action .label {
+    display: block;
+    font-family: "Spline Sans Mono", monospace;
+    font-size: .68rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: .35rem;
+  }
+  .vo {
+    font-family: "Noto Sans Devanagari", "Public Sans", sans-serif;
+    font-size: 1.12rem;
+    line-height: 2;
+  }
+  .vo p { margin: 0 0 1.1rem; }
+  .vo p:last-child { margin-bottom: 0; }
+  .vo em { font-style: normal; color: var(--accent); font-weight: 600; }
+
+  .prio-row { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0 1.2rem; }
+  .prio {
+    font-size: .82rem;
+    font-weight: 600;
+    padding: .3rem .8rem;
+    border-radius: 999px;
+  }
+  .prio.hot { background: var(--hot-soft); color: var(--hot); }
+  .prio.warm { background: var(--warm-soft); color: var(--warm); }
+  .prio.cold { background: var(--cold-soft); color: var(--cold); }
+
+  h3.section-title {
+    font-family: "Public Sans", sans-serif;
+    font-size: .8rem;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 3rem 0 1rem;
+  }
+  .notes {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.4rem 1.7rem;
+    font-size: .92rem;
+  }
+  .notes ul { margin: 0; padding-left: 1.2rem; }
+  .notes li { margin: .55rem 0; }
+  .notes code {
+    font-family: "Spline Sans Mono", monospace;
+    font-size: .84em;
+    background: var(--panel);
+    padding: .1em .4em;
+    border-radius: 5px;
+  }
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <p class="kicker">Voiceover Script · Hindi</p>
+    <h1>PARAMA-CRM — डिटेल्ड डेमो वीडियो स्क्रिप्ट</h1>
+    <p class="lede">Travel business के लिए WhatsApp-first CRM का पूरा product tour। नैरेशन हिंदी में है, टोन एक अनुभवी sales expert की है। हर सीन में पहले “स्क्रीन पर” वाला हिस्सा है (क्या रिकॉर्ड करना है), फिर voiceover का टेक्स्ट।</p>
+    <div class="meta-row">
+      <span class="chip">कुल लंबाई ≈ 8:30 मिनट</span>
+      <span class="chip">पेस ≈ 130–140 शब्द/मिनट</span>
+      <span class="chip wa">WhatsApp Cloud API</span>
+    </div>
+  </header>
+
+  <div class="callout">
+    <strong>रिकॉर्डिंग से पहले — ऑडिट के 3 caveats:</strong>
+    <ul>
+      <li>Demo account पर live WhatsApp send fail होता है (fake token → Authentication Error)। Reply वाला शॉट type करके दिखाएँ, send का क्लिक मत दिखाएँ — या real Meta credentials लगाकर रिकॉर्ड करें।</li>
+      <li>पूरी रिकॉर्डिंग एक ही agent (priya@demo.crm) से करें। बीच में user switch न करें — inbox cache पिछले user की conversations दिखा सकता है।</li>
+      <li>Manager का “All conversations” toggle अभी silently dead है। Scene 5 में यह फ़ीचर सिर्फ़ बोलकर explain करें, क्लिक करके demo न करें।</li>
+    </ul>
+  </div>
+
+  <!-- ================= SCENE 1 ================= -->
+  <section class="scene">
+    <div class="scene-head">
+      <span class="scene-num">SCENE 01</span>
+      <h2>Opening — समस्या और वादा</h2>
+      <span class="timing">0:00 – 0:45</span>
+    </div>
+    <div class="screen-action">
+      <span class="label">स्क्रीन पर</span>
+      PARAMA-CRM का logo / title card। फिर WhatsApp inbox का एक wide shot जिसमें कई conversations दिख रही हों।
+    </div>
+    <div class="vo">
+      <p>अगर आप travel business चलाते हैं, तो आप यह बात अच्छी तरह जानते हैं — आपकी almost हर enquiry आज WhatsApp पर आती है। “भैया, Bali का package क्या रहेगा?” “Family के साथ Kashmir जाना है, budget बताइए।”</p>
+      <p>और यहीं सबसे बड़ी problem शुरू होती है। यह सारी enquiries किसी एक sales person के personal phone में पड़ी रहती हैं। कौन सी lead किसने attend की, किसका reply pending है, कौन सा customer भूल गए — किसी को नहीं पता। हर भूली हुई chat, एक भूली हुई booking है।</p>
+      <p>इसीलिए हमने बनाया है <em>PARAMA-CRM</em> — एक ऐसा CRM जिसके दिल में WhatsApp है। आज मैं आपको detail में दिखाऊँगा कि यह system कैसे काम करता है — message आने से लेकर booking होने तक, हर step।</p>
+    </div>
+  </section>
+
+  <!-- ================= SCENE 2 ================= -->
+  <section class="scene">
+    <div class="scene-head">
+      <span class="scene-num">SCENE 02</span>
+      <h2>पहली नज़र — Dashboard और Leads</h2>
+      <span class="timing">0:45 – 1:30</span>
+    </div>
+    <div class="screen-action">
+      <span class="label">स्क्रीन पर</span>
+      Login (priya@demo.crm) → Leads list view। Sidebar पर धीरे से cursor घुमाएँ: Leads, Deals, Contacts, Notes, Tasks, WhatsApp। फिर list में travel columns दिखाएँ।
+    </div>
+    <div class="vo">
+      <p>तो चलिए शुरू करते हैं। यह है PARAMA-CRM का main interface — clean, fast, और बिना किसी clutter के। Left side में आपके सारे sections हैं — Leads, Deals, Contacts, Tasks, Notes, और सबसे ख़ास — WhatsApp inbox। इस पर हम थोड़ी देर में detail से आएँगे।</p>
+      <p>यह रही आपकी Leads list। ध्यान दीजिए — यह कोई generic CRM नहीं है। हर lead में travel business के हिसाब से fields हैं: <em>destination</em>, <em>travel dates</em>, <em>group size</em>, और <em>budget</em>। यानी आपकी team को पहली नज़र में पता है कि customer कहाँ जाना चाहता है, कब जाना चाहता है, कितने लोग हैं, और कितना खर्च करने को तैयार है।</p>
+    </div>
+  </section>
+
+  <!-- ================= SCENE 3 ================= -->
+  <section class="scene">
+    <div class="scene-head">
+      <span class="scene-num">SCENE 03</span>
+      <h2>WhatsApp Integration — message से lead तक</h2>
+      <span class="timing">1:30 – 3:15</span>
+    </div>
+    <div class="screen-action">
+      <span class="label">स्क्रीन पर</span>
+      एक simple flow graphic (phone → Meta Cloud API → CRM), फिर CRM में नई आई हुई WhatsApp conversation और उससे बनी नई lead। Lead में source = “WhatsApp” और assigned agent दिखाएँ। Notification bell पर बनी notification दिखाएँ।
+    </div>
+    <div class="vo">
+      <p>अब आते हैं उस चीज़ पर जो PARAMA-CRM को सबसे अलग बनाती है — WhatsApp integration। यह किसी unofficial trick या browser hack पर नहीं चलता। यह Meta के <em>official WhatsApp Business Cloud API</em> से connect होता है — वही API जो Meta खुद businesses के लिए देता है। मतलब — reliable, secure, और number ban होने का कोई risk नहीं।</p>
+      <p>अब समझिए कि पूरा flow कैसे काम करता है। मान लीजिए एक customer ने आपके business number पर message भेजा — “Goa का 4 nights का package चाहिए।” Meta का Cloud API वह message सीधे आपके CRM तक पहुँचा देता है — कुछ ही seconds में। कोई manual entry नहीं, कोई copy-paste नहीं।</p>
+      <p>और अब देखिए magic। CRM check करता है — क्या यह number पहले से किसी lead या customer से जुड़ा है? अगर हाँ, तो message उसी की conversation में जुड़ जाता है, पूरी history के साथ। अगर नहीं — तो CRM <em>अपने आप एक नई lead बना देता है</em>, source “WhatsApp” के साथ। आपकी team ने कुछ नहीं किया, और lead system में आ चुकी है।</p>
+      <p>इसका मतलब है — अब कोई enquiry किसी के personal phone में गुम नहीं होगी। हर message, हर lead, हर follow-up — सब company के system में, हमेशा के लिए।</p>
+    </div>
+  </section>
+
+  <!-- ================= SCENE 4 ================= -->
+  <section class="scene">
+    <div class="scene-head">
+      <span class="scene-num">SCENE 04</span>
+      <h2>Auto-Assignment — हर lead का एक owner</h2>
+      <span class="timing">3:15 – 4:00</span>
+    </div>
+    <div class="screen-action">
+      <span class="label">स्क्रीन पर</span>
+      नई lead पर assigned user का avatar दिखाएँ। फिर notification panel खोलकर “new lead assigned” वाली notification दिखाएँ।
+    </div>
+    <div class="vo">
+      <p>अब सोचिए — lead तो बन गई, पर उस पर काम कौन करेगा? ज़्यादातर companies में यहीं गड़बड़ होती है। या तो सारी leads एक ही आदमी उठा लेता है, या कोई भी नहीं उठाता।</p>
+      <p>PARAMA-CRM यह decision खुद लेता है। जैसे ही नई WhatsApp lead बनती है, system आपकी sales team देखता है और <em>round-robin</em> तरीक़े से lead assign करता है — और smart तरीक़े से: जिस agent के पास सबसे कम open WhatsApp leads हैं, नई lead उसी को मिलती है। यानी काम पूरी team में बराबर बँटता है, अपने आप।</p>
+      <p>और जिस agent को lead मिली, उसे उसी second CRM में <em>notification</em> मिल जाती है — “आपको नई lead assign हुई है।” Lead आने से लेकर agent के notified होने तक — पूरा process automatic, इंसानी हाथ लगे बिना।</p>
+    </div>
+  </section>
+
+  <!-- ================= SCENE 5 ================= -->
+  <section class="scene">
+    <div class="scene-head">
+      <span class="scene-num">SCENE 05</span>
+      <h2>Team Inbox — तीन panes में पूरा control</h2>
+      <span class="timing">4:00 – 5:30</span>
+    </div>
+    <div class="screen-action">
+      <span class="label">स्क्रीन पर</span>
+      /crm/whatsapp खोलें (1440×900, ताकि तीसरा panel दिखे)। बाएँ से दाएँ pan करें: conversations list (priority pills के साथ) → chat thread → lead details panel। Reply box में message type करें (send क्लिक न करें, अगर real creds नहीं हैं)।
+    </div>
+    <div class="prio-row">
+      <span class="prio hot">Hot — 24 घंटे के अंदर आया message, जवाब pending</span>
+      <span class="prio warm">Warm — पिछले 3 दिन में activity</span>
+      <span class="prio cold">Cold — बाकी सब</span>
+    </div>
+    <div class="vo">
+      <p>यह है PARAMA-CRM का <em>WhatsApp Team Inbox</em> — मेरे हिसाब से इस पूरे system की सबसे powerful screen। इसे तीन हिस्सों में design किया गया है।</p>
+      <p>बाईं तरफ़ आपकी सारी conversations हैं। और हर conversation पर ध्यान दीजिए — एक priority tag लगा है: <em>Hot</em>, <em>Warm</em>, या <em>Cold</em>। यह tag system खुद calculate करता है। Hot मतलब — पिछले 24 घंटे में customer का message आया है और अभी तक जवाब नहीं गया। Warm मतलब — पिछले तीन दिनों में बातचीत active रही है। और Cold — जो conversations ठंडी पड़ चुकी हैं। आपकी team को सुबह आते ही पता है कि सबसे पहले किसे पकड़ना है।</p>
+      <p>बीच में है पूरी chat — बिल्कुल WhatsApp जैसी, real-time। नया message आते ही यहाँ अपने आप दिख जाता है, बिना refresh किए। और आपका agent यहीं से reply करता है — text, saved <em>templates</em>, media, यहाँ तक कि emoji reactions भी। किसी को personal phone छूने की ज़रूरत नहीं।</p>
+      <p>और दाईं तरफ़ — यह panel है जो इसे simple chat tool से पूरा CRM बनाता है। जिस customer से आप बात कर रहे हैं, उसकी lead की पूरी detail यहीं है — destination, dates, budget, status। बात करते-करते ही agent lead update कर सकता है। Screen switch करने की ज़रूरत ही नहीं।</p>
+      <p>Managers के लिए एक और बात — अपनी conversations तो हर agent देखता ही है, लेकिन <em>Sales Manager</em> पूरी team की conversations देख सकता है। और यह restriction सिर्फ़ दिखावे की नहीं है — server level पर enforce होती है। एक agent दूसरे agent की chats नहीं खोल सकता।</p>
+    </div>
+  </section>
+
+  <!-- ================= SCENE 6 ================= -->
+  <section class="scene">
+    <div class="scene-head">
+      <span class="scene-num">SCENE 06</span>
+      <h2>Follow-up Automation — कोई customer भूलेगा नहीं</h2>
+      <span class="timing">5:30 – 6:15</span>
+    </div>
+    <div class="screen-action">
+      <span class="label">स्क्रीन पर</span>
+      Notification panel में follow-up nudge notification दिखाएँ, फिर manager की daily digest notification (summary numbers के साथ)।
+    </div>
+    <div class="vo">
+      <p>अब सबसे important सवाल — sales में deals कहाँ मरती हैं? Follow-up भूलने से। Customer ने पूछा, agent busy हो गया, और तीन दिन बाद customer ने किसी और से booking कर ली।</p>
+      <p>PARAMA-CRM यह होने ही नहीं देता। System हर घंटे check करता है — कौन सी conversations में customer का message pending पड़ा है। अगर तय समय से ज़्यादा देर हो गई, तो उस agent को अपने आप एक <em>reminder notification</em> जाती है — “इस customer का जवाब बाकी है।”</p>
+      <p>और managers के लिए है <em>daily digest</em> — दिन में एक बार, पिछले 24 घंटों की पूरी summary: कितनी नई conversations आईं, कितनी unanswered हैं, कहाँ ध्यान देना है। यानी manager को team के पीछे भागना नहीं पड़ता — system खुद report लेकर आता है।</p>
+    </div>
+  </section>
+
+  <!-- ================= SCENE 7 ================= -->
+  <section class="scene">
+    <div class="scene-head">
+      <span class="scene-num">SCENE 07</span>
+      <h2>Lead से Booking तक — Sales Pipeline</h2>
+      <span class="timing">6:15 – 7:15</span>
+    </div>
+    <div class="screen-action">
+      <span class="label">स्क्रीन पर</span>
+      एक lead खोलें: travel fields भरें/दिखाएँ, status बदलें (Proposal Sent → Negotiation)। Activity timeline, task बनाना, note जोड़ना दिखाएँ। फिर Kanban view में statuses के columns दिखाएँ।
+    </div>
+    <div class="vo">
+      <p>अब देखते हैं कि एक lead booking तक कैसे पहुँचती है। हर lead का एक clear <em>status</em> है, और यह ladder travel business के लिए ही बनी है — New से शुरू होकर Contacted, Qualified, फिर <em>Proposal Sent</em>, <em>Negotiation</em>, और आख़िर में <em>Booked</em> — या Lost। एक नज़र में पता है कि हर customer sales journey में कहाँ खड़ा है।</p>
+      <p>हर lead के अंदर एक पूरी <em>activity timeline</em> है — कब message आया, कब status बदला, किसने क्या note लिखा, कौन सा task बना। WhatsApp chats, emails, calls, tasks, notes — सब कुछ एक ही जगह। अगर कोई agent छुट्टी पर है, तो दूसरा agent lead खोलकर दो minute में पूरी history समझ सकता है।</p>
+      <p>और जिन्हें board वाला view पसंद है — यह रहा <em>Kanban</em>। हर status का अपना column, और leads को drag-and-drop करके आगे बढ़ाइए। Filters और custom views से हर agent अपनी पसंद का view बना सकता है — “मेरी इस हफ़्ते की hot leads”, “Bali की सारी enquiries” — जो चाहें।</p>
+    </div>
+  </section>
+
+  <!-- ================= SCENE 8 ================= -->
+  <section class="scene">
+    <div class="scene-head">
+      <span class="scene-num">SCENE 08</span>
+      <h2>Roles और Security</h2>
+      <span class="timing">7:15 – 7:50</span>
+    </div>
+    <div class="screen-action">
+      <span class="label">स्क्रीन पर</span>
+      (Verbal-only भी चल सकता है।) चाहें तो settings में users/roles की screen एक झलक में दिखाएँ — admin screens पर ज़्यादा देर न रुकें।
+    </div>
+    <div class="vo">
+      <p>और यह सब चलता है एक proper <em>role system</em> पर। Sales agents को वही दिखता है जो उनके काम का है — उनकी leads, उनकी conversations। Managers को team की पूरी picture मिलती है। और admin controls — integrations, settings, users — सिर्फ़ admin के पास।</p>
+      <p>यह सारी permissions server पर enforce होती हैं, browser में नहीं। मतलब आपका data सिर्फ़ उन्हीं लोगों तक पहुँचता है जिन तक पहुँचना चाहिए।</p>
+    </div>
+  </section>
+
+  <!-- ================= SCENE 9 ================= -->
+  <section class="scene">
+    <div class="scene-head">
+      <span class="scene-num">SCENE 09</span>
+      <h2>Closing — Recap और अगला क़दम</h2>
+      <span class="timing">7:50 – 8:30</span>
+    </div>
+    <div class="screen-action">
+      <span class="label">स्क्रीन पर</span>
+      तीन-चार quick shots का montage: WhatsApp inbox → auto-assigned lead → Kanban → Booked status। End card: PARAMA-CRM logo + contact।
+    </div>
+    <div class="vo">
+      <p>तो एक बार फिर, पूरी picture देखिए। Customer WhatsApp पर message करता है — CRM अपने आप lead बनाता है — सही agent को assign करता है — agent को notify करता है — team inbox में priority के साथ दिखाता है — जवाब late हो तो reminder भेजता है — और manager को रोज़ की report देता है। Message से लेकर booking तक — <em>एक भी lead हाथ से नहीं छूटती</em>।</p>
+      <p>यह है PARAMA-CRM — आपके travel business के लिए, WhatsApp-first CRM। अगर आप चाहते हैं कि आपकी sales team leads ढूँढने में नहीं, deals close करने में समय लगाए — तो आज ही हमसे संपर्क कीजिए, और अपने business के लिए live demo बुक कीजिए।</p>
+      <p>धन्यवाद।</p>
+    </div>
+  </section>
+
+  <h3 class="section-title">Production Notes</h3>
+  <div class="notes">
+    <ul>
+      <li><strong>Narration की गिनती:</strong> कुल ≈ 1,150 शब्द। 130–140 शब्द/मिनट की आराम वाली पेस पर ≈ 8:30 मिनट। तेज़ (150 wpm) पढ़ेंगे तो ≈ 7:45।</li>
+      <li><strong>Voice:</strong> Confident, गर्मजोशी वाला male/female Hindi voice। TTS use करना हो तो ElevenLabs (Hindi multilingual v2) या Google Cloud TTS की <code>hi-IN-Wavenet</code> voices अच्छा result देती हैं। <em>Italic</em> वाले words पर हल्का ज़ोर दें।</li>
+      <li><strong>Recording recipe:</strong> ऑडिट memo वाली recipe reuse करें — docker up → seeder → सारी demo leads priya को assign → Playwright + <code>/usr/bin/google-chrome</code>, viewport 1440×900 (contact panel 1280px से नीचे छिप जाता है)। “Getting started” modal पहले बंद करें, navigation SPA sidebar clicks से करें।</li>
+      <li><strong>Screen-VO sync:</strong> पहले voiceover record करें, फिर screen capture को narration की timing पर pace करें — उल्टा करने से screen फुटेज खिंचती है।</li>
+      <li><strong>Scene 3 का flow graphic:</strong> phone → Meta Cloud API → CRM वाला simple 3-step diagram किसी भी slide tool में बन जाएगा; असली webhook screens दिखाने की ज़रूरत नहीं।</li>
+      <li><strong>क्या नहीं दिखाना:</strong> live send (fake token), user switching, manager “All conversations” toggle, admin/integration screens पर lingering। ये सब ऊपर वाले caution box में हैं।</li>
+    </ul>
+  </div>
+</div>
