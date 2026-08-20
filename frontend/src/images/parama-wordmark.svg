@@ -1,0 +1,38 @@
+<!--
+  PARAMA wordmark — geometric sans built from stroked centerlines (no font
+  dependency), generously letter-spaced, drawn in `currentColor` so it reads on
+  light and dark surfaces.
+
+  Grid: cap height 100, stroke width 12, letter spacing 24.
+
+  This file is the design source. The app renders the same geometry from
+  frontend/src/components/Icons/ParamaWordmark.vue — keep the two in sync, or
+  swap both when a real logo arrives (see demo-package/specs/branding-notes.md).
+-->
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 488 112"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="12"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <g transform="translate(6 6)">
+    <!-- P -->
+    <path d="M0 100 V0 H30 a26 26 0 0 1 0 52 H0" />
+    <!-- A -->
+    <path transform="translate(80 0)" d="M0 100 L30 0 L60 100 M20 66 H40" />
+    <!-- R -->
+    <path
+      transform="translate(164 0)"
+      d="M0 100 V0 H30 a26 26 0 0 1 0 52 H0 M28 52 L56 100"
+    />
+    <!-- A -->
+    <path transform="translate(244 0)" d="M0 100 L30 0 L60 100 M20 66 H40" />
+    <!-- M -->
+    <path transform="translate(328 0)" d="M0 100 V0 L32 58 L64 0 V100" />
+    <!-- A -->
+    <path transform="translate(416 0)" d="M0 100 L30 0 L60 100 M20 66 H40" />
+  </g>
+</svg>

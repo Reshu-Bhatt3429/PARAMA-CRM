@@ -29,6 +29,7 @@
         >
           <span class="text-xs text-ink-gray-4 mr-2">{{ __('TO') }}:</span>
           <EmailMultiSelect
+            ref="toInput"
             v-model="toEmails"
             class="flex-1"
             variant="ghost"
@@ -130,6 +131,87 @@
               :icon="EmailTemplateIcon"
               @click="showEmailTemplateSelectorModal = true"
             />
+            <Button
+              :tooltip="__('Insert Snippet')"
+              variant="ghost"
+              :icon="LucideTextQuote"
+              @click="showSnippetSelectorModal = true"
+            />
+            <!--
+              Item 14. Master spec §2.14 allows the composer ONE sparkle, and
+              this is it; the snippet icon above is Stage 2B's and stays. The
+              popover is inline rather than a modal (§2, "inline over modal")
+              and it never sends anything (C6) — it writes into the editor the
+              agent is already in.
+            -->
+            <Popover placement="top-start" @open="onDraftPopoverOpen">
+              <template #target="{ togglePopover }">
+                <Button
+                  :tooltip="__('Draft with AI')"
+                  variant="ghost"
+                  :loading="draftLoading"
+                  @click="togglePopover()"
+                >
+                  <template #icon>
+                    <LucideSparkles class="size-4" aria-hidden="true" />
+                  </template>
+                </Button>
+              </template>
+              <template #body="{ close }">
+                <div
+                  class="w-80 rounded-lg bg-surface-modal p-3 shadow-2xl text-base text-ink-gray-7"
+                >
+                  <template v-if="aiReady === false">
+                    <div class="text-base-medium text-ink-gray-8">
+                      {{ __('AI is not set up yet') }}
+                    </div>
+                    <p class="mt-1">
+                      {{
+                        __(
+                          'Add an AI provider and key in Settings → AI & Follow-ups, then this button drafts a reply for you to edit.',
+                        )
+                      }}
+                    </p>
+                  </template>
+                  <template v-else>
+                    <div class="text-base-medium text-ink-gray-8">
+                      {{ __('Draft with AI') }}
+                    </div>
+                    <div class="mt-2 flex flex-wrap gap-1.5">
+                      <Button
+                        v-for="preset in draftPresets"
+                        :key="preset.key"
+                        :label="__(preset.label)"
+                        :disabled="draftLoading"
+                        @click="runDraft(__(preset.instruction), close)"
+                      />
+                    </div>
+                    <FormControl
+                      v-model="draftInstruction"
+                      class="mt-2"
+                      type="textarea"
+                      :rows="2"
+                      :placeholder="__('Or say what this email should do')"
+                      @keydown.enter.exact.prevent="
+                        runDraft(draftInstruction, close)
+                      "
+                    />
+                    <p class="mt-2 text-sm text-ink-gray-5">
+                      {{ draftDisclosure }}
+                    </p>
+                    <div class="mt-2 flex justify-end">
+                      <Button
+                        variant="solid"
+                        :label="__('Draft')"
+                        :loading="draftLoading"
+                        :disabled="!draftInstruction.trim()"
+                        @click="runDraft(draftInstruction, close)"
+                      />
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </Popover>
             <FileUploader
               :upload-args="{
                 doctype: doctype,
@@ -163,11 +245,39 @@
           </div>
           <div class="mt-2 flex items-center justify-end space-x-2 sm:mt-0">
             <Button v-bind="discardButtonProps || {}" :label="__('Discard')" />
-            <Button
-              variant="solid"
-              v-bind="submitButtonProps || {}"
-              :label="`${__('Send')} (${submitShortcutLabel})`"
-            />
+            <!-- Item 5: Send is a split button. Send Later exists ONLY behind
+                 the caret (spec §2.14) so the composer keeps three visible
+                 actions and one primary. -->
+            <div class="flex items-stretch">
+              <Button
+                variant="solid"
+                v-bind="submitButtonProps || {}"
+                class="rounded-r-none"
+                :label="`${__('Send')} (${submitShortcutLabel})`"
+              />
+              <Popover placement="top-end">
+                <template #target="{ togglePopover }">
+                  <Button
+                    variant="solid"
+                    class="rounded-l-none border-l border-outline-white"
+                    :disabled="submitButtonProps?.disabled"
+                    :tooltip="__('Send later')"
+                    icon="chevron-up"
+                    @click="togglePopover()"
+                  />
+                </template>
+                <template #body="{ close }">
+                  <SendLaterPopover
+                    @schedule="
+                      (payload) => {
+                        close()
+                        scheduleSend(payload)
+                      }
+                    "
+                  />
+                </template>
+              </Popover>
+            </div>
           </div>
         </div>
       </div>
@@ -177,6 +287,12 @@
     v-model="showEmailTemplateSelectorModal"
     :doctype="doctype"
     @apply="applyEmailTemplate"
+  />
+  <SnippetSelectorModal
+    v-model="showSnippetSelectorModal"
+    :doctype="doctype"
+    :docname="modelValue?.name"
+    @apply="applySnippet"
   />
 </template>
 
@@ -188,12 +304,18 @@ import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import AttachmentItem from '@/components/AttachmentItem.vue'
 import EmailMultiSelect from '@/components/Controls/EmailMultiSelect.vue'
 import EmailTemplateSelectorModal from '@/components/Modals/EmailTemplateSelectorModal.vue'
+import SnippetSelectorModal from '@/components/Modals/SnippetSelectorModal.vue'
+import SendLaterPopover from '@/components/SendLaterPopover.vue'
+import LucideTextQuote from '~icons/lucide/text-quote'
+import LucideSparkles from '~icons/lucide/sparkles'
 import {
   buildEditorExtensions,
   fullToolbar,
   uploadFile,
 } from '@/components/editor/config'
-import { FileUploader, call, FormControl } from 'frappe-ui'
+import { aiReady, loadAiReady } from '@/composables/ai'
+import { DRAFT_PRESETS, bodyToHtml, disclosureLine } from '@/utils/aiDraft'
+import { FileUploader, call, FormControl, Popover, toast } from 'frappe-ui'
 import {
   Editor,
   EditorContent,
@@ -215,6 +337,16 @@ const props = defineProps({
   submitButtonProps: { type: Object, default: () => ({}) },
   discardButtonProps: { type: Object, default: () => ({}) },
 })
+
+// Item 5. The composer owns the draft, not this editor, so the schedule is
+// handed up rather than posted here -- the same division `submitButtonProps`
+// already uses for Send.
+const emit = defineEmits(['schedule'])
+
+function scheduleSend(payload) {
+  if (props.submitButtonProps?.disabled) return
+  emit('schedule', payload)
+}
 
 const CustomParagraph = Paragraph.extend({
   addAttributes() {
@@ -255,6 +387,7 @@ const fromEmail = ref('')
 const toEmails = ref(modelValue.value.email ? [modelValue.value.email] : [])
 const ccEmails = ref([])
 const bccEmails = ref([])
+const toInput = ref(null)
 const ccInput = ref(null)
 const bccInput = ref(null)
 
@@ -315,6 +448,101 @@ async function applyEmailTemplate(template) {
   capture('email_template_applied', { doctype: props.doctype })
 }
 
+const showSnippetSelectorModal = ref(false)
+
+/**
+ * Insert a snippet at the caret. The body arrives already merged from the
+ * server, so nothing is resolved here.
+ *
+ * Insert, never replace: unlike an email template, a snippet is a paragraph
+ * inside a message somebody is already writing.
+ */
+function applySnippet({ body }) {
+  editor.value.commands.insertContent(body)
+  editor.value.commands.focus()
+  capture('snippet_inserted', { doctype: props.doctype })
+}
+
+// --- Item 14: draft with AI ------------------------------------------------
+
+const draftPresets = DRAFT_PRESETS
+const draftInstruction = ref('')
+const draftLoading = ref(false)
+const draftFields = ref(null)
+
+// Asked once per session, so the popover already knows which of its two bodies
+// to render the first time it is opened.
+loadAiReady()
+
+function onDraftPopoverOpen() {
+  loadAiReady()
+  if (draftFields.value === null) loadDraftFields()
+}
+
+/**
+ * The field labels the disclosure line names.
+ *
+ * Read from the server rather than typed here: `crm.api.ai_draft.sent_fields`
+ * reads the same whitelist the prompt builder reads, so the line cannot end up
+ * describing a set of fields that is no longer what leaves the site.
+ */
+async function loadDraftFields() {
+  try {
+    draftFields.value = await call('crm.api.ai_draft.sent_fields', {
+      doctype: props.doctype,
+    })
+  } catch (error) {
+    draftFields.value = []
+  }
+}
+
+const draftDisclosure = computed(() =>
+  disclosureLine(draftFields.value || [], {
+    prefix: __('Sends to the AI provider'),
+    andMessages: __('and the last 10 emails on this record'),
+    nothing: __('Sends the last 10 emails on this record to the AI provider'),
+  }),
+)
+
+/**
+ * Draft a body and insert it at the caret.
+ *
+ * `insertContent` is one editor transaction, so the editor's own history takes
+ * the whole draft back out on the first Ctrl+Z — which is what item 14 asks for
+ * and why nothing here maintains an undo stack of its own. There is no
+ * streaming: `crm.ai.client` does not stream, and faking a typing effect would
+ * be a claim the app cannot back.
+ */
+async function runDraft(instruction, close) {
+  const text = (instruction || '').trim()
+  if (!text || draftLoading.value) return
+
+  draftLoading.value = true
+  try {
+    const data = await call('crm.api.ai_draft.generate', {
+      doctype: props.doctype,
+      name: modelValue.value?.name,
+      instruction: text,
+    })
+
+    const html = bodyToHtml(data?.body)
+    if (!html) {
+      toast.error(__('The AI returned an empty draft'))
+      return
+    }
+
+    editor.value.commands.focus()
+    editor.value.commands.insertContent(html)
+    capture('ai_email_draft_inserted', { doctype: props.doctype })
+    draftInstruction.value = ''
+    close?.()
+  } catch (error) {
+    toast.error(error.messages?.[0] || __('Could not draft this email'))
+  } finally {
+    draftLoading.value = false
+  }
+}
+
 function appendEmoji() {
   editor.value.commands.insertContent(emoji.value)
   editor.value.commands.focus()
@@ -332,6 +560,11 @@ function toggleBCC() {
   if (bcc.value) nextTick(() => bccInput.value.setFocus())
 }
 
+/** Put the caret in the To field. A forward opens with no recipient. */
+function focusTo() {
+  toInput.value?.setFocus?.()
+}
+
 defineExpose({
   editor,
   subject,
@@ -341,5 +574,6 @@ defineExpose({
   toEmails,
   ccEmails,
   bccEmails,
+  focusTo,
 })
 </script>

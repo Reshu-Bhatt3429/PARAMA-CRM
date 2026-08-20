@@ -37,6 +37,7 @@ ALLOWED_CHARTS = {
 	"deals_by_source",
 	"deals_by_territory",
 	"deals_by_salesperson",
+	"target_meter",
 }
 
 
@@ -1174,6 +1175,70 @@ def get_deals_by_salesperson(
 			{"name": "deals", "type": "bar"},
 			{"name": "value", "type": "line", "showDataPoints": True, "axis": "y2"},
 		],
+	}
+
+
+def get_target_meter(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+	"""Progress toward this calendar month's revenue target (master spec §5, item 7).
+
+	`from_date` and `to_date` are accepted so the chart dispatcher can call this
+	like every other chart, and they are DELIBERATELY IGNORED. The target is a
+	monthly quota: reading it through a "last 90 days" filter would compare 90
+	days of revenue with one month of target and report 300%. The widget says so
+	in its subtitle rather than leaving the reader to work it out.
+
+	The metric is the same one `get_won_deals` counts -- deals whose status is of
+	type Won, dated by `closed_date` -- summed in the org's base currency through
+	the stored per-deal `exchange_rate`, exactly as the other value charts do.
+
+	Row scope is the scope every chart here uses: `get_dashboard` / `get_chart`
+	pin a plain Sales User to themselves before dispatching, and `user` is applied
+	as `deal_owner`. A Sales User therefore sees their own contribution against
+	the site-wide target; v1 has no per-user target (master spec §5, item 7).
+	"""
+	month_start = frappe.utils.get_first_day(frappe.utils.nowdate())
+	month_end = frappe.utils.get_last_day(month_start)
+	# Half-open upper bound, so a deal closed on the last day of the month counts
+	# whether `closed_date` is stored as a date or as a datetime.
+	next_month_start = frappe.utils.add_days(month_end, 1)
+
+	Deal = DocType("CRM Deal")
+	Status = DocType("CRM Deal Status")
+
+	cond = (Deal.closed_date >= month_start) & (Deal.closed_date < next_month_start) & (Status.type == "Won")
+	if user:
+		cond = cond & (Deal.deal_owner == user)
+
+	deal_value_expr = Coalesce(Deal.deal_value, 0) * IfNull(Deal.exchange_rate, 1)
+
+	result = (
+		frappe.qb.from_(Deal)
+		.join(Status)
+		.on(Deal.status == Status.name)
+		.select(Sum(Case().when(cond, deal_value_expr).else_(0)).as_("achieved"))
+		.run(as_dict=True)
+	)
+
+	achieved = frappe.utils.flt(result[0].achieved if result else 0)
+	target = frappe.utils.flt(frappe.db.get_single_value("FCRM Settings", "monthly_revenue_target"))
+
+	# No target set is not 0% -- it is "nothing to measure against". The widget
+	# renders an empty track and a "set a target" hint instead of a lie.
+	percent = frappe.utils.flt(achieved / target * 100, 1) if target > 0 else 0.0
+
+	return {
+		"title": _("Monthly revenue target"),
+		"tooltip": _("Won deal value this calendar month against the monthly target set in Settings"),
+		"subtitle": _("{0} so far — this calendar month, not the dashboard date filter").format(
+			frappe.utils.formatdate(month_start, "MMMM yyyy")
+		),
+		"value": achieved,
+		"target": target,
+		"percent": percent,
+		"hasTarget": target > 0,
+		"prefix": get_base_currency_symbol(),
+		"periodStart": frappe.utils.getdate(month_start).isoformat(),
+		"periodEnd": frappe.utils.getdate(month_end).isoformat(),
 	}
 
 

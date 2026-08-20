@@ -1,0 +1,45 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-08-18 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "tier_label",
+  "price_per_person"
+ ],
+ "fields": [
+  {
+   "columns": 6,
+   "description": "For example: Quad Sharing, Triple Sharing, Double Sharing.",
+   "fieldname": "tier_label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Tier",
+   "reqd": 1
+  },
+  {
+   "columns": 4,
+   "fieldname": "price_per_person",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Price Per Person",
+   "options": "parent.currency"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-18 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CRM Itinerary Price Tier",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

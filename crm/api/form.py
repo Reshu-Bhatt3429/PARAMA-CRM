@@ -12,14 +12,42 @@ doctype; this module only:
 """
 
 import json
+import re
 
 import frappe
 from frappe import _
+from frappe.utils import cint
 from frappe.utils.telemetry import capture
+
+from crm.suppression import CHANNEL_EMAIL, is_suppressed
 
 ALLOWED_DOCTYPES = ("CRM Lead", "CRM Deal")
 FORM_SOURCE = "Web Form"
 FORM_MODULE = "FCRM"
+
+AUTO_RESPONSE_DOCTYPE = "CRM Form Auto Response"
+AUTO_RESPONSE_LOG_DOCTYPE = "CRM Form Auto Response Log"
+
+# The merge fields a form author may put in an automatic reply, as
+# (token, label). This tuple is the WHOLE vocabulary: the builder renders it as
+# the "Insert field" menu, and `render_merge` resolves nothing outside it. An
+# allowlist rather than a template engine, because the value being substituted
+# is text a stranger typed into a public form.
+AUTO_RESPONSE_MERGE_FIELDS = (
+	("first_name", "First name"),
+	("last_name", "Last name"),
+	("full_name", "Full name"),
+	("email", "Email"),
+	("mobile_no", "Mobile number"),
+	("organization_name", "Organization"),
+	("record_id", "Reference number"),
+	("agency_name", "Agency name"),
+)
+
+# `{{ token }}`, with any amount of whitespace inside the braces.
+MERGE_TOKEN_PATTERN = re.compile(r"\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}", re.IGNORECASE)
+
+AUTO_RESPONSE_JOB = "crm.api.form.send_auto_response"
 
 
 def ensure_form_source() -> str:
@@ -363,12 +391,17 @@ def get_form_config(name: str) -> dict:
 				"fieldtype": f.fieldtype,
 				"options": f.options,
 				"reqd": f.reqd,
-				"placeholder": f.placeholder,
+				# `.get()`, not attribute access: `placeholder` is a Web Form Field
+				# column on frappe v16 and not on v15, and attribute access on a
+				# column that is not in the meta raises. The value round-trips
+				# either way; on v15 it is simply always empty.
+				"placeholder": f.get("placeholder"),
 				"field_description": f.description,
 			}
 			for f in doc.web_form_fields
 		],
 		"hidden_fields": _load_hidden_fields(doc),
+		"auto_response": load_auto_response(doc.name),
 	}
 
 
@@ -461,6 +494,17 @@ def save_form(name: str | None, form: dict | str) -> dict:
 	doc.crm_hidden_defaults = json.dumps(hidden) if hidden else ""
 
 	doc.save(ignore_permissions=True)
+
+	# The automatic reply lives in its own doctype, named after the form. It is
+	# written after the form is saved because a brand-new form has no name until
+	# then. An update that omits `auto_response` leaves the stored reply alone,
+	# for the same reason an update that omits `fields` leaves the layout alone.
+	auto_response = form.get("auto_response")
+	if isinstance(auto_response, str):
+		auto_response = json.loads(auto_response or "{}")
+	if auto_response is not None:
+		save_auto_response(doc.name, auto_response)
+
 	return {"name": doc.name, "route": doc.route}
 
 
@@ -559,6 +603,369 @@ def enrich_form_submission(doc):
 		contact = create_contact(doc)
 		if contact:
 			doc.append("contacts", {"contact": contact, "is_primary": 1})
+
+
+def queue_auto_response(doc):
+	"""Called from the CRM Lead/Deal `after_insert`: send the form's automatic reply.
+
+	`after_insert` and not `before_insert`, deliberately. The spec asks for the
+	successful-submission point, and before the insert there is no submission --
+	a validation failure after a `before_insert` send would leave a stranger
+	holding a "thank you for your enquiry" for an enquiry that does not exist.
+
+	The work is enqueued AFTER COMMIT, never done inline. Rendering and queueing
+	an email inside the visitor's POST would put an SMTP-shaped delay in front of
+	their success page, and an exception in the send would roll back the lead
+	itself -- losing the enquiry to save the receipt.
+	"""
+	if not frappe.flags.get("in_web_form"):
+		return
+	if doc.doctype not in ALLOWED_DOCTYPES:
+		return
+
+	web_form = frappe.form_dict.get("web_form")
+	if not web_form:
+		return
+
+	# `web_form` comes from the (client-controllable) POST body. Only a CRM form
+	# that targets this exact doctype may drive a send, exactly as
+	# `_apply_hidden_defaults` only trusts such a form for its defaults.
+	form = frappe.db.get_value("Web Form", web_form, ["name", "doc_type", "module"], as_dict=True)
+	if not form or form.module != FORM_MODULE or form.doc_type != doc.doctype:
+		return
+
+	if not frappe.db.get_value(AUTO_RESPONSE_DOCTYPE, form.name, "enabled"):
+		return
+
+	frappe.enqueue(
+		AUTO_RESPONSE_JOB,
+		queue="short",
+		enqueue_after_commit=True,
+		web_form=form.name,
+		reference_doctype=doc.doctype,
+		reference_name=doc.name,
+	)
+
+
+def submission_key(web_form: str, reference_doctype: str, reference_name: str) -> str:
+	"""The idempotency key: one reply per record created by one form."""
+	return f"{web_form}:{reference_doctype}:{reference_name}"
+
+
+def claim_submission(web_form: str, reference_doctype: str, reference_name: str, recipient: str):
+	"""Take the one send slot for this submission, or return None.
+
+	The row is inserted BEFORE anything is rendered and its `submission_key`
+	carries a unique index, so a retried job, a double POST and two workers
+	racing the same submission all collide on the index and only the first
+	proceeds. Same discipline as `crm.outbound`, one size smaller.
+	"""
+	row = frappe.new_doc(AUTO_RESPONSE_LOG_DOCTYPE)
+	row.update(
+		{
+			"submission_key": submission_key(web_form, reference_doctype, reference_name),
+			"web_form": web_form,
+			"reference_doctype": reference_doctype,
+			"reference_name": reference_name,
+			"recipient": recipient,
+			"status": "Claimed",
+		}
+	)
+	try:
+		row.insert(ignore_permissions=True)
+	except (frappe.UniqueValidationError, frappe.DuplicateEntryError):
+		return None
+	return row
+
+
+def close_submission(row, status: str, detail: str = "", communication: str | None = None):
+	"""Write the outcome onto the claim row."""
+	frappe.db.set_value(
+		AUTO_RESPONSE_LOG_DOCTYPE,
+		row.name,
+		{
+			"status": status,
+			"detail": frappe.utils.strip_html(frappe.utils.cstr(detail))[:500],
+			"communication": communication,
+			"sent_at": frappe.utils.now_datetime() if status == "Sent" else None,
+		},
+		update_modified=False,
+	)
+
+
+def merge_values(doc) -> dict:
+	"""The value behind every merge token, for one submitted record.
+
+	Nothing outside `AUTO_RESPONSE_MERGE_FIELDS` is reachable. That is the point:
+	a form author cannot accidentally (or deliberately) put the lead owner's
+	address, the deal value or an internal note into a message that goes to a
+	stranger.
+	"""
+	from crm.fcrm.doctype.crm_itinerary.crm_itinerary import get_agency_details
+
+	first = frappe.utils.cstr(doc.get("first_name") or "").strip()
+	last = frappe.utils.cstr(doc.get("last_name") or "").strip()
+	full = frappe.utils.cstr(doc.get("lead_name") or "").strip() or " ".join(x for x in (first, last) if x)
+
+	return {
+		"first_name": first,
+		"last_name": last,
+		"full_name": full,
+		"email": frappe.utils.cstr(doc.get("email") or ""),
+		"mobile_no": frappe.utils.cstr(doc.get("mobile_no") or doc.get("phone") or ""),
+		"organization_name": frappe.utils.cstr(doc.get("organization_name") or ""),
+		"record_id": frappe.utils.cstr(doc.name or ""),
+		"agency_name": frappe.utils.cstr((get_agency_details() or {}).get("name") or ""),
+	}
+
+
+def render_merge(template, values: dict, escape: bool = True) -> str:
+	"""Replace `{{ token }}` from `values`. An unknown token renders as nothing.
+
+	A deliberate substitution rather than Jinja. The template is written by a
+	manager, but the values come from whoever filled in a public form, and a real
+	template engine invited to evaluate them would be evaluating a stranger's
+	text. Substitution cannot execute anything, and the value is HTML-escaped on
+	its way into an HTML body.
+
+	An unknown token becomes an empty string rather than staying visible: the
+	person receiving this email should never be shown the plumbing.
+	"""
+	text = frappe.utils.cstr(template or "")
+
+	def replace(match):
+		value = frappe.utils.cstr(values.get(match.group(1).lower(), ""))
+		return frappe.utils.escape_html(value) if escape else value
+
+	return MERGE_TOKEN_PATTERN.sub(replace, text)
+
+
+def outgoing_sender() -> dict | None:
+	"""The account an automatic reply is sent from, or None when there is none.
+
+	A CRM form answers on behalf of the agency, not of whoever happens to be
+	logged in, so the address is the site's default outgoing account. Without one
+	the reply is not attempted at all: `make` would raise inside a background job
+	and the visitor would never learn anything went wrong.
+	"""
+	row = frappe.db.get_value(
+		"Email Account",
+		{"enable_outgoing": 1, "default_outgoing": 1},
+		["name", "email_id"],
+		as_dict=True,
+	)
+	if not row:
+		row = frappe.db.get_value("Email Account", {"enable_outgoing": 1}, ["name", "email_id"], as_dict=True)
+	return row or None
+
+
+def send_auto_response(web_form: str, reference_doctype: str, reference_name: str) -> str:
+	"""Send one form's automatic reply for one submission. Returns the outcome.
+
+	Runs as a background job. Never raises: the visitor is long gone and the
+	record already exists, so the only thing an exception could achieve here is a
+	noisy failed job and a log row stuck on `Claimed`.
+
+	Every refusal is written to the claim row, so "why did this visitor get no
+	reply" is one lookup: Disabled, No Recipient, No Email Account, Suppressed or
+	Failed.
+	"""
+	previous_user = frappe.session.user
+	row = None
+	try:
+		if reference_doctype not in ALLOWED_DOCTYPES:
+			return "not_allowed"
+		if not frappe.db.exists(reference_doctype, reference_name):
+			return "gone"
+
+		settings = frappe.db.get_value(
+			AUTO_RESPONSE_DOCTYPE, web_form, ["enabled", "subject", "message"], as_dict=True
+		)
+		doc = frappe.get_doc(reference_doctype, reference_name)
+		recipient = frappe.utils.cstr(doc.get("email") or "").strip()
+
+		row = claim_submission(web_form, reference_doctype, reference_name, recipient)
+		if row is None:
+			# Somebody already holds the slot for this submission.
+			return "duplicate"
+
+		if not settings or not settings.enabled:
+			close_submission(row, "Disabled", "the form's automatic reply is switched off")
+			return "disabled"
+
+		if not recipient:
+			close_submission(row, "No Recipient", "the submission carried no email address")
+			return "no_recipient"
+
+		if is_suppressed(CHANNEL_EMAIL, recipient):
+			close_submission(row, "Suppressed", "the address is on the suppression ledger")
+			return "suppressed"
+
+		account = outgoing_sender()
+		if not account:
+			close_submission(row, "No Email Account", "no outgoing Email Account is configured")
+			return "no_email_account"
+
+		values = merge_values(doc)
+		subject = render_merge(settings.subject, values, escape=False).strip() or _(
+			"Thanks for getting in touch"
+		)
+		content = render_merge(settings.message, values)
+
+		# Administrator, not the submitting Guest. `make` checks the `email`
+		# permission on the referenced record and Guest holds none; the message is
+		# the agency's, not the visitor's, so the agency's account is the honest
+		# sender either way.
+		frappe.set_user("Administrator")
+		result = _make_auto_response(
+			doctype=reference_doctype,
+			name=reference_name,
+			recipient=recipient,
+			subject=subject,
+			content=content,
+			sender=account.email_id,
+			sender_full_name=values.get("agency_name") or None,
+		)
+		close_submission(row, "Sent", "", (result or {}).get("name"))
+		return "sent"
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "CRM form: automatic reply failed")
+		if row is not None:
+			try:
+				close_submission(
+					row, "Failed", frappe.utils.cstr(frappe.get_traceback(with_context=False))[-400:]
+				)
+			except Exception:
+				pass
+		return "failed"
+	finally:
+		if frappe.session.user != previous_user:
+			frappe.set_user(previous_user)
+
+
+def _make_auto_response(doctype, name, recipient, subject, content, sender, sender_full_name):
+	"""The one place the automatic reply hands a message to the email queue.
+
+	A named seam: `crm/tests/test_form_auto_response.py` stands in for it so the
+	suite exercises the whole decision path -- claim, suppression, account,
+	merge -- without a mail server, and so a test can count how many messages one
+	submission produced.
+	"""
+	from frappe.core.doctype.communication.email import make
+
+	return make(
+		doctype=doctype,
+		name=name,
+		recipients=recipient,
+		subject=subject,
+		content=content,
+		sender=sender,
+		sender_full_name=sender_full_name,
+		send_email=1,
+		communication_type="Automated Message",
+	)
+
+
+# --- auto-response configuration (the builder's "Auto-response" tab) --------
+
+
+@frappe.whitelist()
+def get_auto_response_fields() -> list[dict]:
+	"""The merge-field vocabulary, for the builder's "Insert field" menu."""
+	_check_manager()
+	return [{"token": token, "label": _(label)} for token, label in AUTO_RESPONSE_MERGE_FIELDS]
+
+
+def load_auto_response(web_form: str) -> dict:
+	"""The stored auto-response for one form, or the empty default."""
+	row = frappe.db.get_value(
+		AUTO_RESPONSE_DOCTYPE, web_form, ["enabled", "subject", "message"], as_dict=True
+	)
+	if not row:
+		return {"enabled": 0, "subject": "", "message": ""}
+	return {
+		"enabled": cint(row.enabled),
+		"subject": row.subject or "",
+		"message": row.message or "",
+	}
+
+
+def save_auto_response(web_form: str, values: dict) -> None:
+	"""Write one form's auto-response. Created on first save, never before."""
+	values = values or {}
+	enabled = 1 if values.get("enabled") else 0
+	subject = frappe.utils.cstr(values.get("subject") or "")[:200]
+	message = frappe.utils.cstr(values.get("message") or "")
+
+	if frappe.db.exists(AUTO_RESPONSE_DOCTYPE, web_form):
+		frappe.db.set_value(
+			AUTO_RESPONSE_DOCTYPE,
+			web_form,
+			{"enabled": enabled, "subject": subject, "message": message},
+		)
+		return
+
+	if not (enabled or subject or message):
+		# Nothing to store. A form nobody configured should not grow a row.
+		return
+
+	doc = frappe.new_doc(AUTO_RESPONSE_DOCTYPE)
+	doc.update({"web_form": web_form, "enabled": enabled, "subject": subject, "message": message})
+	doc.insert(ignore_permissions=True)
+
+
+@frappe.whitelist(methods=["POST"])
+def send_auto_response_test(name: str) -> dict:
+	"""Send the form's automatic reply to the manager who asked, as a test.
+
+	The recipient is ALWAYS the caller's own address and is never taken from the
+	request. An endpoint that sent an arbitrary body to an arbitrary address
+	would be an open relay wearing a CRM's return address.
+	"""
+	_check_manager()
+	doc = _get_crm_form(name)
+
+	settings = load_auto_response(doc.name)
+	account = outgoing_sender()
+	if not account:
+		frappe.throw(_("No outgoing Email Account is configured, so nothing can be sent."))
+
+	recipient = frappe.db.get_value("User", frappe.session.user, "email") or frappe.session.user
+	if is_suppressed(CHANNEL_EMAIL, recipient):
+		frappe.throw(_("Your own address is on the suppression list, so the test was not sent."))
+
+	values = sample_merge_values()
+	subject = render_merge(settings["subject"], values, escape=False).strip() or _(
+		"Thanks for getting in touch"
+	)
+	content = render_merge(settings["message"], values)
+
+	frappe.sendmail(
+		recipients=[recipient],
+		sender=account.email_id,
+		subject=_("[Test] {0}").format(subject),
+		message=content,
+		reference_doctype="Web Form",
+		reference_name=doc.name,
+		expose_recipients="header",
+	)
+	return {"sent_to": recipient}
+
+
+def sample_merge_values() -> dict:
+	"""Stand-in values for a test send, so every pill shows something."""
+	from crm.fcrm.doctype.crm_itinerary.crm_itinerary import get_agency_details
+
+	return {
+		"first_name": _("Priya"),
+		"last_name": _("Sharma"),
+		"full_name": _("Priya Sharma"),
+		"email": "priya@example.com",
+		"mobile_no": "+91 98765 43210",
+		"organization_name": _("Sharma Travels"),
+		"record_id": "CRM-LEAD-2026-00001",
+		"agency_name": frappe.utils.cstr((get_agency_details() or {}).get("name") or ""),
+	}
 
 
 def _apply_hidden_defaults(doc):

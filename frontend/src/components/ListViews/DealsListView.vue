@@ -139,6 +139,26 @@
               "
             />
           </div>
+          <!-- Tags column: read-only chips. Clicking one filters the list,
+               which is what a tag is for. -->
+          <div v-else-if="column.key === '_user_tags'" class="overflow-hidden">
+            <TagChips
+              doctype="CRM Deal"
+              :name="row.name"
+              :initial="item || ''"
+              readonly
+              clickable
+              @filter="(tag) => emit('applyTagFilter', tag)"
+            />
+          </div>
+          <!-- Deal health: ONE collapsed chip that expands to the flags on
+               click (master spec §5, item 22; UX §2.13). -->
+          <div
+            v-else-if="column.key === 'custom_parama_health_flags'"
+            class="overflow-hidden"
+          >
+            <DealHealthChip :value="item" />
+          </div>
           <div v-else-if="column.type === 'Check'">
             <FormControl
               type="checkbox"
@@ -227,6 +247,8 @@ import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import RatingInput from '@/components/Controls/RatingInput.vue'
 import ListBulkActions from '@/components/ListBulkActions.vue'
 import ListRows from '@/components/ListViews/ListRows.vue'
+import TagChips from '@/components/TagChips.vue'
+import DealHealthChip from '@/components/DealHealthChip.vue'
 import { isTranslatable, formatDuration } from '@/utils'
 import {
   Avatar,
@@ -263,6 +285,7 @@ const emit = defineEmits([
   'updatePageCount',
   'columnWidthUpdated',
   'applyFilter',
+  'applyTagFilter',
   'applyLikeFilter',
   'likeDoc',
   'selectionsChanged',

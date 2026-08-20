@@ -57,6 +57,12 @@
       />
     </div>
   </div>
+
+  <!-- Tags get their own row on mobile: the action bar above is a
+       fixed-height flex row and a wrapping chip list would break it. -->
+  <div v-if="doc.name" class="border-b px-3 py-2">
+    <TagChips doctype="CRM Lead" :name="leadId" />
+  </div>
   <div v-if="doc.name" class="flex h-full overflow-hidden">
     <Tabs
       v-model="tabIndex"
@@ -138,6 +144,7 @@ import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
 import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
+import TagChips from '@/components/TagChips.vue'
 import Activities from '@/components/Activities/Activities.vue'
 import AssignTo from '@/components/AssignTo.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
@@ -153,6 +160,7 @@ import { useDocument } from '@/data/document'
 import { isMobileView } from '@/composables/settings'
 import { whatsappEnabled } from '@/composables/whatsapp'
 import { useActiveTabManager } from '@/composables/useActiveTabManager'
+import { useRecents } from '@/composables/recents'
 import {
   createResource,
   Dropdown,
@@ -190,6 +198,15 @@ const {
   scripts,
   error,
 } = useDocument('CRM Lead', props.leadId)
+
+// Item 11 (recently viewed). Recorded only once the document loaded:
+// a record the user may not read never reaches here.
+const { record: recordRecent } = useRecents()
+watch(
+  () => document.doc?.name,
+  (name) => name && recordRecent('CRM Lead', name),
+  { immediate: true },
+)
 
 const doc = computed(() => document.doc || {})
 

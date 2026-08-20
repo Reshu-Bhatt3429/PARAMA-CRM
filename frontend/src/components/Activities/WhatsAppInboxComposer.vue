@@ -58,6 +58,15 @@
         {{ __('Templates') }}
       </button>
 
+      <button
+        type="button"
+        class="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm text-ink-gray-6 transition-colors hover:bg-surface-gray-2"
+        @click="openSnippets()"
+      >
+        <span class="lucide-text-quote size-4" aria-hidden="true" />
+        {{ __('Snippets') }}
+      </button>
+
       <IconPicker
         v-slot="{ togglePopover }"
         v-model="emoji"
@@ -89,6 +98,7 @@
       class="max-h-48 w-full resize-none border-0 bg-transparent px-4 py-3 text-base text-ink-gray-9 placeholder-ink-gray-4 focus:ring-0"
       :placeholder="__('Reply via WhatsApp…')"
       @keydown.enter.exact.prevent="send()"
+      @input="onInput"
     />
 
     <!-- Footer -->
@@ -112,12 +122,22 @@
       </Button>
     </div>
   </div>
+  <SnippetSelectorModal
+    v-model="showSnippets"
+    plain-text
+    :doctype="doctype"
+    :docname="doc?.name"
+    :query="snippetTrigger?.query || ''"
+    @apply="insertSnippet"
+  />
 </template>
 
 <script setup>
 import IconPicker from '@/components/IconPicker.vue'
 import SmileIcon from '@/components/Icons/SmileIcon.vue'
+import SnippetSelectorModal from '@/components/Modals/SnippetSelectorModal.vue'
 import { sanitizeHTML } from '@/utils'
+import { applySnippet, slashTrigger } from '@/utils/snippets'
 import { useTelemetry } from 'frappe-ui/frappe'
 import {
   createResource,
@@ -126,7 +146,7 @@ import {
   Button,
   toast,
 } from 'frappe-ui'
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 
 const props = defineProps({
   doctype: { type: String, default: '' },
@@ -149,6 +169,46 @@ const sending = ref(false)
 
 function textareaEl() {
   return textareaRef.value
+}
+
+const showSnippets = ref(false)
+const snippetTrigger = ref(null)
+
+/**
+ * `/` at the start of a line opens the snippet list.
+ *
+ * It opens on the slash itself and then hands over to the modal's own search
+ * box, rather than reopening on every following keystroke. Mid-line slashes are
+ * left alone -- see `slashTrigger` -- so URLs and dates type normally.
+ */
+function onInput() {
+  const element = textareaEl()
+  if (!element || showSnippets.value) return
+
+  const trigger = slashTrigger(content.value, element.selectionStart)
+  if (trigger.active && trigger.query === '') {
+    snippetTrigger.value = trigger
+    showSnippets.value = true
+  }
+}
+
+/** Open from the toolbar button: insert at the caret, replacing nothing. */
+function openSnippets() {
+  const caret = textareaEl()?.selectionStart ?? content.value.length
+  snippetTrigger.value = { active: false, query: '', from: caret, to: caret }
+  showSnippets.value = true
+}
+
+function insertSnippet({ body }) {
+  const next = applySnippet(content.value, snippetTrigger.value, body)
+  content.value = next.text
+  snippetTrigger.value = null
+  nextTick(() => {
+    const element = textareaEl()
+    if (!element) return
+    element.focus()
+    element.setSelectionRange(next.caret, next.caret)
+  })
 }
 
 function uploadFile(file) {

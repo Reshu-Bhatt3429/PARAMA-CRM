@@ -4,6 +4,19 @@
       <ViewBreadcrumbs v-model="viewControls" routeName="Deals" />
     </template>
     <template #right-header>
+      <!-- One quick filter, not a shelf of them (UX §2.13). It is hidden
+           entirely while `deal_health_enabled` is off, because a filter that
+           always returns nothing reads as a broken list. -->
+      <Button
+        v-if="dealHealthEnabled"
+        :label="__('Needs attention')"
+        :variant="healthFilterOn ? 'subtle' : 'ghost'"
+        @click="toggleHealthFilter"
+      >
+        <template #prefix>
+          <span class="lucide-triangle-alert size-4" aria-hidden="true" />
+        </template>
+      </Button>
       <CustomActions
         v-if="dealsListView?.customListActions"
         :actions="dealsListView.customListActions"
@@ -166,6 +179,14 @@
             size="xs"
           />
         </div>
+        <!-- Deal health on a kanban card. Without this branch the JSON column
+             renders as raw text in the generic branch below. -->
+        <div
+          v-else-if="fieldName === HEALTH_FIELD"
+          class="flex items-center truncate"
+        >
+          <DealHealthChip :value="getRow(itemName, fieldName).label" />
+        </div>
         <div v-else class="truncate text-base">
           {{ getRow(itemName, fieldName).label }}
         </div>
@@ -224,6 +245,7 @@
     @updatePageCount="(count) => (updatedPageCount = count)"
     @applyFilter="(data) => viewControls.applyFilter(data)"
     @applyLikeFilter="(data) => viewControls.applyLikeFilter(data)"
+    @applyTagFilter="(tag) => viewControls.applyTagFilter(tag)"
     @likeDoc="(data) => viewControls.likeDoc(data)"
     @selectionsChanged="
       (selections) => viewControls.updateSelections(selections)
@@ -254,6 +276,7 @@ import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
 import DealsIcon from '@/components/Icons/DealsIcon.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import DealsListView from '@/components/ListViews/DealsListView.vue'
+import DealHealthChip from '@/components/DealHealthChip.vue'
 import EmptyState from '@/components/ListViews/EmptyState.vue'
 import KanbanView from '@/components/Kanban/KanbanView.vue'
 import DealModal from '@/components/Modals/DealModal.vue'
@@ -265,6 +288,8 @@ import { usersStore } from '@/stores/users'
 import { organizationsStore } from '@/stores/organizations'
 import { statusesStore } from '@/stores/statuses'
 import { callEnabled } from '@/composables/telephony'
+import { dealHealthEnabled } from '@/composables/today'
+import { HEALTH_FIELD } from '@/utils/dealHealth'
 import { formatDate, timeAgo, website, formatTime } from '@/utils'
 import { timestampCell } from '@/composables/useTimelinePreferences'
 import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
@@ -295,6 +320,17 @@ const loadMore = ref(1)
 const triggerResize = ref(1)
 const updatedPageCount = ref(20)
 const viewControls = ref(null)
+
+// "Needs attention" quick filter (master spec §5, item 22). The predicate lives
+// in ViewControls next to the tag filter, because that is where `list.params`
+// is owned; this is only the button.
+const healthFilterOn = computed(() =>
+  Boolean(viewControls.value?.healthFilterApplied?.(HEALTH_FIELD)),
+)
+
+function toggleHealthFilter() {
+  viewControls.value?.applyHealthFilter(HEALTH_FIELD)
+}
 
 function getRow(name, field) {
   function getValue(value) {

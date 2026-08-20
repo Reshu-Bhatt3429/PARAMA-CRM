@@ -68,17 +68,70 @@
         @click="whatsappBox.show()"
       />
     </div>
-    <Dropdown v-else :options="defaultActions" @click.stop>
-      <template #default="{ open }">
-        <Button
-          variant="solid"
-          class="flex items-center gap-1"
-          :label="__('New')"
-          iconLeft="plus"
-          :iconRight="open ? 'chevron-up' : 'chevron-down'"
-        />
-      </template>
-    </Dropdown>
+    <div v-else class="flex items-center gap-2 shrink-0">
+      <!--
+        Master spec §2.14/§2.15: the timeline gets ONE sparkle, and this is it.
+        Item 13/28/15's Brief card is the only AI on this surface.
+      -->
+      <Button
+        v-if="aiReady"
+        :tooltip="__('Summarize this record')"
+        :loading="briefLoading"
+        @click="emit('summarize')"
+      >
+        <template #prefix>
+          <LucideSparkles class="size-4" aria-hidden="true" />
+        </template>
+        <span>{{ __('Summarize') }}</span>
+      </Button>
+      <!--
+        AI off: a popover that says where to switch it on. Not an error toast —
+        nothing has gone wrong, the feature simply is not configured yet.
+      -->
+      <Popover v-else-if="aiReady === false" placement="bottom-end">
+        <template #target="{ togglePopover }">
+          <Button
+            :tooltip="__('Summarize this record')"
+            @click="togglePopover()"
+          >
+            <template #prefix>
+              <LucideSparkles
+                class="size-4 text-ink-gray-5"
+                aria-hidden="true"
+              />
+            </template>
+            <span>{{ __('Summarize') }}</span>
+          </Button>
+        </template>
+        <template #body>
+          <div
+            class="w-64 rounded-lg bg-surface-modal p-3 shadow-2xl text-base text-ink-gray-7"
+          >
+            <div class="text-base-medium text-ink-gray-8">
+              {{ __('AI is not set up yet') }}
+            </div>
+            <p class="mt-1">
+              {{
+                __(
+                  'Add an AI provider and key in Settings → AI & Follow-ups, then this button writes a short brief of the record.',
+                )
+              }}
+            </p>
+          </div>
+        </template>
+      </Popover>
+      <Dropdown :options="defaultActions" @click.stop>
+        <template #default="{ open }">
+          <Button
+            variant="solid"
+            class="flex items-center gap-1"
+            :label="__('New')"
+            iconLeft="plus"
+            :iconRight="open ? 'chevron-up' : 'chevron-down'"
+          />
+        </template>
+      </Dropdown>
+    </div>
   </div>
 </template>
 <script setup>
@@ -91,11 +144,13 @@ import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
+import LucideSparkles from '~icons/lucide/sparkles'
 import { globalStore } from '@/stores/global'
 import { whatsappEnabled } from '@/composables/whatsapp'
 import { callEnabled } from '@/composables/telephony'
-import { Dropdown } from 'frappe-ui'
-import { computed, h } from 'vue'
+import { aiReady, loadAiReady } from '@/composables/ai'
+import { Dropdown, Popover } from 'frappe-ui'
+import { computed, h, onMounted } from 'vue'
 
 const props = defineProps({
   tabs: { type: Array, default: () => [] },
@@ -103,7 +158,14 @@ const props = defineProps({
   doc: { type: Object, default: () => ({}) },
   modalRef: { type: Object, default: () => ({}) },
   whatsappBox: { type: Object, default: () => ({}) },
+  briefLoading: { type: Boolean, default: false },
 })
+
+const emit = defineEmits(['summarize'])
+
+// Asked once per session and shared. The button must know before it is clicked
+// which of its two behaviours it has.
+onMounted(() => loadAiReady())
 
 const { makeCall } = globalStore()
 

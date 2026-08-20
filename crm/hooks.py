@@ -1,7 +1,7 @@
 app_name = "crm"
-app_title = "Frappe CRM"
+app_title = "PARAMA CRM"
 app_publisher = "Frappe Technologies Pvt. Ltd."
-app_description = "Kick-ass Open Source CRM"
+app_description = "Travel sales CRM — leads, itineraries and follow-ups in one place"
 app_email = "shariq@frappe.io"
 app_license = "AGPLv3"
 app_icon_url = "/assets/crm/images/logo.svg"
@@ -139,12 +139,25 @@ permission_query_conditions = {
 	"CRM Lead": "crm.permissions.org_hierarchy.get_lead_permission_query_conditions",
 	"CRM Deal": "crm.permissions.org_hierarchy.get_deal_permission_query_conditions",
 	"CRM Notification": "crm.fcrm.doctype.crm_notification.crm_notification.get_permission_query_conditions",
+	"CRM WhatsApp Followup": "crm.api.followup_engine.get_followup_permission_query_conditions",
+	"CRM Itinerary": "crm.api.itinerary.get_itinerary_permission_query_conditions",
+	"CRM Snippet": "crm.api.snippets.get_snippet_permission_query_conditions",
+	"CRM User Preference": "crm.fcrm.doctype.crm_user_preference.crm_user_preference.get_permission_query_conditions",
+	# Item 29: an invoice has no scope of its own. It belongs to the deal it bills,
+	# and the deal's org-hierarchy conditions are the answer -- the same shape the
+	# itinerary uses for its lead.
+	"CRM Invoice": "crm.fcrm.doctype.crm_invoice.crm_invoice.get_invoice_permission_query_conditions",
 }
 
 has_permission = {
 	"CRM Lead": "crm.permissions.org_hierarchy.has_lead_permission",
 	"CRM Deal": "crm.permissions.org_hierarchy.has_deal_permission",
 	"CRM Notification": "crm.fcrm.doctype.crm_notification.crm_notification.has_permission",
+	"CRM WhatsApp Followup": "crm.api.followup_engine.has_followup_permission",
+	"CRM Itinerary": "crm.api.itinerary.has_itinerary_permission",
+	"CRM Snippet": "crm.api.snippets.has_snippet_permission",
+	"CRM User Preference": "crm.fcrm.doctype.crm_user_preference.crm_user_preference.has_permission",
+	"CRM Invoice": "crm.fcrm.doctype.crm_invoice.crm_invoice.has_invoice_permission",
 }
 
 # DocType Class
@@ -162,7 +175,24 @@ override_doctype_class = {
 
 doc_events = {
 	"Contact": {
-		"validate": ["crm.api.contact.validate"],
+		"validate": ["crm.api.contact.validate", "crm.contact_keys.set_contact_keys"],
+	},
+	"CRM Lead": {
+		"validate": ["crm.contact_keys.set_contact_keys"],
+		# Item 16: mini workflow rules. Behind `workflow_rules_enabled`, default
+		# OFF. `on_update` fires on every save of the hottest doctype in the app,
+		# so the engine's first two steps are a `frappe.local` attribute read
+		# (the depth ceiling) and one Redis read (the flag and the rule table).
+		# With the flag off, or with no rule for this doctype and event, it adds
+		# ZERO queries to a save. Actions run after the commit.
+		"after_insert": ["crm.workflows.after_insert"],
+		"on_update": ["crm.workflows.on_update"],
+	},
+	"FCRM Settings": {
+		# The workflow engine caches the master flag in Redis. Saving the settings
+		# is the ordinary way that flag moves, and this is what makes the cache
+		# correct rather than merely fast.
+		"on_update": ["crm.workflows.on_settings_update"],
 	},
 	"Notification Log": {
 		"before_insert": ["crm.extends.notification_log.before_insert"],
@@ -172,8 +202,25 @@ doc_events = {
 		"on_update": ["crm.api.todo.on_update"],
 	},
 	"Communication": {
-		"after_insert": ["crm.utils.on_communication_insert"],
+		"after_insert": [
+			"crm.utils.on_communication_insert",
+			# Item 21: a customer who answers stops their email sequence. Matched on
+			# In-Reply-To first, then on the lead's normalised address, because mail
+			# clients strip headers and a new thread is still an answer. Behind
+			# `email_sequences_enabled`, default OFF: with the flag off this returns
+			# before it reads a row.
+			"crm.sequences.email.handle_inbound_reply",
+		],
 		"on_update": ["crm.utils.on_communication_update"],
+	},
+	"Email Queue": {
+		# Item 21 / master spec §7: every promotional message carries a
+		# List-Unsubscribe header. Frappe v15 has no machinery for it, and the
+		# header has to go on the built MIME message, which is what an Email Queue
+		# row holds. Armed for the length of one adapter call by
+		# `crm.outbound.deliver_recipient`; a message that is not a sequence send
+		# never sees this hook do anything.
+		"before_insert": ["crm.sequences.unsubscribe.add_list_unsubscribe_header"],
 	},
 	"Comment": {
 		"after_insert": ["crm.utils.on_comment_insert"],
@@ -182,10 +229,15 @@ doc_events = {
 	"WhatsApp Message": {
 		"validate": ["crm.api.whatsapp.validate"],
 		"on_update": ["crm.api.whatsapp.on_update"],
+		"after_insert": ["crm.api.followup_engine.handle_message_after_insert"],
 	},
 	"CRM Deal": {
+		"validate": ["crm.contact_keys.set_contact_keys"],
+		# Item 16: see the CRM Lead entry above for what this costs on a save.
+		"after_insert": ["crm.workflows.after_insert"],
 		"on_update": [
-			"crm.fcrm.doctype.erpnext_crm_settings.erpnext_crm_settings.create_customer_in_erpnext"
+			"crm.fcrm.doctype.erpnext_crm_settings.erpnext_crm_settings.create_customer_in_erpnext",
+			"crm.workflows.on_update",
 		],
 	},
 	"Sales Order": {
@@ -226,13 +278,52 @@ scheduler_events = {
 	"hourly": [
 		"crm.api.event.trigger_hourly_event_notifications",
 		"crm.api.whatsapp_followups.notify_pending_followups",
+		# Moved off `daily` in Stage 4. `daily` fires at the start of the day,
+		# which is inside the follow-up engine's default quiet window, and master
+		# spec §5 item 22 requires the digest to respect it. The job is now
+		# at-most-once per manager per day by itself and returns immediately
+		# while quiet hours are open, so it shifts rather than repeats.
+		"crm.api.whatsapp_followups.send_daily_digest",
+		"crm.api.followup_engine.process_followups",
+		"crm.api.itinerary.cleanup_public_itinerary_pdfs",
+		# Item 25: retire expired quote links and delete the private PDF each one
+		# held. Never raises. Not covered by the itinerary sweep above: that one
+		# removes temporary PUBLIC files on CRM Itinerary, while a quote's file is
+		# private, lives on CRM Deal, and dies with its CRM Document Link row.
+		"crm.api.quote.cleanup_quote_links",
+		# Item 29: the same for invoice links, which have their own, longer TTL --
+		# a customer opens an invoice again when they pay the balance, which on a
+		# travel booking is weeks after the deposit.
+		"crm.api.invoices.cleanup_invoice_links",
+		# Item 29: one payment-reminder ladder per payment-schedule row (due date,
+		# +7 days, +14 days). Behind `invoice_reminders_enabled` AND
+		# `invoices_enabled`, both default OFF; while either is off this reads no
+		# invoice row. It only CREATES outbound jobs -- delivery still needs
+		# `outbound_engine_enabled` and the sweep below.
+		"crm.invoice_reminders.send_invoice_reminders",
+		# Behind `outbound_engine_enabled`, default OFF. While the flag is off these
+		# return without reading a single job row.
+		"crm.outbound.process_scheduled_jobs",
+		# Reads the Email Queue's own verdict back onto the recipients this app
+		# queued, so "Sent" keeps meaning "the framework says sent".
+		"crm.outbound.sweep_delivery_states",
 	],
 	"daily": [
 		"crm.api.event.trigger_daily_event_notifications",
-		"crm.api.whatsapp_followups.send_daily_digest",
 		"crm.fcrm.doctype.crm_invitation.crm_invitation.expire_invitations",
 		"crm.fcrm.doctype.crm_view_settings.crm_view_settings.clear_old_versions",
 		"crm.telemetry.capture_feature_state",
+		# Deal-health flags. Behind `deal_health_enabled`, default OFF; while the
+		# flag is off this reads no deal row and writes nothing. It holds a
+		# per-job lock and resumes from a watermark, so a run that overlaps or
+		# crashes costs one batch rather than the night.
+		"crm.deal_health.sweep_deal_health",
+		# Item 16: keep 90 days of workflow execution log. Bounded (500 rows per
+		# batch, 20 batches per night) so a site that was never cleaned catches
+		# up over several nights instead of holding one enormous transaction.
+		# Not behind the feature flag: rows written while the flag was on still
+		# have to age out after it is turned off.
+		"crm.workflows.cleanup_execution_log",
 	],
 	"weekly": ["crm.api.event.trigger_weekly_event_notifications"],
 	"daily_long": ["crm.lead_syncing.background_sync.sync_leads_from_sources_daily"],
@@ -241,7 +332,15 @@ scheduler_events = {
 	"cron": {
 		"*/5 * * * *": ["crm.lead_syncing.background_sync.sync_leads_from_sources_5_minutes"],
 		"*/10 * * * *": ["crm.lead_syncing.background_sync.sync_leads_from_sources_10_minutes"],
-		"*/15 * * * *": ["crm.lead_syncing.background_sync.sync_leads_from_sources_15_minutes"],
+		"*/15 * * * *": [
+			"crm.lead_syncing.background_sync.sync_leads_from_sources_15_minutes",
+			# Task due-date reminders. Registered on exactly ONE schedule, on
+			# purpose: the event-reminder path above sits on both `all` and
+			# `hourly` and therefore double-fires. Behind `task_reminders_enabled`,
+			# default OFF, and every delivery claims a unique CRM Reminder Log key
+			# first, so even a second schedule could not produce a second reminder.
+			"crm.reminders.send_task_reminders",
+		],
 	},
 }
 
@@ -317,6 +416,20 @@ ignore_links_on_delete = ["Failed Lead Sync Log"]
 after_migrate = [
 	"crm.fcrm.doctype.fcrm_settings.fcrm_settings.after_migrate",
 	"crm.api.whatsapp.add_roles",
+	"crm.api.followup_engine.add_followup_roles",
+	"crm.api.itinerary.add_itinerary_roles",
+	"crm.api.itinerary.install_print_format",
+	# Item 25. Same contract as the itinerary's: the HTML lives in a file so it
+	# is reviewable in git, and the Print Format row is rewritten only when that
+	# file changed, so an administrator's own edit survives a migrate.
+	"crm.api.quote.install_quote_print_format",
+	# Item 29. Same contract as the quote's format: the HTML lives in a file and
+	# the Print Format row is rewritten only when that file changed.
+	"crm.api.invoices.install_invoice_print_format",
+	"crm.fcrm.doctype.crm_invoice.crm_invoice.add_invoice_roles",
+	# Placeholder SAC codes, each flagged "verify with your CA". Idempotent by
+	# code: a row an administrator edited is never overwritten.
+	"crm.fcrm.doctype.crm_sac_code.crm_sac_code.seed_sac_codes",
 	"crm.domain_enrichment.install.seed_default_rules_and_mappings",
 	"crm.install.add_default_scripts",
 	"crm.install.add_web_form_custom_fields",

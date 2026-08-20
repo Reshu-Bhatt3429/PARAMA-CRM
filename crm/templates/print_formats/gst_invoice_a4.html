@@ -1,0 +1,258 @@
+{#-
+	GST Invoice A4 -- the customer-facing print format for a CRM Invoice.
+
+	Rendered by wkhtmltopdf 0.12.6, which is a 2012-era WebKit: no flexbox, no
+	CSS grid, no custom properties. Layout is tables and blocks only.
+
+	The print format Jinja environment does NOT autoescape, so every value that
+	comes from the agency or the customer is passed through `|e` by hand. The only
+	unescaped markup in this file is markup this file wrote, plus `inv_qr`, which
+	is a data URI this app generated from the agency's own VPA.
+
+	Everything this template reads is put on the document by `crm.api.invoices`
+	before the render: `inv_agency`, `inv_meta`, `inv_customer`, `inv_rows`,
+	`inv_totals`, `inv_schedule`, `inv_statement`, `inv_terms`, `inv_qr`. The
+	template therefore does no arithmetic and no currency formatting -- both are
+	decided once, on the server, by `crm.invoicing`, where they are tested.
+-#}
+{%- set agency = doc.inv_agency or {} -%}
+{%- set meta = doc.inv_meta or {} -%}
+{%- set customer = doc.inv_customer or {} -%}
+{%- set rows = doc.inv_rows or [] -%}
+{%- set totals = doc.inv_totals or {} -%}
+{%- set schedule = doc.inv_schedule or [] -%}
+{%- set terms = doc.inv_terms or [] -%}
+<style>
+	.inv { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; color: #1f2937; font-size: 10.5pt; line-height: 1.45; position: relative; }
+	.inv h1, .inv h2, .inv h3 { margin: 0; font-weight: 600; }
+	.inv-table { width: 100%; border-collapse: collapse; }
+
+	.inv-void { position: absolute; top: 220px; left: 60px; font-size: 72pt; font-weight: 700; color: #ef4444; opacity: 0.16; letter-spacing: 12pt; }
+
+	.inv-head { border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 16px; }
+	.inv-agency { font-size: 15pt; letter-spacing: -0.2pt; }
+	.inv-agency-sub { font-size: 8.5pt; color: #6b7280; padding-top: 2px; }
+	.inv-title { text-align: right; vertical-align: bottom; }
+	.inv-title-main { font-size: 13pt; font-weight: 600; }
+	.inv-title-sub { font-size: 8.5pt; color: #6b7280; padding-top: 2px; }
+
+	.inv-parties { margin-bottom: 16px; }
+	.inv-parties td { vertical-align: top; width: 50%; padding-right: 18px; }
+	.inv-label { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.6pt; color: #9ca3af; padding-bottom: 3px; }
+	.inv-party-name { font-size: 11.5pt; font-weight: 600; }
+	.inv-line { font-size: 9.5pt; color: #4b5563; padding-top: 1px; white-space: pre-line; }
+
+	.inv-facts td { font-size: 9.5pt; padding: 3px 10px 3px 0; }
+	.inv-facts .inv-fact-label { color: #6b7280; }
+
+	.inv-section-title { font-size: 8pt; text-transform: uppercase; letter-spacing: 1pt; color: #9ca3af; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; margin: 18px 0 10px; }
+
+	.inv-items td, .inv-items th { border: 1px solid #e5e7eb; padding: 6px 9px; font-size: 10pt; }
+	.inv-items th { background: #f3f4f6; text-align: left; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.6pt; color: #6b7280; }
+	.inv-items tr { page-break-inside: avoid; }
+	.inv-num { text-align: right; white-space: nowrap; }
+
+	.inv-totals { page-break-inside: avoid; margin-top: 10px; }
+	.inv-totals td { padding: 3px 10px; font-size: 10pt; }
+	.inv-total-label { text-align: right; color: #4b5563; }
+	.inv-total-value { text-align: right; font-weight: 600; white-space: nowrap; width: 140px; }
+	.inv-grand td { border-top: 2px solid #111827; font-size: 12pt; padding-top: 7px; }
+	.inv-due td { font-size: 11pt; color: #b45309; }
+
+	.inv-statement { margin-top: 14px; padding: 8px 10px; border: 1px solid #fcd34d; background: #fffbeb; font-size: 9.5pt; page-break-inside: avoid; }
+
+	.inv-pay { margin-top: 16px; page-break-inside: avoid; }
+	.inv-pay td { vertical-align: top; }
+	.inv-qr img { width: 120px; height: 120px; }
+	.inv-qr-caption { font-size: 8.5pt; color: #6b7280; padding-top: 3px; }
+
+	.inv-terms { page-break-inside: avoid; margin-top: 16px; }
+	.inv-terms ul { margin: 0; padding-left: 15px; }
+	.inv-terms li { font-size: 9.5pt; padding-bottom: 2px; }
+
+	.inv-sign { margin-top: 26px; page-break-inside: avoid; }
+	.inv-sign td { width: 50%; vertical-align: bottom; font-size: 9pt; color: #4b5563; }
+	.inv-sign-line { border-top: 1px solid #9ca3af; margin-top: 42px; padding-top: 4px; text-align: right; }
+
+	.inv-foot { border-top: 1px solid #e5e7eb; margin-top: 20px; padding-top: 8px; font-size: 8.5pt; color: #6b7280; }
+	.inv-empty { font-size: 9.5pt; color: #9ca3af; font-style: italic; }
+</style>
+
+<div class="inv">
+	{%- if meta.get("is_void") %}<div class="inv-void">{{ _("VOID") }}</div>{% endif %}
+
+	<table class="inv-table inv-head">
+		<tr>
+			<td>
+				<div class="inv-agency">{{ agency.get("legal_name")|e or _("Your agency") }}</div>
+				{%- if agency.get("trade_name") %}<div class="inv-agency-sub">{{ agency.get("trade_name")|e }}</div>{% endif %}
+				<div class="inv-line">{{ agency.get("address")|e }}</div>
+				{%- if agency.get("state") or agency.get("state_code") %}
+				<div class="inv-line">{{ agency.get("state")|e }} {%- if agency.get("state_code") %} ({{ _("code") }} {{ agency.get("state_code")|e }}){% endif %}</div>
+				{%- endif %}
+				{%- if agency.get("gstin") %}<div class="inv-line">{{ _("GSTIN") }}: {{ agency.get("gstin")|e }}</div>{% endif %}
+				{%- if agency.get("phone") or agency.get("email") %}
+				<div class="inv-line">{{ agency.get("phone")|e }}{% if agency.get("phone") and agency.get("email") %} &middot; {% endif %}{{ agency.get("email")|e }}</div>
+				{%- endif %}
+			</td>
+			<td class="inv-title">
+				<div class="inv-title-main">{{ _("Tax Invoice") }}</div>
+				<div class="inv-title-sub">{{ meta.get("number")|e }}</div>
+				{%- if meta.get("is_void") %}<div class="inv-title-sub">{{ _("This invoice has been voided.") }}</div>{% endif %}
+			</td>
+		</tr>
+	</table>
+
+	<table class="inv-table inv-parties">
+		<tr>
+			<td>
+				<div class="inv-label">{{ _("Billed to") }}</div>
+				<div class="inv-party-name">{{ customer.get("name")|e or _("Customer") }}</div>
+				{%- if customer.get("address") %}<div class="inv-line">{{ customer.get("address")|e }}</div>{% endif %}
+				{%- if customer.get("state") or customer.get("state_code") %}
+				<div class="inv-line">{{ customer.get("state")|e }}{% if customer.get("state_code") %} ({{ _("code") }} {{ customer.get("state_code")|e }}){% endif %}</div>
+				{%- endif %}
+				{%- if customer.get("gstin") %}<div class="inv-line">{{ _("GSTIN") }}: {{ customer.get("gstin")|e }}</div>{% endif %}
+			</td>
+			<td>
+				<table class="inv-table inv-facts">
+					<tr><td class="inv-fact-label">{{ _("Invoice date") }}</td><td>{{ meta.get("date")|e }}</td></tr>
+					{%- if meta.get("due_date") %}<tr><td class="inv-fact-label">{{ _("Due date") }}</td><td>{{ meta.get("due_date")|e }}</td></tr>{% endif %}
+					{%- if meta.get("service_date") %}<tr><td class="inv-fact-label">{{ _("Service date") }}</td><td>{{ meta.get("service_date")|e }}</td></tr>{% endif %}
+					{%- if meta.get("place_of_supply") %}<tr><td class="inv-fact-label">{{ _("Place of supply") }}</td><td>{{ meta.get("place_of_supply")|e }}</td></tr>{% endif %}
+					<tr><td class="inv-fact-label">{{ _("Reverse charge") }}</td><td>{{ meta.get("reverse_charge")|e }}</td></tr>
+				</table>
+			</td>
+		</tr>
+	</table>
+
+	<div class="inv-section-title">{{ _("Items") }}</div>
+	{%- if rows %}
+	<table class="inv-table inv-items">
+		<tr>
+			<th>{{ _("Description") }}</th>
+			<th>{{ _("SAC") }}</th>
+			<th class="inv-num">{{ _("Qty") }}</th>
+			<th class="inv-num">{{ _("Rate") }}</th>
+			<th class="inv-num">{{ _("Tax") }}</th>
+			<th class="inv-num">{{ _("Amount") }}</th>
+		</tr>
+		{%- for row in rows %}
+		<tr>
+			<td>{{ row.get("description")|e }}</td>
+			<td>{{ row.get("sac")|e }}</td>
+			<td class="inv-num">{{ row.get("qty")|e }}</td>
+			<td class="inv-num">{{ row.get("rate")|e }}</td>
+			<td class="inv-num">{{ row.get("tax_rate")|e }}</td>
+			<td class="inv-num">{{ row.get("amount")|e }}</td>
+		</tr>
+		{%- endfor %}
+	</table>
+	{%- else %}
+	<div class="inv-empty">{{ _("This invoice has no item lines.") }}</div>
+	{%- endif %}
+
+	<table class="inv-table inv-totals">
+		<tr>
+			<td class="inv-total-label">{{ _("Taxable value") }}</td>
+			<td class="inv-total-value">{{ totals.get("taxable")|e }}</td>
+		</tr>
+		{%- if totals.get("intra_state") %}
+		<tr>
+			<td class="inv-total-label">{{ _("CGST") }}</td>
+			<td class="inv-total-value">{{ totals.get("cgst")|e }}</td>
+		</tr>
+		<tr>
+			<td class="inv-total-label">{{ _("SGST") }}</td>
+			<td class="inv-total-value">{{ totals.get("sgst")|e }}</td>
+		</tr>
+		{%- else %}
+		<tr>
+			<td class="inv-total-label">{{ _("IGST") }}</td>
+			<td class="inv-total-value">{{ totals.get("igst")|e }}</td>
+		</tr>
+		{%- endif %}
+		{%- if totals.get("has_rounding") %}
+		<tr>
+			<td class="inv-total-label">{{ _("Rounding") }}</td>
+			<td class="inv-total-value">{{ totals.get("rounding")|e }}</td>
+		</tr>
+		{%- endif %}
+		<tr class="inv-grand">
+			<td class="inv-total-label">{{ _("Total") }}</td>
+			<td class="inv-total-value">{{ totals.get("grand_total")|e }}</td>
+		</tr>
+		{%- if totals.get("has_payments") %}
+		<tr>
+			<td class="inv-total-label">{{ _("Paid") }}</td>
+			<td class="inv-total-value">{{ totals.get("paid")|e }}</td>
+		</tr>
+		<tr class="inv-due">
+			<td class="inv-total-label">{{ _("Amount due") }}</td>
+			<td class="inv-total-value">{{ totals.get("outstanding")|e }}</td>
+		</tr>
+		{%- endif %}
+	</table>
+
+	{%- if doc.inv_statement %}
+	<div class="inv-statement">{{ doc.inv_statement|e }}</div>
+	{%- endif %}
+
+	{%- if schedule %}
+	<div class="inv-section-title">{{ _("Payment schedule") }}</div>
+	<table class="inv-table inv-items">
+		<tr>
+			<th>{{ _("Instalment") }}</th>
+			<th>{{ _("Due") }}</th>
+			<th class="inv-num">{{ _("Amount") }}</th>
+			<th>{{ _("Status") }}</th>
+		</tr>
+		{%- for row in schedule %}
+		<tr>
+			<td>{{ row.get("label")|e }}</td>
+			<td>{{ row.get("due_date")|e }}</td>
+			<td class="inv-num">{{ row.get("amount")|e }}</td>
+			<td>{{ row.get("settled")|e }}</td>
+		</tr>
+		{%- endfor %}
+	</table>
+	{%- endif %}
+
+	{%- if doc.inv_qr %}
+	<table class="inv-table inv-pay">
+		<tr>
+			<td class="inv-qr" style="width: 140px;">
+				<img src="{{ doc.inv_qr }}" alt="{{ _("UPI payment QR code") }}" />
+				<div class="inv-qr-caption">{{ doc.inv_qr_caption|e }}</div>
+			</td>
+			<td>
+				<div class="inv-label">{{ _("Pay by UPI") }}</div>
+				<div class="inv-line">{{ _("UPI ID") }}: {{ agency.get("upi_vpa")|e }}</div>
+				<div class="inv-line">{{ _("Scan the code with any UPI app. No payment gateway is involved and no fee is charged.") }}</div>
+			</td>
+		</tr>
+	</table>
+	{%- endif %}
+
+	{%- if terms %}
+	<div class="inv-terms">
+		<div class="inv-section-title">{{ _("Terms") }}</div>
+		<ul>
+			{%- for line in terms %}<li>{{ line|e }}</li>{% endfor %}
+		</ul>
+	</div>
+	{%- endif %}
+
+	<table class="inv-table inv-sign">
+		<tr>
+			<td></td>
+			<td>
+				<div class="inv-sign-line">{{ _("For") }} {{ agency.get("legal_name")|e or _("the agency") }} &mdash; {{ _("authorised signatory") }}</div>
+			</td>
+		</tr>
+	</table>
+
+	<div class="inv-foot">
+		{{ _("This is a computer-generated invoice.") }}
+	</div>
+</div>

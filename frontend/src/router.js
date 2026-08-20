@@ -7,6 +7,40 @@ import { viewsStore } from '@/stores/views'
 let personaChecked = false
 export const PERSONA_DONE_KEY = 'crm_persona_captured'
 
+/** Keep the itinerary URLs closed to a user who cannot read an itinerary. */
+async function itineraryGuard() {
+  const { canUseItineraries } = await import('@/composables/itinerary')
+  if (canUseItineraries.value) return true
+
+  // The flag may simply not have arrived yet on a direct URL load, so ask
+  // before redirecting rather than bouncing a legitimate visit.
+  try {
+    const allowed = await call('crm.api.itinerary.can_use_itineraries')
+    canUseItineraries.value = Boolean(allowed)
+  } catch {
+    return { name: 'Home' }
+  }
+  return canUseItineraries.value ? true : { name: 'Home' }
+}
+
+/**
+ * Keep the invoice URLs closed while `invoices_enabled` is off.
+ *
+ * Acceptance criterion 10: OFF hides the sidebar entry AND refuses the
+ * endpoints. This guard is the third lock — it stops a bookmarked URL rendering
+ * an empty page full of permission errors. The endpoints refuse on their own.
+ */
+async function invoicesGuard() {
+  const { invoicesEnabled, refreshInvoicesFlag } = await import(
+    '@/composables/invoices'
+  )
+  if (invoicesEnabled.value) return true
+
+  // The flag may simply not have arrived yet on a direct URL load, so ask
+  // before redirecting rather than bouncing a legitimate visit.
+  return (await refreshInvoicesFlag()) ? true : { name: 'Home' }
+}
+
 async function shouldCapturePersona() {
   // Client-side flag guards against re-prompting if the server persist failed.
   if (localStorage.getItem(PERSONA_DONE_KEY)) return false
@@ -35,6 +69,14 @@ const routes = [
     path: '/dashboard',
     name: 'Dashboard',
     component: () => import('@/pages/Dashboard.vue'),
+  },
+  {
+    // One page, desktop and mobile (master spec §5, item 24; UX §2.17): the
+    // list is a single column of rows with tap-sized actions, so there is no
+    // `Mobile*` variant to switch to.
+    path: '/today',
+    name: 'Today',
+    component: () => import('@/pages/Today.vue'),
   },
   {
     alias: '/leads',
@@ -130,6 +172,39 @@ const routes = [
     },
   },
   {
+    path: '/itineraries',
+    name: 'Itineraries',
+    component: () => import('@/pages/Itineraries.vue'),
+    // The sidebar hides the entry for a user who cannot read an itinerary, but
+    // the URL stayed reachable. Imported lazily for the same reason as the
+    // WhatsApp guard below: at module scope the `auto` resource would fire
+    // before `main.js` sets the resourceFetcher.
+    beforeEnter: itineraryGuard,
+  },
+  {
+    path: '/itinerary/:itineraryId',
+    name: 'Itinerary',
+    component: () => import('@/pages/Itinerary.vue'),
+    props: true,
+    beforeEnter: itineraryGuard,
+  },
+  {
+    path: '/invoices',
+    name: 'Invoices',
+    component: () => import('@/pages/Invoices.vue'),
+    // Imported lazily for the same reason as the itinerary guard above: at
+    // module scope the `auto` resource would fire before `main.js` sets the
+    // resourceFetcher.
+    beforeEnter: invoicesGuard,
+  },
+  {
+    path: '/invoices/:invoiceId',
+    name: 'Invoice',
+    component: () => import('@/pages/Invoice.vue'),
+    props: true,
+    beforeEnter: invoicesGuard,
+  },
+  {
     path: '/data-import',
     name: 'DataImportList',
     component: () => import('@/pages/DataImport.vue'),
@@ -172,6 +247,22 @@ const handleMobileView = (componentName) => {
   return window.innerWidth < 768 ? `Mobile${componentName}` : componentName
 }
 
+/**
+ * Where `/` lands a user who has no saved default view.
+ *
+ * Master spec §5, item 24: Today becomes the Sales User's home, while a manager
+ * keeps the Dashboard. A saved default view still WINS over both — this is the
+ * fallback, not an override, because a user who chose a landing view chose it.
+ *
+ * On a phone everybody gets Today: the Dashboard is desktop-only in the nav
+ * (`condition: () => !props.mobile` in AppSidebar), so landing a manager there
+ * would put them on a page with no way back into the app.
+ */
+export function homeRouteFor({ isManager } = {}) {
+  if (window.innerWidth < 768) return 'Today'
+  return isManager?.() ? 'Dashboard' : 'Today'
+}
+
 let router = createRouter({
   history: createWebHistory('/crm'),
   routes,
@@ -181,7 +272,7 @@ router.beforeEach(async (to, from, next) => {
   router.previousRoute = from
 
   const { isLoggedIn, user } = sessionStore()
-  const { users, isCrmUser, isAdmin } = usersStore()
+  const { users, isCrmUser, isAdmin, isManager } = usersStore()
 
   if (isLoggedIn && !users.fetched) {
     try {
@@ -229,7 +320,7 @@ router.beforeEach(async (to, from, next) => {
 
     let defaultView = getDefaultView()
     if (!defaultView) {
-      next({ name: 'Leads' })
+      next({ name: homeRouteFor({ isManager }) })
       return
     }
 

@@ -29,6 +29,13 @@
           :label="__('Donut Chart')"
           :options="donutCharts"
         />
+        <FormControl
+          v-if="chartType === 'progress_chart'"
+          v-model="progressChart"
+          type="select"
+          :label="__('Progress Chart')"
+          :options="progressCharts"
+        />
       </div>
     </template>
     <template #actions>
@@ -65,6 +72,7 @@ const chartTypes = [
   { label: __('Number Chart'), value: 'number_chart' },
   { label: __('Axis Chart'), value: 'axis_chart' },
   { label: __('Donut Chart'), value: 'donut_chart' },
+  { label: __('Progress Chart'), value: 'progress_chart' },
 ]
 
 const numberChart = ref('')
@@ -103,6 +111,9 @@ const donutCharts = [
   { label: __('Deals by Source'), value: 'deals_by_source' },
 ]
 
+const progressChart = ref('target_meter')
+const progressCharts = [{ label: __('Target Meter'), value: 'target_meter' }]
+
 async function addChart() {
   show.value = false
   if (chartType.value == 'spacer') {
@@ -117,12 +128,13 @@ async function addChart() {
 }
 
 async function getChart(type: string) {
-  let name =
-    type == 'number_chart'
-      ? numberChart.value
-      : type == 'axis_chart'
-        ? axisChart.value
-        : donutChart.value
+  const picked = {
+    number_chart: numberChart,
+    axis_chart: axisChart,
+    donut_chart: donutChart,
+    progress_chart: progressChart,
+  }[type]
+  let name = picked?.value
 
   await createResource({
     url: 'crm.api.dashboard.get_chart',
@@ -141,6 +153,11 @@ async function getChart(type: string) {
       if (['axis_chart', 'donut_chart'].includes(type)) {
         width = 10
         height = 7
+      } else if (type === 'progress_chart') {
+        // A number tile plus a bar and two label lines: one column wider and
+        // two rows taller than a plain number chart, or the bar clips.
+        width = 5
+        height = 4
       }
 
       items.value.push({

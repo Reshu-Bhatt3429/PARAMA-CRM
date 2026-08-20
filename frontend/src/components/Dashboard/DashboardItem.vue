@@ -32,9 +32,19 @@
     >
       <DonutChart v-if="item.data" :config="item.data" />
     </div>
+    <!-- Target meter (master spec §5, item 7). Its own type because frappe-ui
+         has no progress primitive, and UX §2.8 forbids the gauge that would
+         otherwise be reached for. -->
+    <div
+      v-else-if="item.type == 'progress_chart'"
+      class="h-full w-full rounded-md shadow overflow-hidden"
+    >
+      <TargetMeter v-if="item.data" :config="item.data" />
+    </div>
   </div>
 </template>
 <script setup>
+import TargetMeter from '@/components/Dashboard/TargetMeter.vue'
 import { AxisChart, DonutChart, NumberChart, Tooltip } from 'frappe-ui'
 
 defineProps({

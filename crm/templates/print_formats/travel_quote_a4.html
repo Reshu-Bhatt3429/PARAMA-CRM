@@ -1,0 +1,187 @@
+{#-
+	Travel Quote A4 -- the customer-facing print format for a CRM Deal.
+
+	Rendered by wkhtmltopdf 0.12.6, which is a 2012-era WebKit: no flexbox, no
+	CSS grid, no custom properties. Layout is tables and blocks only.
+
+	The print format Jinja environment does NOT autoescape, so every value that
+	comes from the agent or the customer is passed through `|e` by hand. The only
+	unescaped markup in this file is markup this file wrote.
+
+	Everything this template reads is put on the document by `crm.api.quote`
+	before the render: `quote_agency`, `quote_rows`, `quote_totals`,
+	`quote_terms`, `quote_meta`. The template therefore does no arithmetic and no
+	currency formatting -- both are decided once, on the server, where they are
+	tested. Internal fields (deal value, probability, owner, next step, notes)
+	are deliberately absent: they must never reach the customer.
+-#}
+{%- set agency = doc.quote_agency or {} -%}
+{%- set rows = doc.quote_rows or [] -%}
+{%- set totals = doc.quote_totals or {} -%}
+{%- set terms = doc.quote_terms or [] -%}
+{%- set meta = doc.quote_meta or {} -%}
+<style>
+	.qte { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; color: #1f2937; font-size: 10.5pt; line-height: 1.45; }
+	.qte h1, .qte h2, .qte h3, .qte h4 { margin: 0; font-weight: 600; }
+	.qte a { color: inherit; text-decoration: none; }
+	.qte-table { width: 100%; border-collapse: collapse; }
+
+	.qte-head { border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 18px; }
+	.qte-agency { font-size: 15pt; letter-spacing: -0.2pt; }
+	.qte-agency-sub { font-size: 8.5pt; color: #6b7280; padding-top: 2px; }
+	.qte-ref { font-size: 8.5pt; color: #6b7280; text-align: right; vertical-align: bottom; }
+
+	.qte-parties { margin-bottom: 20px; }
+	.qte-parties td { vertical-align: top; width: 50%; padding-right: 18px; }
+	.qte-label { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.6pt; color: #9ca3af; padding-bottom: 3px; }
+	.qte-party-name { font-size: 12pt; font-weight: 600; }
+	.qte-party-line { font-size: 9.5pt; color: #4b5563; padding-top: 1px; }
+
+	.qte-section-title { font-size: 8pt; text-transform: uppercase; letter-spacing: 1pt; color: #9ca3af; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; margin: 22px 0 12px; }
+
+	.qte-items td, .qte-items th { border: 1px solid #e5e7eb; padding: 6px 10px; font-size: 10pt; }
+	.qte-items th { background: #f3f4f6; text-align: left; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.6pt; color: #6b7280; }
+	.qte-items tr { page-break-inside: avoid; }
+	.qte-num { text-align: right; white-space: nowrap; }
+	.qte-item-name { font-weight: 600; }
+	.qte-item-code { font-size: 8.5pt; color: #6b7280; padding-top: 1px; }
+
+	.qte-totals { page-break-inside: avoid; margin-top: 12px; }
+	.qte-totals td { padding: 4px 10px; font-size: 10pt; }
+	.qte-totals .qte-total-label { text-align: right; color: #4b5563; }
+	.qte-totals .qte-total-value { text-align: right; font-weight: 600; white-space: nowrap; width: 130px; }
+	.qte-totals .qte-grand td { border-top: 2px solid #111827; font-size: 12pt; padding-top: 8px; }
+
+	.qte-terms { page-break-inside: avoid; }
+	.qte-terms ul { margin: 0; padding-left: 15px; }
+	.qte-terms li { font-size: 9.5pt; padding-bottom: 2px; }
+
+	.qte-foot { border-top: 1px solid #e5e7eb; margin-top: 24px; padding-top: 8px; font-size: 8.5pt; color: #6b7280; }
+	.qte-empty { font-size: 9.5pt; color: #9ca3af; font-style: italic; }
+</style>
+
+<div class="qte">
+	<table class="qte-table qte-head">
+		<tr>
+			<td>
+				<div class="qte-agency">{{ agency.get("name")|e or _("Your agency") }}</div>
+				<div class="qte-agency-sub">{{ _("Quotation") }}</div>
+			</td>
+			<td class="qte-ref">
+				{{ meta.get("number")|e }}<br />
+				{{ _("Date") }}: {{ meta.get("date")|e }}
+				{%- if meta.get("valid_until") %}<br />{{ _("Valid until") }}: {{ meta.get("valid_until")|e }}{% endif %}
+			</td>
+		</tr>
+	</table>
+
+	<table class="qte-table qte-parties">
+		<tr>
+			<td>
+				<div class="qte-label">{{ _("Prepared for") }}</div>
+				<div class="qte-party-name">
+					{{ (meta.get("customer_name") or meta.get("organization"))|e or _("Customer") }}
+				</div>
+				{%- if meta.get("organization") and meta.get("customer_name") %}
+				<div class="qte-party-line">{{ meta.get("organization")|e }}</div>
+				{%- endif %}
+				{%- if meta.get("customer_email") %}
+				<div class="qte-party-line">{{ meta.get("customer_email")|e }}</div>
+				{%- endif %}
+				{%- if meta.get("customer_phone") %}
+				<div class="qte-party-line">{{ meta.get("customer_phone")|e }}</div>
+				{%- endif %}
+			</td>
+			<td>
+				<div class="qte-label">{{ _("From") }}</div>
+				<div class="qte-party-name">{{ agency.get("name")|e or _("Your agency") }}</div>
+				{#- Agency address is not stored anywhere in this app yet. The
+				    placeholder is deliberate and is the one thing an agency has to
+				    fill in before a quote leaves the building. -#}
+				<div class="qte-party-line">
+					{{ agency.get("address")|e or _("[ Add your agency address in Settings ]") }}
+				</div>
+				{%- if agency.get("phone") %}
+				<div class="qte-party-line">{{ agency.get("phone")|e }}</div>
+				{%- endif %}
+				{%- if agency.get("email") %}
+				<div class="qte-party-line">{{ agency.get("email")|e }}</div>
+				{%- endif %}
+				{%- if agency.get("website") %}
+				<div class="qte-party-line">{{ agency.get("website")|e }}</div>
+				{%- endif %}
+			</td>
+		</tr>
+	</table>
+
+	<div class="qte-section-title">{{ _("What is quoted") }}</div>
+
+	{%- if not rows %}
+	<div class="qte-empty">{{ _("No items have been added to this quote yet.") }}</div>
+	{%- else %}
+	<table class="qte-table qte-items">
+		<tr>
+			<th style="width: 40%">{{ _("Item") }}</th>
+			<th class="qte-num">{{ _("Rate") }}</th>
+			<th class="qte-num">{{ _("Qty") }}</th>
+			<th class="qte-num">{{ _("Discount") }}</th>
+			<th class="qte-num">{{ _("Net amount") }}</th>
+		</tr>
+		{%- for row in rows %}
+		<tr>
+			<td>
+				<div class="qte-item-name">{{ row.get("name")|e }}</div>
+				{%- if row.get("code") %}
+				<div class="qte-item-code">{{ row.get("code")|e }}</div>
+				{%- endif %}
+			</td>
+			<td class="qte-num">{{ row.get("rate")|e }}</td>
+			<td class="qte-num">{{ row.get("qty")|e }}</td>
+			<td class="qte-num">{{ row.get("discount")|e }}</td>
+			<td class="qte-num">{{ row.get("net_amount")|e }}</td>
+		</tr>
+		{%- endfor %}
+	</table>
+
+	<table class="qte-table qte-totals">
+		<tr>
+			<td></td>
+			<td class="qte-total-label">{{ _("Subtotal") }}</td>
+			<td class="qte-total-value">{{ totals.get("total")|e }}</td>
+		</tr>
+		{%- if totals.get("discount") %}
+		<tr>
+			<td></td>
+			<td class="qte-total-label">{{ _("Discount") }}</td>
+			<td class="qte-total-value">- {{ totals.get("discount")|e }}</td>
+		</tr>
+		{%- endif %}
+		<tr class="qte-grand">
+			<td></td>
+			<td class="qte-total-label">{{ _("Total") }}</td>
+			<td class="qte-total-value">{{ totals.get("net_total")|e }}</td>
+		</tr>
+	</table>
+	{%- endif %}
+
+	{%- if terms %}
+	<div class="qte-section-title">{{ _("Terms and conditions") }}</div>
+	<div class="qte-terms">
+		<ul>{% for line in terms %}<li>{{ line|e }}</li>{% endfor %}</ul>
+	</div>
+	{%- endif %}
+
+	<table class="qte-table qte-foot">
+		<tr>
+			<td>
+				{{ agency.get("name")|e }}
+				{%- if agency.get("phone") %} &middot; {{ agency.get("phone")|e }}{% endif %}
+				{%- if agency.get("email") %} &middot; {{ agency.get("email")|e }}{% endif %}
+				{%- if agency.get("website") %} &middot; {{ agency.get("website")|e }}{% endif %}
+			</td>
+			<td style="text-align: right">
+				{{ _("Prices are indicative and subject to availability.") }}
+			</td>
+		</tr>
+	</table>
+</div>

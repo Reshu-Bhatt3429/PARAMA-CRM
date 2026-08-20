@@ -41,6 +41,11 @@
         </template>
       </Dropdown>
       <Button
+        :label="__('Itinerary')"
+        :loading="creatingItinerary"
+        @click="createItinerary"
+      />
+      <Button
         :label="__('Convert to Deal')"
         variant="solid"
         @click="showConvertToDealModal = true"
@@ -127,6 +132,7 @@
                   {{ title }}
                 </div>
               </Tooltip>
+              <TagChips doctype="CRM Lead" :name="leadId" />
               <div class="flex gap-1.5">
                 <Button
                   v-if="callEnabled"
@@ -259,6 +265,7 @@ import LinkIcon from '@/components/Icons/LinkIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
+import TagChips from '@/components/TagChips.vue'
 import Activities from '@/components/Activities/Activities.vue'
 import AssignTo from '@/components/AssignTo.vue'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
@@ -282,6 +289,7 @@ import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
 import { whatsappEnabled } from '@/composables/whatsapp'
 import { callEnabled } from '@/composables/telephony'
+import { useRecents } from '@/composables/recents'
 import {
   createResource,
   FileUploader,
@@ -313,6 +321,7 @@ const props = defineProps({
 const reload = ref(false)
 const activities = ref(null)
 const errorTitle = ref('')
+const creatingItinerary = ref(false)
 const errorMessage = ref('')
 const showDeleteLinkedDocModal = ref(false)
 const showConvertToDealModal = ref(false)
@@ -335,6 +344,15 @@ const doc = computed(() => document.doc || {})
 onMounted(async () => {
   if (document.doc) await triggerOnRender()
 })
+
+// Item 11. Recorded only once the document actually loaded: a lead the user
+// may not read never reaches here, so it never enters their recents.
+const { record: recordRecent } = useRecents()
+watch(
+  () => document.doc?.name,
+  (name) => name && recordRecent('CRM Lead', name),
+  { immediate: true },
+)
 
 watch(error, (err) => {
   if (err) {
@@ -561,6 +579,52 @@ function beforeStatusChange(data) {
 function onEnriched() {
   document.reload?.()
   sections.reload()
+}
+
+/**
+ * Open this lead's itinerary, or draft a new one.
+ *
+ * A second press must not leave two half-written itineraries for one trip, so
+ * an existing draft is offered first. No AI call happens here -- the agent
+ * starts the drafting from the editor.
+ */
+async function createItinerary() {
+  creatingItinerary.value = true
+  try {
+    const draft = await call('crm.api.itinerary.get_draft_for_lead', {
+      lead: props.leadId,
+    })
+
+    if (draft) {
+      const open = window.confirm(
+        __('This lead already has a draft itinerary: {0}. Open it?').replace(
+          '{0}',
+          draft.title || draft.name,
+        ),
+      )
+      if (open) {
+        router.push({
+          name: 'Itinerary',
+          params: { itineraryId: draft.name },
+        })
+        return
+      }
+    }
+
+    const itinerary = await call('crm.api.itinerary.create_from_lead', {
+      lead: props.leadId,
+    })
+    router.push({
+      name: 'Itinerary',
+      params: { itineraryId: itinerary.name },
+    })
+  } catch (error) {
+    toast.error(
+      error.messages?.[0] || __('Could not start an itinerary for this lead.'),
+    )
+  } finally {
+    creatingItinerary.value = false
+  }
 }
 
 function reloadResources(data) {

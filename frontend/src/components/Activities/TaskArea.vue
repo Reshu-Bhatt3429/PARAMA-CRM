@@ -18,10 +18,13 @@
               <DotIcon class="h-2.5 w-2.5 text-ink-gray-5" :radius="2" />
             </div>
             <div v-if="task.due_date">
-              <Tooltip
-                :text="formatDate(task.due_date, 'ddd, MMM D, YYYY | hh:mm a')"
-              >
-                <div class="flex gap-2">
+              <Tooltip :text="dueTooltip(task)">
+                <div
+                  class="flex gap-2"
+                  :class="
+                    taskDueClass(taskDueState(task.due_date, task.status))
+                  "
+                >
                   <CalendarIcon />
                   <div>{{ formatDate(task.due_date, 'D MMM, hh:mm a') }}</div>
                 </div>
@@ -97,6 +100,7 @@ import TaskPriorityIcon from '@/components/Icons/TaskPriorityIcon.vue'
 import DotIcon from '@/components/Icons/DotIcon.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import { formatDate, taskStatusOptions } from '@/utils'
+import { taskDueClass, taskDueLabel, taskDueState } from '@/utils/tasks'
 import { usersStore } from '@/stores/users'
 import { globalStore } from '@/stores/global'
 import { Tooltip, Dropdown } from 'frappe-ui'
@@ -108,4 +112,11 @@ defineProps({
 
 const { getUser } = usersStore()
 const { $dialog } = globalStore()
+
+/** The full date, plus why the chip is coloured when it is. */
+function dueTooltip(task) {
+  const date = formatDate(task.due_date, 'ddd, MMM D, YYYY | hh:mm a')
+  const reason = taskDueLabel(taskDueState(task.due_date, task.status))
+  return reason ? `${date} · ${__(reason)}` : date
+}
 </script>

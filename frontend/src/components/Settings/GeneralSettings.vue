@@ -125,12 +125,53 @@
           />
         </div>
       </div>
+
+      <!-- Feature Flags. Every expansion feature ships behind a named switch
+           that is OFF by default (master spec C5). The list below is the whole
+           of `crm/feature_flags.py::FLAGS`, in registry order: Stage 5.1 and
+           Stage 5.2 both point a manager here, so every flag has to be here. -->
+      <div
+        class="mt-6 px-2 pb-1 text-xs-medium uppercase tracking-wide text-ink-gray-5"
+      >
+        {{ __('Feature Flags') }}
+      </div>
+      <div class="text-p-sm text-ink-gray-5 px-2 pb-2">
+        {{
+          __(
+            'Every switch added by the feature expansion, in one place. All of them are OFF until somebody turns them on. The registry that must agree with this section is crm/feature_flags.py.',
+          )
+        }}
+      </div>
+      <template v-for="flag in featureFlags" :key="flag.fieldname">
+        <div class="h-px border-t mx-2 border-outline-elevation-2" />
+        <div
+          class="flex gap-4 items-center justify-between py-3 px-2"
+          :class="flag.subordinate && 'pl-6'"
+        >
+          <div class="flex flex-col">
+            <div class="text-p-base-medium text-ink-gray-7 truncate">
+              {{ __(flag.label) }}
+            </div>
+            <div class="text-p-sm text-ink-gray-5">
+              {{ __(flag.description) }}
+            </div>
+          </div>
+          <div>
+            <Switch
+              v-model="settings.doc[flag.fieldname]"
+              size="sm"
+              @click.stop="toggleFlag(flag.fieldname)"
+            />
+          </div>
+        </div>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup>
 import { getSettings } from '@/stores/settings'
+import { refreshInvoicesFlag } from '@/composables/invoices'
 import { FormControl, Switch, toast } from 'frappe-ui'
 
 const { _settings: settings } = getSettings()
@@ -142,6 +183,64 @@ const timestampFormatOptions = [
 const sortOrderOptions = [
   { label: __('Oldest First'), value: 'Oldest First' },
   { label: __('Newest First'), value: 'Newest First' },
+]
+
+/**
+ * Every flag in `crm/feature_flags.py::FLAGS`, in the order the registry lists
+ * them.
+ *
+ * The label and the description are COPIED VERBATIM from the matching Check
+ * field in `crm/fcrm/doctype/fcrm_settings/fcrm_settings.json`. That file is the
+ * UI half of the registry contract, so nothing here is written twice in
+ * different words. Adding a flag means adding a registry entry, a Check field
+ * with its description, and one row here.
+ */
+const featureFlags = [
+  {
+    fieldname: 'outbound_engine_enabled',
+    label: 'Outbound engine',
+    description:
+      'Lets the scheduler claim and process CRM Outbound Jobs (Send Later, mass email, sequences, scheduled reports). While this is off the outbound sweep returns without reading a single job, so nothing can be sent through the outbound engine. Turning it on does not by itself create any job.',
+  },
+  {
+    fieldname: 'task_reminders_enabled',
+    label: 'Task due-date reminders',
+    description:
+      'Lets the scheduler remind assignees about tasks that are about to fall due. While this is off the reminder sweep returns without reading a single task row, so no notification and no email is ever produced.',
+  },
+  {
+    fieldname: 'email_sequences_enabled',
+    label: 'Email sequences',
+    description:
+      'Lets a follow-up stage set to the Email channel build and schedule its message. While this is off every email stage parks with a stated reason and no outbound job is created. Delivery also needs the outbound engine above.',
+  },
+  {
+    fieldname: 'deal_health_enabled',
+    label: 'Deal health flags',
+    description:
+      'Lets the nightly sweep work out which open deals need attention (close date passed, stalled, awaiting a reply) and store the answer on the deal. While this is off the sweep reads no deal row, no deal carries a Needs attention chip, and the manager digest says nothing about deal health.',
+  },
+  {
+    fieldname: 'workflow_rules_enabled',
+    label: 'Workflow rules',
+    description:
+      'Lets a workflow rule fire when a lead or a deal is created or changes. While this is off the engine stops on one cached read and no rule can act, whatever its own Enabled switch says. Both switches must be on. A rule that writes a field NEVER triggers another rule.',
+  },
+  {
+    fieldname: 'invoices_enabled',
+    label: 'Invoices',
+    description:
+      'Lets the invoice module be used at all: the Invoices page, Convert to invoice on a deal, and every endpoint in crm.api.invoices. While this is off those endpoints refuse and a tokenised customer link answers exactly like a dead token.',
+  },
+  {
+    // Indented under Invoices: the ladder does not exist while the module is
+    // off, so the two switches are not siblings even though both must be on.
+    fieldname: 'invoice_reminders_enabled',
+    label: 'Invoice payment reminders',
+    subordinate: true,
+    description:
+      'Lets the hourly sweep chase unpaid invoices: one ladder per payment-schedule row, on the due date, then +7 days, then +14. Suppression-checked and quiet-hours aware, and pausable per invoice. Separate from Invoices above on purpose. Delivery also needs the Outbound engine switch.',
+  },
 ]
 
 function toggle(settingKey) {
@@ -159,6 +258,26 @@ function toggle(settingKey) {
 function save() {
   settings.save.submit(null, {
     onSuccess: () => toast.success(__('Setting updated successfully')),
+  })
+}
+
+/**
+ * Save one feature flag.
+ *
+ * `invoices_enabled` needs one extra thing: the sidebar entry, the deal action
+ * and the dashboard tiles read a cached copy of it, so the copy is refreshed
+ * here and the module appears and disappears without a page reload.
+ */
+function toggleFlag(fieldname) {
+  settings.save.submit(null, {
+    onSuccess: () => {
+      if (fieldname === 'invoices_enabled') refreshInvoicesFlag()
+      toast.success(
+        settings.doc[fieldname]
+          ? __('Setting enabled successfully')
+          : __('Setting disabled successfully'),
+      )
+    },
   })
 }
 </script>

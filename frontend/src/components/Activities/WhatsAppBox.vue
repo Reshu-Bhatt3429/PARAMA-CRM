@@ -54,6 +54,12 @@
           @click="togglePopover"
         />
       </IconPicker>
+      <span
+        class="lucide-text-quote size-4.5 cursor-pointer text-ink-gray-5"
+        :title="__('Insert Snippet')"
+        aria-hidden="true"
+        @click="openSnippets()"
+      />
     </div>
     <Textarea
       ref="textareaRef"
@@ -65,14 +71,25 @@
       @focus="rows = 6"
       @blur="rows = 1"
       @keydown.enter.stop="(e) => sendTextMessage(e)"
+      @input="onInput"
     />
   </div>
+  <SnippetSelectorModal
+    v-model="showSnippets"
+    plain-text
+    :doctype="doctype"
+    :docname="doc?.name"
+    :query="snippetTrigger?.query || ''"
+    @apply="insertSnippet"
+  />
 </template>
 
 <script setup>
 import IconPicker from '@/components/IconPicker.vue'
 import SmileIcon from '@/components/Icons/SmileIcon.vue'
+import SnippetSelectorModal from '@/components/Modals/SnippetSelectorModal.vue'
 import { sanitizeHTML } from '@/utils'
+import { applySnippet, slashTrigger } from '@/utils/snippets'
 import { useTelemetry } from 'frappe-ui/frappe'
 import {
   createResource,
@@ -103,6 +120,47 @@ const fileType = ref('')
 
 function show() {
   nextTick(() => textareaRef.value.el.focus())
+}
+
+const showSnippets = ref(false)
+const snippetTrigger = ref(null)
+
+/** The textarea DOM node. `Textarea` is a frappe-ui wrapper, so it is `.el`. */
+function textareaEl() {
+  return textareaRef.value?.el
+}
+
+/**
+ * `/` at the start of a line opens the snippet list. Same rule as the inbox
+ * composer, and the same reason: a mid-line slash is a URL or a date.
+ */
+function onInput() {
+  const element = textareaEl()
+  if (!element || showSnippets.value) return
+
+  const trigger = slashTrigger(content.value, element.selectionStart)
+  if (trigger.active && trigger.query === '') {
+    snippetTrigger.value = trigger
+    showSnippets.value = true
+  }
+}
+
+function openSnippets() {
+  const caret = textareaEl()?.selectionStart ?? content.value.length
+  snippetTrigger.value = { active: false, query: '', from: caret, to: caret }
+  showSnippets.value = true
+}
+
+function insertSnippet({ body }) {
+  const next = applySnippet(content.value, snippetTrigger.value, body)
+  content.value = next.text
+  snippetTrigger.value = null
+  nextTick(() => {
+    const element = textareaEl()
+    if (!element) return
+    element.focus()
+    element.setSelectionRange(next.caret, next.caret)
+  })
 }
 
 function uploadFile(file) {

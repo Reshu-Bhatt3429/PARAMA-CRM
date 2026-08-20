@@ -1,0 +1,99 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-08-19 09:00:00.000000",
+ "default_view": "List",
+ "description": "One person's answer to one yes/no or short-value question about how the CRM behaves for them. Site-wide configuration belongs in FCRM Settings; this table is only for choices that differ per user.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "user",
+  "preference_key",
+  "column_break_preference",
+  "preference_value",
+  "preference_id"
+ ],
+ "fields": [
+  {
+   "description": "Whose preference this is. A row is readable and writable by that person and by a System Manager, and by nobody else.",
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "User",
+   "options": "User",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "description": "Which preference. Only keys registered in crm/fcrm/doctype/crm_user_preference/crm_user_preference.py are accepted, so this cannot become a general key-value store.",
+   "fieldname": "preference_key",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Preference Key",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_preference",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "The stored answer. A checkbox preference stores \"1\" or \"0\".",
+   "fieldname": "preference_value",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Preference Value"
+  },
+  {
+   "description": "user + preference key, enforced by a unique index. This is how one row per person per preference is guaranteed; Frappe has no composite unique constraint in a doctype definition.",
+   "fieldname": "preference_id",
+   "fieldtype": "Data",
+   "label": "Preference Id",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-19 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CRM User Preference",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "Sales Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "Sales User",
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

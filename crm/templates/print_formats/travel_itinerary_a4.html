@@ -1,0 +1,233 @@
+{#-
+	Travel Itinerary A4 -- the customer-facing print format for CRM Itinerary.
+
+	Rendered by wkhtmltopdf 0.12.6, which is a 2012-era WebKit: no flexbox, no
+	CSS grid, no custom properties. Layout is tables and blocks only.
+
+	The print format Jinja environment does NOT autoescape, so every value that
+	comes from the agent or from the AI is passed through `|e` by hand. The only
+	unescaped markup in this file is markup this file wrote.
+
+	`internal_notes` is deliberately absent. It must never reach the customer.
+-#}
+{%- set agency = doc.render_agency() -%}
+{%- set days = doc.render_days() -%}
+<style>
+	.itn { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; color: #1f2937; font-size: 10.5pt; line-height: 1.45; }
+	.itn h1, .itn h2, .itn h3, .itn h4 { margin: 0; font-weight: 600; }
+	.itn a { color: inherit; text-decoration: none; }
+	.itn-table { width: 100%; border-collapse: collapse; }
+
+	.itn-head { border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 18px; }
+	.itn-agency { font-size: 15pt; letter-spacing: -0.2pt; }
+	.itn-agency-sub { font-size: 8.5pt; color: #6b7280; padding-top: 2px; }
+	.itn-ref { font-size: 8.5pt; color: #6b7280; text-align: right; vertical-align: bottom; }
+
+	.itn-cover { background: #f9fafb; border: 1px solid #e5e7eb; padding: 16px 18px; margin-bottom: 20px; }
+	.itn-cover h1 { font-size: 19pt; letter-spacing: -0.4pt; }
+	.itn-cover-dest { font-size: 11pt; color: #4b5563; padding-top: 4px; }
+	.itn-facts { margin-top: 12px; }
+	.itn-facts td { padding: 0 18px 0 0; vertical-align: top; }
+	.itn-fact-label { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.6pt; color: #9ca3af; }
+	.itn-fact-value { font-size: 10.5pt; font-weight: 600; padding-top: 1px; }
+
+	.itn-section-title { font-size: 8pt; text-transform: uppercase; letter-spacing: 1pt; color: #9ca3af; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; margin: 22px 0 12px; }
+
+	/* A whole day is often taller than the space left on a page. Keeping the
+	   day intact would leave half a page blank, so the day may break, but the
+	   parts that look broken when split -- the day heading, a slot, an item --
+	   may not. wkhtmltopdf honours page-break-inside, not page-break-after. */
+	.itn-day { margin-bottom: 16px; }
+	.itn-day-head { border-left: 3px solid #111827; padding-left: 10px; margin-bottom: 9px; page-break-inside: avoid; }
+	.itn-day-no { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.8pt; color: #9ca3af; }
+	.itn-day-title { font-size: 12.5pt; }
+	.itn-day-summary { font-size: 9.5pt; color: #4b5563; padding-top: 2px; }
+
+	.itn-slot { margin: 0 0 8px 13px; page-break-inside: avoid; }
+	.itn-slot-name { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.8pt; color: #6b7280; padding-bottom: 3px; }
+	.itn-item { padding: 5px 0 5px 10px; border-left: 1px solid #e5e7eb; page-break-inside: avoid; }
+	.itn-item-title { font-size: 10pt; font-weight: 600; }
+	.itn-item-desc { font-size: 9.5pt; color: #4b5563; padding-top: 1px; }
+	.itn-item-meta { font-size: 8.5pt; color: #6b7280; padding-top: 2px; }
+	.itn-place { font-weight: 600; color: #374151; }
+	.itn-unverified { font-size: 7pt; color: #92400e; background: #fef3c7; padding: 1px 4px; }
+
+	.itn-price { page-break-inside: avoid; }
+	.itn-price td, .itn-price th { border: 1px solid #e5e7eb; padding: 6px 10px; font-size: 10pt; }
+	.itn-price th { background: #f3f4f6; text-align: left; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.6pt; color: #6b7280; }
+	.itn-price .itn-amount { text-align: right; font-weight: 600; white-space: nowrap; }
+
+	.itn-terms { page-break-inside: avoid; }
+	.itn-terms td { vertical-align: top; width: 50%; padding-right: 18px; }
+	.itn-terms ul { margin: 0; padding-left: 15px; }
+	.itn-terms li { font-size: 9.5pt; padding-bottom: 2px; }
+	.itn-terms h4 { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.8pt; color: #9ca3af; padding-bottom: 5px; }
+
+	.itn-foot { border-top: 1px solid #e5e7eb; margin-top: 24px; padding-top: 8px; font-size: 8.5pt; color: #6b7280; }
+	.itn-empty { font-size: 9.5pt; color: #9ca3af; font-style: italic; }
+</style>
+
+<div class="itn">
+	<table class="itn-table itn-head">
+		<tr>
+			<td>
+				<div class="itn-agency">{{ agency.name|e }}</div>
+				<div class="itn-agency-sub">{{ _("Travel Itinerary") }}</div>
+			</td>
+			<td class="itn-ref">
+				{{ doc.name|e }}<br />
+				{{ _("Version") }} {{ doc.version }}
+			</td>
+		</tr>
+	</table>
+
+	<div class="itn-cover">
+		<h1>{{ doc.title|e }}</h1>
+		{%- if doc.destination %}
+		<div class="itn-cover-dest">{{ doc.destination|e }}</div>
+		{%- endif %}
+
+		<table class="itn-table itn-facts">
+			<tr>
+				{%- if doc.start_date %}
+				<td>
+					<div class="itn-fact-label">{{ _("Starts") }}</div>
+					<div class="itn-fact-value">{{ doc.get_formatted("start_date")|e }}</div>
+				</td>
+				{%- endif %}
+				<td>
+					<div class="itn-fact-label">{{ _("Duration") }}</div>
+					<div class="itn-fact-value">{{ doc.num_days }} {{ _("days") }}</div>
+				</td>
+				{%- if doc.group_size %}
+				<td>
+					<div class="itn-fact-label">{{ _("Travellers") }}</div>
+					<div class="itn-fact-value">{{ doc.group_size }}</div>
+				</td>
+				{%- endif %}
+				{%- if doc.budget %}
+				<td>
+					<div class="itn-fact-label">{{ _("Indicative Budget") }}</div>
+					<div class="itn-fact-value">{{ doc.render_amount(doc.budget)|e }}</div>
+				</td>
+				{%- endif %}
+			</tr>
+		</table>
+	</div>
+
+	<div class="itn-section-title">{{ _("Day by day") }}</div>
+
+	{%- if not days %}
+	<div class="itn-empty">{{ _("This itinerary has no days yet.") }}</div>
+	{%- endif %}
+
+	{%- for day in days %}
+	{%- set day_date = doc.render_day_date(day.day_number) %}
+	<div class="itn-day">
+		<div class="itn-day-head">
+			<div class="itn-day-no">
+				{{ _("Day") }} {{ day.day_number }}{% if day_date %} &middot; {{ day_date|e }}{% endif %}
+			</div>
+			<div class="itn-day-title">{{ day.title|e or _("Untitled day") }}</div>
+			{%- if day.summary %}
+			<div class="itn-day-summary">{{ day.summary|e }}</div>
+			{%- endif %}
+		</div>
+
+		{%- for slot in day.slots %}
+		{%- if slot["items"] %}
+		<div class="itn-slot">
+			<div class="itn-slot-name">{{ _(slot.time_of_day|title) }}</div>
+			{%- for item in slot["items"] %}
+			<div class="itn-item">
+				<div class="itn-item-title">{{ item.title|e }}</div>
+				{%- if item.description %}
+				<div class="itn-item-desc">{{ item.description|e }}</div>
+				{%- endif %}
+				{%- if item.place_name or item.duration_hours or item.est_cost %}
+				<div class="itn-item-meta">
+					{%- if item.place_name %}
+					<span class="itn-place">{{ item.place_name|e }}</span>
+					{%- if not item.verified %}<span class="itn-unverified">{{ _("to confirm") }}</span>{% endif %}
+					{%- endif %}
+					{%- if item.duration_hours %}
+					{% if item.place_name %}&middot;{% endif %} {{ item.duration_hours }} {{ _("hrs") }}
+					{%- endif %}
+					{%- if item.est_cost %}
+					{% if item.place_name or item.duration_hours %}&middot;{% endif %}
+					{{ doc.render_amount(item.est_cost)|e }} {{ _("per person") }}
+					{%- endif %}
+				</div>
+				{%- endif %}
+			</div>
+			{%- endfor %}
+		</div>
+		{%- endif %}
+		{%- endfor %}
+	</div>
+	{%- endfor %}
+
+	{%- if doc.price_tiers %}
+	<div class="itn-section-title">{{ _("Package price") }}</div>
+	<table class="itn-table itn-price">
+		<tr>
+			<th>{{ _("Option") }}</th>
+			<th style="text-align: right">{{ _("Price per person") }}</th>
+		</tr>
+		{%- for tier in doc.price_tiers %}
+		<tr>
+			<td>{{ tier.tier_label|e }}</td>
+			<td class="itn-amount">{{ doc.render_amount(tier.price_per_person)|e }}</td>
+		</tr>
+		{%- endfor %}
+	</table>
+	{%- endif %}
+
+	{%- set inclusions = doc.render_lines(doc.inclusions) %}
+	{%- set exclusions = doc.render_lines(doc.exclusions) %}
+	{%- if inclusions or exclusions %}
+	<div class="itn-section-title">{{ _("What is included") }}</div>
+	<table class="itn-table itn-terms">
+		<tr>
+			<td>
+				{%- if inclusions %}
+				<h4>{{ _("Inclusions") }}</h4>
+				<ul>{% for line in inclusions %}<li>{{ line|e }}</li>{% endfor %}</ul>
+				{%- endif %}
+			</td>
+			<td>
+				{%- if exclusions %}
+				<h4>{{ _("Exclusions") }}</h4>
+				<ul>{% for line in exclusions %}<li>{{ line|e }}</li>{% endfor %}</ul>
+				{%- endif %}
+			</td>
+		</tr>
+	</table>
+	{%- endif %}
+
+	{%- set terms = doc.render_lines(doc.terms) %}
+	{%- if terms %}
+	<div class="itn-section-title">{{ _("Terms and conditions") }}</div>
+	<table class="itn-table itn-terms">
+		<tr>
+			<td colspan="2" style="width: 100%">
+				<ul>{% for line in terms %}<li>{{ line|e }}</li>{% endfor %}</ul>
+			</td>
+		</tr>
+	</table>
+	{%- endif %}
+
+	<table class="itn-table itn-foot">
+		<tr>
+			<td>
+				{{ agency.name|e }}
+				{%- if agency.phone %} &middot; {{ agency.phone|e }}{% endif %}
+				{%- if agency.email %} &middot; {{ agency.email|e }}{% endif %}
+				{%- if agency.website %} &middot; {{ agency.website|e }}{% endif %}
+			</td>
+			<td style="text-align: right">
+				{{ _("Prices are indicative and subject to availability.") }}
+			</td>
+		</tr>
+	</table>
+</div>

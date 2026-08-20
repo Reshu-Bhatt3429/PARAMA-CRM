@@ -255,6 +255,14 @@ def update_modified_background(doctype: str, docname: str):
 def on_communication_insert(doc: Communication, method: str | None = None):
 	create_lead_from_incoming_email(doc)
 
+	# Item 5 (send later): a customer who answers before the scheduled follow-up
+	# goes out must not receive it anyway. Matched on Message-ID, never on the
+	# subject line. Imported here rather than at module scope because
+	# `crm.api.email` imports the outbound engine, which imports this package.
+	from crm.api.email import handle_inbound_reply
+
+	handle_inbound_reply(doc)
+
 
 def on_communication_update(doc: Communication, method: str | None = None):
 	if not (doc.reference_doctype and doc.reference_name):

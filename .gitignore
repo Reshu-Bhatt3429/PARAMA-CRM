@@ -31,3 +31,11 @@ AGENTS.md
 # Rescue patches written at the repo root by docker/deploy-local.sh when the
 # container clone holds uncommitted work.
 .deploy-backup-*.patch
+
+# Local API key files — MUST NOT be committed
+/Gemini api key *.txt
+*api key*.txt
+*.apikey
+
+# Local reference documents (engineering bibles etc.) stay out of the repo
+*.docx

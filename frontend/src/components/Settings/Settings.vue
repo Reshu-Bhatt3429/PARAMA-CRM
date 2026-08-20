@@ -75,8 +75,11 @@ import CalendarSettings from '@/components/Settings/CalendarSettings.vue'
 import HomeActions from '@/components/Settings/HomeActions.vue'
 import FormsSettings from '@/components/Settings/Forms/FormsSettings.vue'
 import GeneralSettings from '@/components/Settings/GeneralSettings.vue'
+import AIFollowupSettings from '@/components/Settings/AIFollowupSettings.vue'
 import DashboardSettings from '@/components/Settings/DashboardSettings.vue'
 import EmailTemplatePage from '@/components/Settings/EmailTemplate/EmailTemplatePage.vue'
+import SnippetsPage from '@/components/Settings/Snippets/SnippetsPage.vue'
+import LucideTextQuote from '~icons/lucide/text-quote'
 import TelephonyPage from '@/components/Settings/Telephony/TelephonyPage.vue'
 import EmailConfig from '@/components/Settings/EmailConfig.vue'
 import Icon from '@/components/Icon.vue'
@@ -91,7 +94,13 @@ import { Dialog, Avatar, SidebarItem } from 'frappe-ui'
 import { ref, markRaw, computed, watch, h } from 'vue'
 import AssignmentRulePage from './AssignmentRules/AssignmentRulePage.vue'
 import ShieldCheck from '~icons/lucide/shield-check'
+import LucideWorkflow from '~icons/lucide/workflow'
+import LucideBuilding2 from '~icons/lucide/building-2'
+import LucideReceipt from '~icons/lucide/receipt'
 import SlaConfig from './Sla/SlaConfig.vue'
+import WorkflowRulesPage from './Workflows/WorkflowRulesPage.vue'
+import CompanyProfile from './Invoicing/CompanyProfile.vue'
+import SacCodes from './Invoicing/SacCodes.vue'
 
 const { isManager, getUser } = usersStore()
 
@@ -188,6 +197,11 @@ const tabs = computed(() => {
           icon: EmailTemplateIcon,
           component: markRaw(EmailTemplatePage),
         },
+        {
+          label: __('Snippets'),
+          icon: markRaw(LucideTextQuote),
+          component: markRaw(SnippetsPage),
+        },
       ],
     },
     {
@@ -199,6 +213,11 @@ const tabs = computed(() => {
           component: markRaw(AssignmentRulePage),
         },
         {
+          label: __('Workflow Rules'),
+          icon: markRaw(h(LucideWorkflow)),
+          component: markRaw(WorkflowRulesPage),
+        },
+        {
           label: __('SLA Policies'),
           icon: markRaw(h(ShieldCheck)),
           component: markRaw(SlaConfig),
@@ -207,6 +226,31 @@ const tabs = computed(() => {
           label: __('Forms'),
           component: markRaw(FormsSettings),
           icon: markRaw(LucideTextCursorInput),
+        },
+        {
+          label: __('AI & Follow-ups'),
+          component: markRaw(AIFollowupSettings),
+          icon: SparkleIcon,
+        },
+      ],
+      condition: () => isManager(),
+    },
+    {
+      // Deliberately NOT behind `invoices_enabled`. The ops order is: fill the
+      // Company Profile and check the SAC codes with your CA, THEN switch the
+      // module on — `finalize` refuses while any Rule 46 supplier field is
+      // empty, so these pages have to be reachable before the flag is.
+      label: __('Invoicing'),
+      items: [
+        {
+          label: __('Company Profile'),
+          icon: markRaw(h(LucideBuilding2)),
+          component: markRaw(CompanyProfile),
+        },
+        {
+          label: __('SAC Codes'),
+          icon: markRaw(h(LucideReceipt)),
+          component: markRaw(SacCodes),
         },
       ],
       condition: () => isManager(),

@@ -1,0 +1,151 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-08-19 09:00:00.000000",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "rule",
+  "rule_title",
+  "reference_doctype",
+  "reference_docname",
+  "event",
+  "column_break_run",
+  "execution_key",
+  "action_index",
+  "action_type",
+  "status",
+  "executed_at",
+  "reason_section",
+  "reason"
+ ],
+ "fields": [
+  {
+   "fieldname": "rule",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Rule",
+   "options": "CRM Workflow Rule",
+   "search_index": 1
+  },
+  {
+   "description": "The rule's title as it read when the action ran. Kept on the row so a deleted or renamed rule still leaves a readable history.",
+   "fieldname": "rule_title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Rule Title"
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Record Type",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "reference_docname",
+   "fieldtype": "Dynamic Link",
+   "in_list_view": 1,
+   "label": "Record",
+   "options": "reference_doctype",
+   "search_index": 1
+  },
+  {
+   "fieldname": "event",
+   "fieldtype": "Data",
+   "label": "Event"
+  },
+  {
+   "fieldname": "column_break_run",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "rule + record + source version + action index, enforced by a unique index. Two workers, a retry and a double-fire all produce the same key, and only the first one gets to act.",
+   "fieldname": "execution_key",
+   "fieldtype": "Data",
+   "label": "Execution Key",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "action_index",
+   "fieldtype": "Int",
+   "label": "Action Index"
+  },
+  {
+   "fieldname": "action_type",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Action"
+  },
+  {
+   "default": "Claimed",
+   "description": "Claimed means the key is spent and the action was attempted. The row is never deleted by the engine, so one action runs at most once. A row that stays Claimed is a worker that died mid-action.",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Claimed\nExecuted\nSkipped-cap\nSkipped-suppressed\nFailed",
+   "reqd": 1
+  },
+  {
+   "fieldname": "executed_at",
+   "fieldtype": "Datetime",
+   "label": "Executed At"
+  },
+  {
+   "fieldname": "reason_section",
+   "fieldtype": "Section Break",
+   "label": "Reason"
+  },
+  {
+   "description": "Why the action ended the way it did. Empty for a plain success.",
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Reason",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-19 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CRM Workflow Execution Log",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

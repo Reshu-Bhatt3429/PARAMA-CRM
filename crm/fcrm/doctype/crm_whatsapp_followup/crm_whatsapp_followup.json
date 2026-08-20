@@ -1,0 +1,200 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-08-18 09:00:00.000000",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "section_lead",
+  "lead",
+  "phone",
+  "column_break_state",
+  "state",
+  "current_stage",
+  "cycle",
+  "blocked_reason",
+  "section_timing",
+  "next_due",
+  "last_customer_message",
+  "column_break_timing",
+  "last_agency_message",
+  "section_pending",
+  "pending_stage",
+  "pending_params",
+  "section_optout",
+  "opted_out_at",
+  "column_break_optout",
+  "opted_out_source"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_lead",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "lead",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Lead",
+   "options": "CRM Lead",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "phone",
+   "fieldtype": "Data",
+   "label": "Phone",
+   "options": "Phone"
+  },
+  {
+   "fieldname": "column_break_state",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Active",
+   "fieldname": "state",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "State",
+   "options": "Active\nReplied\nOpted Out\nExhausted\nStopped\nPending Approval",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "description": "Highest stage already sent. 0 means nothing was sent yet.",
+   "fieldname": "current_stage",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Current Stage"
+  },
+  {
+   "default": "1",
+   "description": "Increments every time an agent restarts the conversation. Part of the send-log dedup key, so a restarted sequence can reuse stage numbers.",
+   "fieldname": "cycle",
+   "fieldtype": "Int",
+   "label": "Cycle",
+   "read_only": 1
+  },
+  {
+   "description": "Why the engine parked this row, for example a template that Meta has not approved.",
+   "fieldname": "blocked_reason",
+   "fieldtype": "Small Text",
+   "label": "Blocked Reason",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_timing",
+   "fieldtype": "Section Break",
+   "label": "Timing"
+  },
+  {
+   "fieldname": "next_due",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Next Due"
+  },
+  {
+   "fieldname": "last_customer_message",
+   "fieldtype": "Datetime",
+   "label": "Last Customer Message"
+  },
+  {
+   "fieldname": "column_break_timing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_agency_message",
+   "fieldtype": "Datetime",
+   "label": "Last Agency Message"
+  },
+  {
+   "depends_on": "eval:doc.state == 'Pending Approval'",
+   "fieldname": "section_pending",
+   "fieldtype": "Section Break",
+   "label": "Pending Draft"
+  },
+  {
+   "default": "0",
+   "fieldname": "pending_stage",
+   "fieldtype": "Int",
+   "label": "Pending Stage"
+  },
+  {
+   "description": "Template variable values waiting for an agent to approve.",
+   "fieldname": "pending_params",
+   "fieldtype": "Long Text",
+   "label": "Pending Parameters"
+  },
+  {
+   "depends_on": "eval:doc.state == 'Opted Out'",
+   "fieldname": "section_optout",
+   "fieldtype": "Section Break",
+   "label": "Opt-out Audit"
+  },
+  {
+   "fieldname": "opted_out_at",
+   "fieldtype": "Datetime",
+   "label": "Opted Out At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_optout",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "What triggered the opt-out. A manager can reverse it with reopen_optout.",
+   "fieldname": "opted_out_source",
+   "fieldtype": "Small Text",
+   "label": "Opted Out Source",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-18 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CRM WhatsApp Followup",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Sales User"
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "lead",
+ "track_changes": 1
+}

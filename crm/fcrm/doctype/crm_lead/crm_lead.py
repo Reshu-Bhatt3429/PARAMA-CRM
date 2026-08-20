@@ -108,6 +108,12 @@ class CRMLead(Document):
 
 		auto_enrich_on_create(self)
 
+		# Item 4: the web form's automatic reply. Returns immediately unless this
+		# record was created by a CRM web-form submission.
+		from crm.api.form import queue_auto_response
+
+		queue_auto_response(self)
+
 	def before_save(self):
 		self.apply_sla()
 

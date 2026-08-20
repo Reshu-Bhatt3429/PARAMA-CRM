@@ -130,13 +130,22 @@ def get_deal_activities(name: str):
 		}
 		activities.append(activity)
 
-	for communication in docinfo.communications + docinfo.automated_messages:
+	all_communications = docinfo.communications + docinfo.automated_messages
+	opened_on = read_receipt_times(all_communications)
+	sequence_stage = sequence_stages(all_communications)
+
+	for communication in all_communications:
 		activity = {
+			# The Communication's own docname. Additive, and load-bearing: item 5
+			# (send later) matches a reply back to the message it answers, and
+			# item 19 keys the read/delivery indicator on it.
+			"name": communication.name,
 			"activity_type": "communication",
 			"communication_type": communication.communication_type,
 			"communication_date": communication.communication_date or communication.creation,
 			"creation": communication.creation,
 			"data": {
+				"name": communication.name,
 				"subject": communication.subject,
 				"content": communication.content,
 				"sender_full_name": communication.sender_full_name,
@@ -146,7 +155,12 @@ def get_deal_activities(name: str):
 				"bcc": communication.bcc,
 				"attachments": get_attachments("Communication", communication.name),
 				"read_by_recipient": communication.read_by_recipient,
+				"read_by_recipient_on": opened_on.get(communication.name),
 				"delivery_status": communication.delivery_status,
+				# Item 21: which follow-up stage sent this, when one did. The
+				# timeline renders it as a quiet "Sequence · Stage n" chip; every
+				# other message carries None and renders nothing.
+				"sequence_stage": sequence_stage.get(communication.name),
 			},
 			"is_lead": False,
 		}
@@ -162,6 +176,9 @@ def get_deal_activities(name: str):
 			"is_lead": False,
 		}
 		activities.append(activity)
+
+	activities += get_scheduled_email_activities("CRM Deal", name)
+	activities += get_quote_view_activities("CRM Deal", name)
 
 	calls = calls + get_linked_calls(name).get("calls", [])
 	notes = notes + get_linked_notes(name) + get_linked_calls(name).get("notes", [])
@@ -271,13 +288,22 @@ def get_lead_activities(name: str):
 		}
 		activities.append(activity)
 
-	for communication in docinfo.communications + docinfo.automated_messages:
+	all_communications = docinfo.communications + docinfo.automated_messages
+	opened_on = read_receipt_times(all_communications)
+	sequence_stage = sequence_stages(all_communications)
+
+	for communication in all_communications:
 		activity = {
+			# The Communication's own docname. Additive, and load-bearing: item 5
+			# (send later) matches a reply back to the message it answers, and
+			# item 19 keys the read/delivery indicator on it.
+			"name": communication.name,
 			"activity_type": "communication",
 			"communication_type": communication.communication_type,
 			"communication_date": communication.communication_date or communication.creation,
 			"creation": communication.creation,
 			"data": {
+				"name": communication.name,
 				"subject": communication.subject,
 				"content": communication.content,
 				"sender_full_name": communication.sender_full_name,
@@ -287,7 +313,12 @@ def get_lead_activities(name: str):
 				"bcc": communication.bcc,
 				"attachments": get_attachments("Communication", communication.name),
 				"read_by_recipient": communication.read_by_recipient,
+				"read_by_recipient_on": opened_on.get(communication.name),
 				"delivery_status": communication.delivery_status,
+				# Item 21: which follow-up stage sent this, when one did. The
+				# timeline renders it as a quiet "Sequence · Stage n" chip; every
+				# other message carries None and renders nothing.
+				"sequence_stage": sequence_stage.get(communication.name),
 			},
 			"is_lead": True,
 		}
@@ -304,6 +335,8 @@ def get_lead_activities(name: str):
 		}
 		activities.append(activity)
 
+	activities += get_scheduled_email_activities("CRM Lead", name)
+
 	calls = get_linked_calls(name).get("calls", [])
 	notes = get_linked_notes(name) + get_linked_calls(name).get("notes", [])
 	tasks = get_linked_tasks(name) + get_linked_calls(name).get("tasks", [])
@@ -313,6 +346,144 @@ def get_lead_activities(name: str):
 	activities = handle_multiple_versions(activities)
 
 	return activities, calls, notes, tasks, attachments
+
+
+def read_receipt_times(communications: list) -> dict:
+	"""When each opened email was opened, keyed by Communication name.
+
+	`get_docinfo` returns `read_by_recipient` but not `read_by_recipient_on`, and
+	item 19's indicator says "Opened · 2 hours ago", which needs the timestamp.
+	One extra query for the handful of messages that were actually opened, rather
+	than a second lookup per message.
+	"""
+	names = [c.name for c in communications if c.get("read_by_recipient")]
+	if not names:
+		return {}
+
+	rows = frappe.get_all(
+		"Communication",
+		filters={"name": ["in", names]},
+		fields=["name", "read_by_recipient_on"],
+	)
+	return {row.name: row.read_by_recipient_on for row in rows}
+
+
+def sequence_stages(communications: list) -> dict:
+	"""Which email-sequence stage sent each of these messages, keyed by name.
+
+	Returns `{}` while `email_sequences_enabled` is off, which is the default and
+	costs one cached read of a Single. That guard is not decoration: without it
+	every lead and every deal on every site would pay two queries on open to learn
+	that a feature it does not use sent none of its email.
+
+	Permission note (master spec 3): the caller's read permission on the record
+	was checked by the function that calls this one, and the names come from that
+	record's own docinfo. Nothing here widens the scope.
+
+	Never raises. The outbound engine is optional, and a record must still open
+	when it is off, missing or broken.
+	"""
+	from crm.feature_flags import is_enabled
+	from crm.sequences.email import FLAG_EMAIL_SEQUENCES, JOB_TYPE_SEQUENCE
+
+	names = [c.name for c in communications if c.get("name")]
+	if not names or not is_enabled(FLAG_EMAIL_SEQUENCES):
+		return {}
+
+	try:
+		from crm import outbound
+
+		rows = frappe.get_all(
+			outbound.RECIPIENT_DOCTYPE,
+			filters={"communication": ["in", names]},
+			fields=["communication", "job"],
+		)
+		if not rows:
+			return {}
+
+		stage_by_job = {}
+		for job in frappe.get_all(
+			outbound.JOB_DOCTYPE,
+			filters={"name": ["in", [row.job for row in rows]], "job_type": JOB_TYPE_SEQUENCE},
+			fields=["name", "payload"],
+		):
+			payload = frappe.parse_json(job.payload or "{}") or {}
+			stage = frappe.utils.cint((payload.get("sequence") or {}).get("stage"))
+			if stage:
+				stage_by_job[job.name] = stage
+
+		return {row.communication: stage_by_job[row.job] for row in rows if row.job in stage_by_job}
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "CRM activities: sequence stage lookup failed")
+		return {}
+
+
+def get_scheduled_email_activities(doctype: str, name: str) -> list:
+	"""Item 5: the not-yet-sent scheduled emails on this record, as activities.
+
+	Read here rather than fetched separately by the timeline so a scheduled
+	message sorts into the same list, at the time it is due, next to the messages
+	that already went. Never raises: the outbound engine is optional and a record
+	must still open when it is off or broken.
+
+	Permission note (master spec §3): the caller's read permission on `name` was
+	checked by the function that calls this one, and the query is scoped to that
+	one record. Nothing here widens it.
+	"""
+	try:
+		from crm.api.email import describe_job, pending_jobs
+
+		activities = []
+		for job in pending_jobs(doctype, name):
+			data = describe_job(job)
+			if not data or not data.get("scheduled_at"):
+				# The timeline sorts on this value. A job with no due time has
+				# nowhere to sit, and a None here would break the sort for every
+				# other activity on the record.
+				continue
+			activities.append(
+				{
+					"name": data["name"],
+					"activity_type": "scheduled_email",
+					# The timeline sorts on `creation`; a scheduled message belongs
+					# at the moment it is due, which is the only date about it the
+					# reader cares about.
+					"creation": data["scheduled_at"],
+					"communication_date": data["scheduled_at"],
+					"owner": data["owner_user"],
+					"data": data,
+					"is_lead": doctype == "CRM Lead",
+				}
+			)
+		return activities
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "CRM activities: scheduled emails not listed")
+		return []
+
+
+def get_quote_view_activities(doctype: str, name: str) -> list:
+	"""Item 25: customer opens of a tokenised quote link, as activities.
+
+	Platform prefetches never reach this list -- see `crm.document_links`.
+	Never raises, for the same reason as above.
+	"""
+	try:
+		from crm import document_links
+
+		return [
+			{
+				"name": row["name"],
+				"activity_type": "quote_view",
+				"creation": row["viewed_at"] or row["creation"],
+				"owner": None,
+				"data": {"viewed_at": row["viewed_at"] or row["creation"]},
+				"is_lead": doctype == "CRM Lead",
+			}
+			for row in document_links.customer_views(doctype, name)
+		]
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "CRM activities: quote views not listed")
+		return []
 
 
 def get_attachments(doctype: str, name: str):

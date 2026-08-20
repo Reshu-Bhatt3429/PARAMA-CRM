@@ -23,6 +23,30 @@
              active row's shadow. Widen the scroll box to the sidebar edges and
              pad the content back in so the shadow has room. -->
         <div class="-mx-2 mt-2 flex flex-1 flex-col gap-1 overflow-y-auto px-2">
+          <!-- Search sits above Notifications rather than inside a feature
+               group: it is not a page, it opens the Cmd+K palette. -->
+          <SidebarItem
+            id="search-btn"
+            :label="__('Search')"
+            @click="openCommandPalette"
+          >
+            <template #prefix>
+              <span
+                class="lucide-search size-4 text-ink-gray-7"
+                aria-hidden="true"
+              />
+            </template>
+            <template #suffix>
+              <span
+                v-if="!isCollapsed"
+                class="mr-2 text-xs text-ink-gray-5"
+                aria-hidden="true"
+              >
+                {{ searchShortcutLabel }}
+              </span>
+            </template>
+          </SidebarItem>
+
           <SidebarItem
             id="notifications-btn"
             :label="__('Notifications')"
@@ -55,16 +79,14 @@
             v-for="section in allViews"
             :key="section.name"
             :label="section.name"
-            :hideLabel="section.hideLabel"
             :opened="section.opened"
           >
-            <template #header="{ opened, hide, toggle }">
+            <template #header="{ opened, toggle }">
               <SidebarLabel
-                v-if="!hide"
                 divider
                 class="mb-1 mt-4 select-none"
                 :class="!isCollapsed && 'cursor-pointer'"
-                @click="toggle()"
+                @click="toggleSection(section, opened, toggle)"
               >
                 <span class="flex items-center gap-1.5">
                   <span
@@ -83,10 +105,27 @@
                 :to="link.to"
                 :label="__(link.label)"
                 :active="activeItem === link.key"
-                @click="selectItem($event, link.key)"
+                @click="onLinkClick($event, link)"
               >
                 <template #prefix>
-                  <Icon :icon="link.icon" class="size-4 text-ink-gray-7" />
+                  <span class="relative grid size-4 place-items-center">
+                    <Icon :icon="link.icon" class="size-4 text-ink-gray-7" />
+                    <!-- On the collapsed rail there is no room for a pill, so
+                         the count becomes a dot, exactly as Notifications does
+                         above. -->
+                    <span
+                      v-if="isCollapsed && link.badge"
+                      class="absolute -right-1 -top-1 size-1.5 rounded-full bg-surface-gray-9 ring-1 ring-[var(--surface-gray-1)]"
+                    />
+                  </span>
+                </template>
+                <template #suffix>
+                  <span
+                    v-if="!isCollapsed && link.badge"
+                    class="crm-sidebar-badge mr-2"
+                  >
+                    {{ link.badge }}
+                  </span>
                 </template>
                 <Tooltip
                   :text="__(link.label)"
@@ -176,7 +215,11 @@
 
 <script setup>
 import BrushCleaningIcon from '~icons/lucide/brush-cleaning'
+import LucideImport from '~icons/lucide/import'
 import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
+import LucideMap from '~icons/lucide/map'
+import LucideReceipt from '~icons/lucide/receipt'
+import LucideSun from '~icons/lucide/sun'
 import CRMLogo from '@/components/Icons/CRMLogo.vue'
 import InviteIcon from '@/components/Icons/InviteIcon.vue'
 import ConvertIcon from '@/components/Icons/ConvertIcon.vue'
@@ -199,6 +242,7 @@ import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
 import CollapseSidebar from '@/components/Icons/CollapseSidebar.vue'
 import NotificationsIcon from '@/components/Icons/NotificationsIcon.vue'
+import SettingsIcon from '@/components/Icons/SettingsIcon.vue'
 import HelpIcon from '@/components/Icons/HelpIcon.vue'
 import Notifications from '@/components/Notifications.vue'
 import Settings from '@/components/Settings/Settings.vue'
@@ -215,7 +259,11 @@ import {
   mobileSidebarOpened,
 } from '@/composables/settings'
 import { showChangePasswordModal } from '@/composables/modals'
+import { openCommandPalette } from '@/composables/commandPalette'
 import { isWhatsappInstalled } from '@/composables/whatsapp'
+import { canUseItineraries } from '@/composables/itinerary'
+import { invoicesEnabled } from '@/composables/invoices'
+import { todayCount } from '@/composables/today'
 import { useBroadcast } from '@/composables/useBroadcast.js'
 import { call, Sidebar, SidebarItem, SidebarLabel, Tooltip } from 'frappe-ui'
 import {
@@ -241,6 +289,7 @@ const props = defineProps({
 
 const route = useRoute()
 
+const { user } = sessionStore()
 const { getPinnedViews, getPublicViews } = viewsStore()
 const { toggle: toggleNotificationPanel } = notificationsStore()
 const { capture } = useTelemetry()
@@ -249,6 +298,14 @@ const { send } = useBroadcast()
 
 const isSidebarCollapsed = useStorage('isSidebarCollapsed', false)
 
+// Which sidebar groups this user has collapsed, as { [group name]: true }.
+// One browser can hold sessions for several sites and several users, so the key
+// carries both; anything missing from the map counts as open.
+const collapsedGroupsKey = `crm:sidebar-groups:${
+  window.site_name || window.location.hostname
+}:${user || 'guest'}`
+const collapsedGroups = useStorage(collapsedGroupsKey, {})
+
 // The mobile drawer pins the sidebar open, so it is never visually collapsed
 // even when the stored rail state says otherwise.
 const isCollapsed = computed(() => isSidebarCollapsed.value && !props.mobile)
@@ -256,70 +313,149 @@ const isCollapsed = computed(() => isSidebarCollapsed.value && !props.mobile)
 const isFCSite = ref(window.is_fc_site)
 const isDemoSite = ref(window.is_demo_site)
 
-const links = [
+// The palette answers to both modifiers; the hint shows the one this machine
+// actually uses.
+const searchShortcutLabel =
+  typeof navigator !== 'undefined' &&
+  /Mac|iPhone|iPad/.test(navigator.platform || '')
+    ? '⌘K'
+    : 'Ctrl K'
+
+// Every feature page lives in one of these labelled groups, and every group is
+// open on first load, so a new user sees the whole app without expanding
+// anything. A group whose entries are all conditioned away is dropped entirely
+// rather than left as an empty header.
+const linkGroups = [
   {
-    label: 'Dashboard',
-    icon: LucideLayoutDashboard,
-    to: 'Dashboard',
-    condition: () => !props.mobile,
+    name: 'Sales',
+    links: [
+      {
+        // Top of the group on purpose (master spec §5, item 24): it is the
+        // Sales User's landing page, so it is also the first thing they see in
+        // the nav. `badge` names the ref the suffix slot renders.
+        label: 'Today',
+        icon: LucideSun,
+        to: 'Today',
+        badge: 'today',
+      },
+      {
+        label: 'Dashboard',
+        icon: LucideLayoutDashboard,
+        to: 'Dashboard',
+        condition: () => !props.mobile,
+      },
+      {
+        label: 'Leads',
+        icon: LeadsIcon,
+        to: 'Leads',
+      },
+      {
+        label: 'Deals',
+        icon: DealsIcon,
+        to: 'Deals',
+      },
+      {
+        label: 'Contacts',
+        icon: ContactsIcon,
+        to: 'Contacts',
+      },
+      {
+        label: 'Organizations',
+        icon: OrganizationsIcon,
+        to: 'Organizations',
+      },
+    ],
   },
   {
-    label: 'Leads',
-    icon: LeadsIcon,
-    to: 'Leads',
+    name: 'Work',
+    links: [
+      {
+        label: 'Tasks',
+        icon: TaskIcon,
+        to: 'Tasks',
+      },
+      {
+        label: 'Notes',
+        icon: NoteIcon,
+        to: 'Notes',
+      },
+      {
+        label: 'Calendar',
+        icon: CalendarIcon,
+        to: 'Calendar',
+        condition: () => !props.mobile,
+      },
+      {
+        label: 'Call Logs',
+        icon: PhoneIcon,
+        to: 'Call Logs',
+      },
+    ],
   },
   {
-    label: 'Deals',
-    icon: DealsIcon,
-    to: 'Deals',
+    name: 'Channels',
+    links: [
+      {
+        label: 'WhatsApp',
+        icon: WhatsAppIcon,
+        to: 'WhatsApp',
+        // The shared inbox is meaningless without the frappe_whatsapp app.
+        condition: () => isWhatsappInstalled.value,
+      },
+    ],
   },
   {
-    label: 'Contacts',
-    icon: ContactsIcon,
-    to: 'Contacts',
+    name: 'Travel',
+    links: [
+      {
+        label: 'Itineraries',
+        icon: LucideMap,
+        to: 'Itineraries',
+        // Hidden from anyone who cannot read an itinerary. The list is row
+        // filtered on the server as well, so this only decides what is worth
+        // showing.
+        condition: () => canUseItineraries.value,
+      },
+      {
+        label: 'Invoices',
+        icon: LucideReceipt,
+        to: 'Invoices',
+        // The module is behind a default-OFF flag (design note item 29,
+        // criterion 10). The endpoints refuse on their own while it is off, so
+        // this only decides what is worth showing.
+        condition: () => invoicesEnabled.value,
+      },
+    ],
   },
   {
-    label: 'Organizations',
-    icon: OrganizationsIcon,
-    to: 'Organizations',
-  },
-  {
-    label: 'Notes',
-    icon: NoteIcon,
-    to: 'Notes',
-  },
-  {
-    label: 'Tasks',
-    icon: TaskIcon,
-    to: 'Tasks',
-  },
-  {
-    label: 'Calendar',
-    icon: CalendarIcon,
-    to: 'Calendar',
-    condition: () => !props.mobile,
-  },
-  {
-    label: 'Call Logs',
-    icon: PhoneIcon,
-    to: 'Call Logs',
-  },
-  {
-    label: 'WhatsApp',
-    icon: WhatsAppIcon,
-    to: 'WhatsApp',
-    // The shared inbox is meaningless without the frappe_whatsapp app.
-    condition: () => isWhatsappInstalled.value,
+    name: 'More',
+    links: [
+      {
+        label: 'Data Import',
+        icon: LucideImport,
+        to: 'DataImportList',
+      },
+      {
+        label: 'Settings',
+        icon: SettingsIcon,
+        key: 'Settings',
+        // The settings modal is desktop only — it is not mounted on mobile, and
+        // UserDropdown hides its entry there for the same reason.
+        condition: () => !props.mobile,
+        onClick: () => (showSettings.value = true),
+      },
+    ],
   },
 ]
 
 const allViews = computed(() => {
-  let _views = [
-    {
-      name: 'All Views',
-      hideLabel: true,
-      opened: true,
-      views: links
+  let _views = linkGroups
+    .map((group) => ({
+      name: group.name,
+      // Feature groups remember their open state; saved-view sections do not.
+      storageKey: group.name,
+      opened: !collapsedGroups.value[group.name],
+      views: group.links
         .filter((link) => {
           if (link.condition) {
             return link.condition()
@@ -329,11 +465,16 @@ const allViews = computed(() => {
         .map((link) => ({
           label: link.label,
           icon: link.icon,
-          key: link.to,
-          to: { name: link.to },
+          key: link.key || link.to,
+          to: link.to ? { name: link.to } : undefined,
+          onClick: link.onClick,
+          // 0 renders nothing: a badge that always says "0" is noise, and UX
+          // §2.13 keeps the nav from becoming a badge shelf.
+          badge: link.badge === 'today' ? todayCount.value : 0,
         })),
-    },
-  ]
+    }))
+    .filter((group) => group.views.length)
+
   if (getPublicViews().length) {
     _views.push({
       name: 'Public Views',
@@ -351,6 +492,18 @@ const allViews = computed(() => {
   }
   return _views
 })
+
+// CollapsibleSection owns the open/closed ref once it is mounted, so the stored
+// value is written here on toggle instead of being watched. `opened` is the
+// state *before* the toggle, which is exactly the new collapsed state.
+function toggleSection(section, opened, toggle) {
+  toggle()
+  if (!section.storageKey) return
+  collapsedGroups.value = {
+    ...collapsedGroups.value,
+    [section.storageKey]: opened,
+  }
+}
 
 function parseView(views) {
   return views.map((view) => {
@@ -417,6 +570,19 @@ function selectItem(event, key) {
   }
 }
 
+// An entry either navigates (saved views and every routed page) or runs an
+// action, such as the Settings modal, which must not steal the active highlight.
+function onLinkClick(event, link) {
+  if (link.onClick) {
+    link.onClick()
+    if (props.mobile) {
+      mobileSidebarOpened.value = false
+    }
+    return
+  }
+  selectItem(event, link.key)
+}
+
 watch(
   () => [route.name, route.query.view],
   () => (activeItem.value = currentRouteKey()),
@@ -436,7 +602,6 @@ function toggleHelpModal() {
 }
 
 // onboarding
-const { user } = sessionStore()
 const { users, isManager } = usersStore()
 const { isOnboardingStepsCompleted, setUp } = useOnboarding('frappecrm')
 
@@ -738,7 +903,7 @@ const articles = ref([
     ],
   },
   {
-    title: __('Frappe CRM mobile'),
+    title: __('PARAMA CRM mobile'),
     opened: false,
     subArticles: [
       { name: 'mobile-app-installation', title: __('Mobile App Installation') },

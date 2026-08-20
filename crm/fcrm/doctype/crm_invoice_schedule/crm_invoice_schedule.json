@@ -1,0 +1,75 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-08-19 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "label",
+  "due_date",
+  "amount",
+  "settled",
+  "reminders_paused"
+ ],
+ "fields": [
+  {
+   "columns": 3,
+   "description": "What this instalment is called on the invoice, for example Deposit or Balance.",
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Label",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "description": "The reminder ladder for this row fires on this date, then seven days later, then fourteen.",
+   "fieldname": "due_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Due Date",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Amount",
+   "reqd": 1
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "description": "Set by the server when a payment is recorded against this row. A settled row sends no further reminders; the other rows carry on.",
+   "fieldname": "settled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Settled",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "description": "Stop this row's reminders without settling it.",
+   "fieldname": "reminders_paused",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Paused"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-19 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CRM Invoice Schedule",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "ASC",
+ "states": []
+}

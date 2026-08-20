@@ -9,8 +9,26 @@
     :doc="doc"
     :whatsappBox="whatsappBox"
     :modalRef="modalRef"
+    :briefLoading="briefLoading"
+    @summarize="generateBrief"
   />
   <FadedScrollableDiv class="flex flex-col h-full overflow-y-auto">
+    <!--
+      Items 13 + 28 + 15. One card, at the top, above whatever the timeline is
+      doing — including its loading state, so a regenerate does not make the
+      brief the agent is reading jump.
+    -->
+    <div v-if="brief && title == 'Activity'" class="px-3 pt-3 sm:px-10 sm:pt-5">
+      <BriefCard
+        :brief="brief"
+        :loading="briefLoading"
+        :saving="briefSaving"
+        @regenerate="generateBrief"
+        @dismiss="dismissBrief"
+        @create-task="createBriefTask"
+        @save-note="saveBriefAsNote"
+      />
+    </div>
     <div
       v-if="all_activities?.loading"
       class="flex flex-1 flex-col items-center justify-center gap-3 text-2xl-medium text-ink-gray-4"
@@ -187,6 +205,29 @@
             class="pb-5 mt-px"
           >
             <EmailArea :activity="activity" :emailBox="emailBox" />
+          </div>
+          <div
+            v-else-if="activity.activity_type == 'scheduled_email'"
+            class="pb-5 mt-px"
+          >
+            <ScheduledEmailArea
+              :job="activity.data"
+              @reload="all_activities.reload()"
+            />
+          </div>
+          <div
+            v-else-if="activity.activity_type == 'quote_view'"
+            :id="activity.name"
+            class="mb-4 flex items-center justify-stretch gap-2 py-1.5 text-base"
+          >
+            <div class="inline-flex flex-wrap items-center gap-1.5">
+              <span class="text-ink-gray-8 font-medium">{{
+                __('The customer opened the quote')
+              }}</span>
+            </div>
+            <div class="ml-auto whitespace-nowrap">
+              <TimelineTimestamp :date="activity.data.viewed_at" />
+            </div>
           </div>
           <div
             v-else-if="activity.activity_type == 'comment'"
@@ -439,7 +480,11 @@
 </template>
 <script setup>
 import ActivityHeader from '@/components/Activities/ActivityHeader.vue'
+import BriefCard from '@/components/Activities/BriefCard.vue'
 import EmailArea from '@/components/Activities/EmailArea.vue'
+import ScheduledEmailArea from '@/components/Activities/ScheduledEmailArea.vue'
+import LucideClock from '~icons/lucide/clock'
+import LucideFileText from '~icons/lucide/file-text'
 import CommentArea from '@/components/Activities/CommentArea.vue'
 import CallArea from '@/components/Activities/CallArea.vue'
 import NoteArea from '@/components/Activities/NoteArea.vue'
@@ -477,13 +522,21 @@ import AllModals from '@/components/Activities/AllModals.vue'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import TimelineTimestamp from '@/components/Activities/TimelineTimestamp.vue'
 import { startCase } from '@/utils'
+import {
+  briefNoteTitle,
+  briefToNoteHtml,
+  dueDateFromHint,
+  forgetBrief,
+  recallBrief,
+  rememberBrief,
+} from '@/utils/aiBrief'
 import { globalStore } from '@/stores/global'
 import { usersStore } from '@/stores/users'
 import { useTimelinePreferences } from '@/composables/useTimelinePreferences'
 import { whatsappEnabled } from '@/composables/whatsapp'
 import { useDocument } from '@/data/document'
 import { useTelemetry } from 'frappe-ui/frappe'
-import { Button, createResource, toast } from 'frappe-ui'
+import { Button, call, createResource, toast } from 'frappe-ui'
 import { useElementVisibility } from '@vueuse/core'
 import {
   ref,
@@ -626,6 +679,78 @@ function sendTemplate(template) {
 
 const replyMessage = ref({})
 
+// --- Items 13 + 28 + 15: the Brief card ------------------------------------
+//
+// On demand only. Nothing below runs unless the agent presses Summarize, so
+// opening a record costs no model call. The result lives in a session-local
+// cache keyed by record, which is why switching to the Emails tab and back does
+// not lose it and a reload does.
+
+const brief = ref(recallBrief(props.doctype, props.docname))
+const briefLoading = ref(false)
+const briefSaving = ref(false)
+
+async function generateBrief() {
+  if (briefLoading.value) return
+  briefLoading.value = true
+  try {
+    const data = await call('crm.api.ai_brief.generate', {
+      doctype: props.doctype,
+      name: props.docname,
+    })
+    brief.value = data
+    rememberBrief(props.doctype, props.docname, data)
+    capture('ai_brief_generated', { doctype: props.doctype })
+  } catch (error) {
+    toast.error(error.messages?.[0] || __('Could not write the brief'))
+  } finally {
+    briefLoading.value = false
+  }
+}
+
+function dismissBrief() {
+  brief.value = null
+  forgetBrief(props.doctype, props.docname)
+}
+
+/**
+ * C6: this opens the task modal with the suggestion filled in. The agent still
+ * presses Create. The AI never writes to a record on its own.
+ */
+function createBriefTask() {
+  const step = brief.value?.next_step
+  if (!step?.description) return
+  modalRef.value?.showTask(null, {
+    title: step.description.slice(0, 140),
+    due_date: dueDateFromHint(step.due_hint),
+  })
+}
+
+async function saveBriefAsNote() {
+  if (!brief.value || briefSaving.value) return
+  briefSaving.value = true
+  try {
+    await call('frappe.client.insert', {
+      doc: {
+        doctype: 'FCRM Note',
+        title: briefNoteTitle(brief.value.generated_at, __('AI Brief')),
+        content: briefToNoteHtml(brief.value, {
+          nextStep: __('Suggested next step'),
+          tone: __('Tone'),
+        }),
+        reference_doctype: props.doctype,
+        reference_docname: props.docname,
+      },
+    })
+    toast.success(__('Brief saved as a note'))
+    all_activities.reload()
+  } catch (error) {
+    toast.error(error.messages?.[0] || __('Could not save the note'))
+  } finally {
+    briefSaving.value = false
+  }
+}
+
 function get_activities() {
   if (!all_activities.data?.versions) return []
   if (!all_activities.data?.calls.length)
@@ -639,8 +764,11 @@ const activities = computed(() => {
     _activities = get_activities()
   } else if (title.value == 'Emails') {
     if (!all_activities.data?.versions) return []
-    _activities = all_activities.data.versions.filter(
-      (activity) => activity.activity_type === 'communication',
+    _activities = all_activities.data.versions.filter((activity) =>
+      // A scheduled email is an email. Hiding it from the Emails tab would put
+      // the one message an agent might still want to stop on the one tab they
+      // are least likely to be looking at.
+      ['communication', 'scheduled_email'].includes(activity.activity_type),
     )
   } else if (title.value == 'Comments') {
     if (!all_activities.data?.versions) return []
@@ -667,7 +795,12 @@ const activities = computed(() => {
     if (
       activity.activity_type == 'incoming_call' ||
       activity.activity_type == 'outgoing_call' ||
-      activity.activity_type == 'communication'
+      activity.activity_type == 'communication' ||
+      // Items 5 and 25. Neither has a human owner to name: a scheduled email
+      // renders its own card, and a quote view is the customer, who has no
+      // User record here.
+      activity.activity_type == 'scheduled_email' ||
+      activity.activity_type == 'quote_view'
     )
       return
 
@@ -818,6 +951,12 @@ function timelineIcon(activity_type, is_lead) {
       break
     case 'attachment_log':
       icon = AttachmentIcon
+      break
+    case 'scheduled_email':
+      icon = LucideClock
+      break
+    case 'quote_view':
+      icon = LucideFileText
       break
     default:
       icon = DotIcon

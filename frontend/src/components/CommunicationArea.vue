@@ -55,6 +55,7 @@
       :placeholder="
         __('Hi John, \n\nCan you please provide more details on this...')
       "
+      @schedule="scheduleEmail"
     />
   </div>
   <div
@@ -92,11 +93,17 @@ import CommentBox from '@/components/CommentBox.vue'
 import CommentIcon from '@/components/Icons/CommentIcon.vue'
 import Email2Icon from '@/components/Icons/Email2Icon.vue'
 import { isContentEmpty } from '@/utils'
+import {
+  deletableAttachments,
+  forwardQuote,
+  forwardSubject,
+  forwardedAttachments,
+} from '@/utils/emailForward'
 import { usersStore } from '@/stores/users'
 import { useStorage } from '@vueuse/core'
 import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
 import { call, createResource, toast } from 'frappe-ui'
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 
 const props = defineProps({
   doctype: { type: String, default: 'CRM Lead' },
@@ -213,7 +220,11 @@ async function sendMail() {
   if (attachments.value.length) {
     capture('email_attachments_added')
   }
-  await call('frappe.core.doctype.communication.email.make', {
+  // `crm.api.email.send_email` and not the framework's `communication.email.make`:
+  // the wrapper asks the Stage-1A suppression ledger before it hands the same
+  // arguments to the same `make`. A send to addresses nobody opted out of is
+  // unchanged; a send to an address that did opt out is held back and named.
+  const result = await call('crm.api.email.send_email', {
     recipients: recipients.join(', '),
     attachments: attachments.value.map((x) => x.name),
     cc: cc.join(', '),
@@ -222,10 +233,122 @@ async function sendMail() {
     content: newEmail.value,
     doctype: props.doctype,
     name: doc.value.name,
-    send_email: 1,
     sender: fromEmail,
     sender_full_name: getUser()?.full_name || undefined,
   })
+
+  if (result?.suppressed?.length) {
+    toast.warning(
+      __('Not sent to {0}: opted out', [result.suppressed.join(', ')]),
+    )
+  }
+}
+
+/**
+ * Item 5: park the composed email instead of sending it.
+ *
+ * The draft is cleared exactly as a real send clears it -- the message now
+ * belongs to a `CRM Outbound Job` and leaving a copy in the composer would
+ * invite the agent to send it a second time by hand.
+ *
+ * `payload` is either `{ preset }` or `{ send_at }`. Neither is a time this
+ * browser decided: a preset is resolved on the server in the sender's timezone,
+ * and `send_at` is a naive local wall clock the server reads the same way.
+ */
+async function scheduleEmail(payload) {
+  if (emailEmpty.value) return
+
+  const editor = newEmailEditor.value
+  const scheduling = call('crm.api.email.schedule_email', {
+    doctype: props.doctype,
+    name: doc.value.name,
+    recipients: (editor.toEmails || []).join(', '),
+    cc: (editor.ccEmails || []).join(', '),
+    bcc: (editor.bccEmails || []).join(', '),
+    subject: editor.subject,
+    content: newEmail.value,
+    attachments: attachments.value.map((x) => x.name),
+    sender: editor.fromEmail || getUser().email,
+    sender_full_name: getUser()?.full_name || undefined,
+    ...payload,
+  })
+
+  toast.promise(scheduling, {
+    loading: __('Scheduling...'),
+    success: __('Email scheduled'),
+    error: (e) => e?.messages?.[0] || __('Could not schedule the email'),
+  })
+
+  try {
+    await scheduling
+  } catch {
+    return
+  }
+
+  showEmailBox.value = false
+  newEmail.value = ''
+  attachments.value = []
+  reload.value = true
+  emit('scroll')
+  capture('email_scheduled', { doctype: props.doctype })
+}
+
+/**
+ * Open the composer as a forward of `email`.
+ *
+ * Recipients start empty and the To field takes focus -- a forward has no
+ * implied recipient, and guessing one is how a customer's thread reaches the
+ * wrong person. The original attachments come across as chips, marked so that
+ * Discard does not delete the files off the message being forwarded.
+ */
+async function forward(email) {
+  if (showCommentBox.value) showCommentBox.value = false
+  showEmailBox.value = true
+  await nextTick()
+
+  const editor = newEmailEditor.value
+  editor.fromEmail = editor.fromEmail || getUser().email
+  editor.toEmails = []
+  editor.ccEmails = []
+  editor.bccEmails = []
+  editor.cc = false
+  editor.bcc = false
+  editor.subject = forwardSubject(email.subject)
+
+  const quote = forwardQuote(email, {
+    forwarded: __('Forwarded message'),
+    from: __('From'),
+    date: __('Date'),
+    subject: __('Subject'),
+    to: __('To'),
+  })
+
+  editor.editor
+    .chain()
+    .clearContent()
+    .updateAttributes('paragraph', { class: 'reply-to-content' })
+    .insertContent(quote)
+    .focus('all')
+    .insertContentAt(0, { type: 'paragraph' })
+    .run()
+
+  // Carried-over files sit alongside anything already attached to the draft.
+  const carried = forwardedAttachments(email.attachments)
+  const held = new Set(attachments.value.map((a) => a.name))
+  attachments.value = [
+    ...attachments.value,
+    ...carried.filter((a) => !held.has(a.name)),
+  ]
+
+  // The `showEmailBox` watcher already ran and its signature was wiped by
+  // `clearContent` above. Put it back on top of the quote rather than leaving
+  // the forward as the one composer that sends without a signature.
+  signatureAdded.value = false
+  setSignature(editor.editor)
+
+  await nextTick()
+  editor.focusTo?.()
+  capture('email_forwarded', { doctype: props.doctype })
 }
 
 async function sendComment() {
@@ -248,16 +371,20 @@ async function sendComment() {
 async function deleteAttachedFiles() {
   if (!attachments.value || attachments.value.length === 0) return
 
-  const deletePromises = attachments.value.map(async (file) => {
-    try {
-      await call('frappe.client.delete', {
-        doctype: 'File',
-        name: file.name,
-      })
-    } catch (error) {
-      console.warn(`Failed to delete file ${file.name}:`, error)
-    }
-  })
+  // Files carried in by a forward belong to the message being forwarded. This
+  // composer uploaded neither of them and must not delete either of them.
+  const deletePromises = deletableAttachments(attachments.value).map(
+    async (file) => {
+      try {
+        await call('frappe.client.delete', {
+          doctype: 'File',
+          name: file.name,
+        })
+      } catch (error) {
+        console.warn(`Failed to delete file ${file.name}:`, error)
+      }
+    },
+  )
 
   await Promise.all(deletePromises)
 
@@ -329,5 +456,6 @@ defineExpose({
   show: showEmailBox,
   showComment: showCommentBox,
   editor: newEmailEditor,
+  forward,
 })
 </script>

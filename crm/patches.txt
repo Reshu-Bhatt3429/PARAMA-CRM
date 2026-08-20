@@ -32,3 +32,11 @@ crm.patches.v1_0.add_enrichment_fields_to_layouts
 crm.patches.v1_0.reorder_address_quick_entry_layout
 crm.patches.v1_0.add_travel_lead_statuses
 crm.patches.v1_0.add_travel_fields_to_lead_layouts
+crm.patches.v1_0.create_default_followup_stages
+crm.patches.v1_0.backfill_followup_guardrail_defaults
+crm.patches.v1_0.create_parama_contact_key_fields #18-08-2026
+crm.patches.v1_0.backfill_parama_contact_keys #18-08-2026
+crm.patches.v1_0.add_task_reminder_index #18-08-2026
+crm.patches.v1_0.set_task_reminder_offset_default #19-08-2026
+crm.patches.v1_0.create_parama_deal_health_field #19-08-2026
+crm.patches.v1_0.backfill_followup_stage_channel #19-08-2026

@@ -1,0 +1,446 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-08-19 12:00:00.000000",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "invoice_number",
+  "status",
+  "deal",
+  "column_break_head",
+  "invoice_date",
+  "due_date",
+  "service_date",
+  "terms_section",
+  "mode",
+  "reverse_charge",
+  "column_break_terms",
+  "place_of_supply",
+  "company_state_code",
+  "intra_state",
+  "customer_section",
+  "customer_name",
+  "customer_address",
+  "column_break_customer",
+  "customer_state",
+  "customer_state_code",
+  "customer_gstin",
+  "customer_email",
+  "customer_phone",
+  "items_section",
+  "items",
+  "totals_section",
+  "currency",
+  "taxable_total",
+  "cgst_amount",
+  "sgst_amount",
+  "igst_amount",
+  "column_break_totals",
+  "tax_total",
+  "rounding_adjustment",
+  "grand_total",
+  "paid_total",
+  "outstanding_amount",
+  "schedule_section",
+  "reminders_paused",
+  "payment_schedule",
+  "payments_section",
+  "payments",
+  "history_section",
+  "status_log",
+  "lock_section",
+  "number_locked_at",
+  "sent_at",
+  "column_break_lock",
+  "voided_at",
+  "voided_by",
+  "void_reason",
+  "notes_section",
+  "terms"
+ ],
+ "fields": [
+  {
+   "description": "Allocated by the server when the invoice is issued, and never changed afterwards. GST Rule 46(b): at most 16 characters, letters, digits, hyphen and slash only, unique for the financial year.",
+   "fieldname": "invoice_number",
+   "fieldtype": "Data",
+   "in_global_search": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Invoice Number",
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "default": "Draft",
+   "description": "Overdue is NOT a stored status. It is worked out from the due date whenever the invoice is read, so it can never be a day out of date.",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Draft\nSent\nPartially Paid\nPaid\nVoid",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "description": "The deal this invoice bills. It is also what decides who may see the invoice: the row inherits the deal's org-hierarchy scope.",
+   "fieldname": "deal",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Deal",
+   "options": "CRM Deal",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "invoice_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Invoice Date",
+   "reqd": 1
+  },
+  {
+   "description": "When the whole amount is due. A payment schedule below overrides it per instalment.",
+   "fieldname": "due_date",
+   "fieldtype": "Date",
+   "label": "Due Date"
+  },
+  {
+   "description": "When the service was supplied. GST Rule 47 asks for the invoice within 30 days of it; a later invoice date raises a warning and is still allowed.",
+   "fieldname": "service_date",
+   "fieldtype": "Date",
+   "label": "Service Date"
+  },
+  {
+   "fieldname": "terms_section",
+   "fieldtype": "Section Break",
+   "label": "GST Treatment"
+  },
+  {
+   "default": "Commission",
+   "description": "Tour Package bills 5% on the gross amount without input tax credit and prints the mandatory tour-operator statement. Commission bills the standard rate on the service fee.",
+   "fieldname": "mode",
+   "fieldtype": "Select",
+   "label": "Mode",
+   "options": "Tour Package\nCommission",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "reverse_charge",
+   "fieldtype": "Check",
+   "label": "Reverse Charge"
+  },
+  {
+   "fieldname": "column_break_terms",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "The two-digit GST state code of the place of supply. Same as the agency's state means CGST plus SGST; a different state means IGST.",
+   "fieldname": "place_of_supply",
+   "fieldtype": "Data",
+   "label": "Place Of Supply (State Code)"
+  },
+  {
+   "description": "The agency's own state code, copied here when the invoice is created so a later change to Company Profile cannot re-split an invoice that was already issued.",
+   "fieldname": "company_state_code",
+   "fieldtype": "Data",
+   "label": "Supplier State Code",
+   "read_only": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "intra_state",
+   "fieldtype": "Check",
+   "label": "Intra State",
+   "read_only": 1
+  },
+  {
+   "fieldname": "customer_section",
+   "fieldtype": "Section Break",
+   "label": "Recipient"
+  },
+  {
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Name"
+  },
+  {
+   "fieldname": "customer_address",
+   "fieldtype": "Small Text",
+   "label": "Address"
+  },
+  {
+   "fieldname": "column_break_customer",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "customer_state",
+   "fieldtype": "Data",
+   "label": "State"
+  },
+  {
+   "description": "Two digits. Required, with the name and address, on an unregistered-customer invoice of Rs 50,000 or more.",
+   "fieldname": "customer_state_code",
+   "fieldtype": "Data",
+   "label": "State Code"
+  },
+  {
+   "description": "The recipient's GSTIN, where they have one. An invoice with no GSTIN is treated as B2C.",
+   "fieldname": "customer_gstin",
+   "fieldtype": "Data",
+   "label": "GSTIN"
+  },
+  {
+   "fieldname": "customer_email",
+   "fieldtype": "Data",
+   "label": "Email",
+   "options": "Email"
+  },
+  {
+   "fieldname": "customer_phone",
+   "fieldtype": "Data",
+   "label": "Phone"
+  },
+  {
+   "fieldname": "items_section",
+   "fieldtype": "Section Break",
+   "label": "Items"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "CRM Invoice Item"
+  },
+  {
+   "fieldname": "totals_section",
+   "fieldtype": "Section Break",
+   "label": "Totals"
+  },
+  {
+   "default": "INR",
+   "description": "v1 issues invoices in Indian rupees only.",
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "taxable_total",
+   "fieldtype": "Currency",
+   "label": "Taxable Value",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cgst_amount",
+   "fieldtype": "Currency",
+   "label": "CGST",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sgst_amount",
+   "fieldtype": "Currency",
+   "label": "SGST",
+   "read_only": 1
+  },
+  {
+   "fieldname": "igst_amount",
+   "fieldtype": "Currency",
+   "label": "IGST",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_totals",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tax_total",
+   "fieldtype": "Currency",
+   "label": "Total Tax",
+   "read_only": 1
+  },
+  {
+   "description": "What Section 170 rounding moved, shown as its own line so a customer who adds the columns up can see where the paise went.",
+   "fieldname": "rounding_adjustment",
+   "fieldtype": "Currency",
+   "label": "Rounding",
+   "read_only": 1
+  },
+  {
+   "fieldname": "grand_total",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Grand Total",
+   "read_only": 1
+  },
+  {
+   "fieldname": "paid_total",
+   "fieldtype": "Currency",
+   "label": "Paid",
+   "read_only": 1
+  },
+  {
+   "fieldname": "outstanding_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Outstanding",
+   "read_only": 1
+  },
+  {
+   "fieldname": "schedule_section",
+   "fieldtype": "Section Break",
+   "label": "Payment Schedule"
+  },
+  {
+   "default": "0",
+   "description": "Stop every reminder ladder on this invoice. Individual schedule rows can also be paused on their own.",
+   "fieldname": "reminders_paused",
+   "fieldtype": "Check",
+   "label": "Pause Reminders"
+  },
+  {
+   "fieldname": "payment_schedule",
+   "fieldtype": "Table",
+   "label": "Schedule",
+   "options": "CRM Invoice Schedule"
+  },
+  {
+   "fieldname": "payments_section",
+   "fieldtype": "Section Break",
+   "label": "Payments"
+  },
+  {
+   "description": "Append-only. A payment recorded wrongly is corrected with a negative row and a note, never by an edit and never by a delete.",
+   "fieldname": "payments",
+   "fieldtype": "Table",
+   "label": "Payments",
+   "options": "CRM Invoice Payment",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "history_section",
+   "fieldtype": "Section Break",
+   "label": "Status History"
+  },
+  {
+   "fieldname": "status_log",
+   "fieldtype": "Table",
+   "label": "Status Log",
+   "options": "CRM Invoice Status Log",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "lock_section",
+   "fieldtype": "Section Break",
+   "label": "Issue And Void"
+  },
+  {
+   "description": "Set the moment the number was allocated. While this is empty the invoice is a draft and may be renumbered; once it is set the number, the items and the amounts are frozen.",
+   "fieldname": "number_locked_at",
+   "fieldtype": "Datetime",
+   "label": "Number Locked At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sent_at",
+   "fieldtype": "Datetime",
+   "label": "Issued At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_lock",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "voided_at",
+   "fieldtype": "Datetime",
+   "label": "Voided At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "voided_by",
+   "fieldtype": "Link",
+   "label": "Voided By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "void_reason",
+   "fieldtype": "Small Text",
+   "label": "Void Reason",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "notes_section",
+   "fieldtype": "Section Break",
+   "label": "Terms"
+  },
+  {
+   "description": "Printed at the foot of the invoice. Starts from the default in Company Profile.",
+   "fieldname": "terms",
+   "fieldtype": "Small Text",
+   "label": "Terms"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-19 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CRM Invoice",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Sales User",
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "invoice_number"
+}

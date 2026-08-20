@@ -1,0 +1,178 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-08-18 12:00:00.000000",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "channel",
+  "address",
+  "state",
+  "active",
+  "column_break_suppression",
+  "suppression_key",
+  "source",
+  "suppressed_at",
+  "reference_section",
+  "reference_doctype",
+  "reference_name",
+  "release_section",
+  "released_at",
+  "released_by",
+  "release_reason"
+ ],
+ "fields": [
+  {
+   "description": "Delivery channel this suppression covers. A person who opts out of WhatsApp is not thereby opted out of email.",
+   "fieldname": "channel",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Channel",
+   "options": "Email\nWhatsApp",
+   "reqd": 1
+  },
+  {
+   "description": "Normalised address: a lower-cased email, or a phone number in E.164. Never store a raw value here.",
+   "fieldname": "address",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Address",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "default": "Opted Out",
+   "description": "Opted Out is a request from the person. Bounced and Complained come from the provider.",
+   "fieldname": "state",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "State",
+   "options": "Opted Out\nBounced\nComplained",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "description": "Cleared only by crm.suppression.unsuppress, which needs a reason and writes an audit comment. The row itself is never deleted, so the history survives a reversal.",
+   "fieldname": "active",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Active"
+  },
+  {
+   "fieldname": "column_break_suppression",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "channel + normalised address, enforced by a unique index. One row per person per channel, whatever happened to it since.",
+   "fieldname": "suppression_key",
+   "fieldtype": "Data",
+   "label": "Suppression Key",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "description": "What produced this suppression: the inbound message, the bounce report, the manager who entered it.",
+   "fieldname": "source",
+   "fieldtype": "Small Text",
+   "label": "Source"
+  },
+  {
+   "fieldname": "suppressed_at",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Suppressed At"
+  },
+  {
+   "fieldname": "reference_section",
+   "fieldtype": "Section Break",
+   "label": "Reference"
+  },
+  {
+   "description": "The record the suppression was captured from, when there was one.",
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Reference Document Type",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Reference Name",
+   "options": "reference_doctype"
+  },
+  {
+   "depends_on": "eval:!doc.active",
+   "fieldname": "release_section",
+   "fieldtype": "Section Break",
+   "label": "Reversal"
+  },
+  {
+   "fieldname": "released_at",
+   "fieldtype": "Datetime",
+   "label": "Released At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "released_by",
+   "fieldtype": "Link",
+   "label": "Released By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "release_reason",
+   "fieldtype": "Small Text",
+   "label": "Release Reason",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-18 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CRM Suppression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Sales User"
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

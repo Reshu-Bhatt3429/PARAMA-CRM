@@ -18,11 +18,14 @@ export default defineConfig(async ({ mode }) => {
         },
         manifest: {
           display: 'standalone',
-          name: 'Frappe CRM',
-          short_name: 'Frappe CRM',
+          // brand indigo — matches --surface-gray-10 in src/index.css
+          theme_color: '#4f46e5',
+          background_color: '#ffffff',
+          name: 'PARAMA CRM',
+          short_name: 'PARAMA CRM',
           start_url: '/crm',
           description:
-            'Modern & 100% Open-source CRM tool to supercharge your sales operations',
+            'Travel sales CRM — leads, itineraries and follow-ups in one place',
           icons: [
             {
               src: '/assets/crm/manifest/manifest-icon-192.maskable.png',

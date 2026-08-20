@@ -86,6 +86,7 @@
               {{ title }}
             </div>
           </Tooltip>
+          <TagChips doctype="CRM Deal" :name="dealId" />
           <div class="flex gap-1.5">
             <Button
               v-if="callEnabled"
@@ -120,6 +121,25 @@
               :tooltip="__('Attach a File')"
               :icon="AttachmentIcon"
               @click="showFilesUploader = true"
+            />
+
+            <!-- Item 25. One action, beside the other record actions rather
+                 than in the header: the header is not a shelf (spec §2.13). -->
+            <Button
+              :tooltip="__('Create quote')"
+              :icon="LucideFileText"
+              @click="showQuoteModal = true"
+            />
+
+            <!-- Item 29, same placement as Create quote. Hidden while
+                 `invoices_enabled` is off; `convert_deal` refuses on its own,
+                 and it accepts a deal in any state. -->
+            <Button
+              v-if="invoicesEnabled"
+              :tooltip="__('Create invoice')"
+              :icon="LucideReceipt"
+              :loading="creatingInvoice"
+              @click="createInvoice"
             />
 
             <Button
@@ -326,6 +346,12 @@
       }
     "
   />
+  <QuoteModal
+    v-if="showQuoteModal"
+    v-model="showQuoteModal"
+    :deal="dealId"
+    @sent="activities?.all_activities?.reload()"
+  />
   <DeleteLinkedDocModal
     v-if="showDeleteLinkedDocModal"
     v-model="showDeleteLinkedDocModal"
@@ -342,6 +368,9 @@
 </template>
 <script setup>
 import DeleteLinkedDocModal from '@/components/DeleteLinkedDocModal.vue'
+import QuoteModal from '@/components/Modals/QuoteModal.vue'
+import LucideFileText from '~icons/lucide/file-text'
+import LucideReceipt from '~icons/lucide/receipt'
 import ErrorPage from '@/components/ErrorPage.vue'
 import Icon from '@/components/Icon.vue'
 import Resizer from '@/components/Resizer.vue'
@@ -362,6 +391,7 @@ import ArrowUpRightIcon from '@/components/Icons/ArrowUpRightIcon.vue'
 import SuccessIcon from '@/components/Icons/SuccessIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
+import TagChips from '@/components/TagChips.vue'
 import Activities from '@/components/Activities/Activities.vue'
 import OrganizationModal from '@/components/Modals/OrganizationModal.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
@@ -387,6 +417,7 @@ import { statusesStore } from '@/stores/statuses'
 import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
 import { whatsappEnabled } from '@/composables/whatsapp'
+import { invoicesEnabled } from '@/composables/invoices'
 import { callEnabled } from '@/composables/telephony'
 import { useBroadcast } from '@/composables/useBroadcast'
 import {
@@ -412,6 +443,7 @@ import {
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useActiveTabManager } from '@/composables/useActiveTabManager'
+import { useRecents } from '@/composables/recents'
 
 const { on } = useBroadcast()
 const { brand } = getSettings()
@@ -442,6 +474,15 @@ const {
   scripts,
   error,
 } = useDocument('CRM Deal', props.dealId)
+
+// Item 11 (recently viewed). Recorded only once the document loaded:
+// a record the user may not read never reaches here.
+const { record: recordRecent } = useRecents()
+watch(
+  () => document.doc?.name,
+  (name) => name && recordRecent('CRM Deal', name),
+  { immediate: true },
+)
 
 const canDelete = computed(() => permissions.data?.permissions?.delete || false)
 
@@ -515,7 +556,32 @@ onBeforeUnmount(() => {
 const reload = ref(false)
 const showOrganizationModal = ref(false)
 const showFilesUploader = ref(false)
+// Item 25.
+const showQuoteModal = ref(false)
+// Item 29. One click raises a DRAFT: nothing is issued and nothing is sent, so
+// there is no confirmation to ask for. The draft is where the agent fixes the
+// customer address the conversion could not find.
+const creatingInvoice = ref(false)
 const _organization = ref({})
+
+async function createInvoice() {
+  creatingInvoice.value = true
+  try {
+    const invoice = await call('crm.api.invoices.convert_deal', {
+      deal: props.dealId,
+    })
+    toast.success(__('Draft invoice created'))
+    router.push({ name: 'Invoice', params: { invoiceId: invoice.name } })
+  } catch (error) {
+    toast.error(
+      error?.messages?.[0] ||
+        error?.message ||
+        __('Could not create the invoice'),
+    )
+  } finally {
+    creatingInvoice.value = false
+  }
+}
 
 const breadcrumbs = computed(() => {
   let items = [{ label: __('Deals'), route: { name: 'Deals' } }]
