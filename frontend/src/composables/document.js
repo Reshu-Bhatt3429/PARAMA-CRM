@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { call, toast } from 'frappe-ui'
+import { openSafeUrl } from '@/utils/safeUrl'
 
 export const showCreateDocumentModal = ref(false)
 export const createDocumentDoctype = ref('')
@@ -30,7 +31,7 @@ export async function createDocument(doctype, obj, close, callback) {
   if (doctype === 'CRM Product' && (await shouldCreateProductInERPNext())) {
     close?.()
     toast.info(__('Create products as Items in ERPNext'))
-    window.open('/app/item/new', '_blank')
+    openSafeUrl('/app/item/new')
     return
   }
   close?.()

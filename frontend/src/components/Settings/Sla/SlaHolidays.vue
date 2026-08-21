@@ -182,6 +182,7 @@ import { ConfirmDelete, getGridTemplateColumnsForTable } from '../../../utils'
 import { slaData, slaDataErrors } from './utils'
 import { ref } from 'vue'
 import WorkDayModal from './WorkDayModal.vue'
+import { openSafeUrl } from '@/utils/safeUrl'
 
 const dialog = ref({
   show: false,
@@ -238,7 +239,7 @@ const workDayOptions = [
 ]
 
 const createNewHolidayList = () => {
-  window.open(`${window.location.origin}/app/crm-holiday-list`)
+  openSafeUrl('/app/crm-holiday-list')
 }
 
 const deleteWorkDay = (workDay) => {
@@ -280,9 +281,7 @@ const addWorkDay = () => {
 }
 
 const editHolidayList = (holidayList) => {
-  window.open(
-    `${window.location.origin}/app/crm-holiday-list/${holidayList.name}`,
-  )
+  openSafeUrl(`/app/crm-holiday-list/${encodeURIComponent(holidayList.name)}`)
 }
 
 const formatTime = (time) => {

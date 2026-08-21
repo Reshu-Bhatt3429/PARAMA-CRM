@@ -188,7 +188,10 @@ class TestAuthorization(ComposeTestCase):
 	def test_the_endpoint_is_post_only(self):
 		"""A GET-able sender is a CSRF target."""
 		self.assertIn(compose.send_email, frappe.whitelisted)
-		self.assertEqual(frappe.allowed_http_methods_for_whitelisted_func[compose.send_email], ["POST"])
+		self.assertEqual(
+			tuple(frappe.allowed_http_methods_for_whitelisted_func[compose.send_email]),
+			("POST",),
+		)
 
 	def test_the_dotted_path_resolves(self):
 		self.assertTrue(callable(frappe.get_attr("crm.api.email.send_email")))

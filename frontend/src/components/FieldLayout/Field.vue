@@ -328,6 +328,7 @@ import {
   interpolateTemplate,
 } from '@/utils'
 import { flt, formatNumber, formatCurrency } from '@/utils/numberFormat.js'
+import { openSafeUrl } from '@/utils/safeUrl'
 import { getMeta } from '@/stores/meta'
 import {
   parseLinkFilters,
@@ -602,7 +603,7 @@ function isExternalUrl(value) {
 }
 
 function openExternalUrl(value) {
-  window.open(value.trim(), '_blank', 'noopener,noreferrer')
+  openSafeUrl(value)
 }
 
 async function handleButtonClick(field) {

@@ -196,12 +196,11 @@ async function sendWhatsAppMessage() {
   createResource({
     url: 'crm.api.whatsapp.create_whatsapp_message',
     params: args,
-    auto: true,
     onSuccess: () => whatsapp.value.reload(),
     onError: (error) => {
       toast.error(error.messages?.[0] || __('Failed to send WhatsApp message'))
     },
-  })
+  }).submit()
 }
 
 function uploadOptions(openFileSelector) {

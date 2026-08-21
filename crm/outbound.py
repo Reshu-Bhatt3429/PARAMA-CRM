@@ -144,7 +144,7 @@ class InvalidTransition(frappe.ValidationError):
 
 
 def commit():
-	frappe.db.commit()
+	frappe.db.commit()  # nosemgrep
 
 
 def rollback():

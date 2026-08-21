@@ -15,6 +15,7 @@ makes the binary path an environment test, not a code test. The HTML is what
 this module owns, and it is where a template regression would show.
 """
 
+import base64
 import json
 from unittest.mock import patch
 
@@ -25,6 +26,7 @@ from crm.ai.client import AIConfigurationError, AIResponseError
 from crm.api import itinerary as api
 from crm.fcrm.doctype.crm_itinerary.crm_itinerary import (
 	ItinerarySchemaError,
+	clean_image,
 	dump_days,
 	empty_day,
 	parse_days,
@@ -143,6 +145,10 @@ class TestCreateFromLead(ItineraryTestCase):
 		self.assertEqual(doc.status, "Draft")
 		self.assertEqual(doc.version, 1)
 		self.assertEqual(doc.title, "Maldives — Ravi Kulkarni")
+		self.assertEqual(doc.customer_name, "Ravi Kulkarni")
+		self.assertEqual(doc.duration_label, "5 Days / 4 Nights")
+		self.assertEqual(doc.group_size_label, "4 travellers")
+		self.assertEqual(doc.theme, "Sunrise")
 		self.assertEqual(parse_days(doc.days_json), [])
 
 	def test_makes_no_ai_call(self):
@@ -241,6 +247,10 @@ class TestGenerateSkeleton(ItineraryTestCase):
 class TestGenerateDay(ItineraryTestCase):
 	def day_answer(self):
 		return {
+			"highlights": ["Lagoon arrival", "Sunset cruise"],
+			"description": "Arrive over the atolls and settle into island time.",
+			"accommodation": "Water villa",
+			"meals": {"breakfast": False, "lunch": True, "dinner": True},
 			"slots": [
 				{
 					"time_of_day": "morning",
@@ -266,7 +276,7 @@ class TestGenerateDay(ItineraryTestCase):
 						}
 					],
 				},
-			]
+			],
 		}
 
 	def test_writes_only_the_requested_day(self):
@@ -308,6 +318,17 @@ class TestGenerateDay(ItineraryTestCase):
 			[slot["time_of_day"] for slot in result["day"]["slots"]],
 			["morning", "afternoon", "evening"],
 		)
+
+	def test_writes_the_customer_proposal_fields(self):
+		doc = self.new_itinerary()
+		with patch("crm.api.itinerary.complete", return_value=self.day_answer()):
+			result = api.generate_day(doc.name, 1)
+
+		day = result["day"]
+		self.assertEqual(day["highlights"], ["Lagoon arrival", "Sunset cruise"])
+		self.assertIn("island time", day["description"])
+		self.assertEqual(day["accommodation"], "Water villa")
+		self.assertEqual(day["meals"], {"breakfast": False, "lunch": True, "dinner": True})
 
 	def test_strips_urls_the_model_was_told_not_to_write(self):
 		doc = self.new_itinerary()
@@ -552,6 +573,102 @@ class TestUpdateDetails(ItineraryTestCase):
 		self.assertEqual(payload["name"], doc.name)
 		self.assertEqual(len(payload["days"]), 1)
 		self.assertEqual(payload["internal_notes"], "Margin is thin")
+
+	def test_saves_branding_contacts_and_generation_preferences(self):
+		doc = self.new_itinerary()
+		payload = api.update_details(
+			doc.name,
+			{
+				"subtitle": "A slower way through the islands",
+				"customer_name": "Ravi K",
+				"duration_label": "Five relaxed days",
+				"departure_type": "Private Departure",
+				"group_size_label": "Two guests",
+				"cover_image": "/files/cover.jpg",
+				"brand_logo": "/files/logo.png",
+				"theme": "Meadow",
+				"font_preset": "Elegant Serif",
+				"title_weight": "700",
+				"title_style": "Italic",
+				"tagline_style": "Medium Italic",
+				"title_case": "Capitalize",
+				"contact_email": "trips@example.com",
+				"contact_phone": "+91 90000 00000",
+				"contact_website": "https://example.com",
+				"trip_vibe": "Leisure",
+				"ai_instructions": "Keep transfers short.",
+			},
+		)
+
+		self.assertEqual(payload["theme"], "Meadow")
+		self.assertEqual(payload["subtitle"], "A slower way through the islands")
+		self.assertEqual(payload["agency"]["email"], "trips@example.com")
+		self.assertEqual(payload["trip_vibe"], "Leisure")
+
+
+class TestPasteImporter(ItineraryTestCase):
+	TEXT = """Ladakh Escape
+Destination: Ladakh
+Duration: 2 Days / 1 Night
+
+Day 1: Arrival in Leh
+Highlights: Airport welcome, Old Leh walk
+Accommodation: Hotel in Leh
+Meals: Lunch, Dinner
+Rest and acclimatise before an easy evening walk.
+
+Day 2: Indus Valley
+- Thiksey Monastery
+- Shey Palace
+Breakfast and lunch included.
+"""
+
+	def test_local_parser_extracts_days_and_proposal_fields(self):
+		parsed = api.parse_pasted_itinerary(self.TEXT)
+		self.assertEqual(parsed["title"], "Ladakh Escape")
+		self.assertEqual(parsed["destination"], "Ladakh")
+		self.assertEqual(len(parsed["days"]), 2)
+		self.assertEqual(parsed["days"][0]["accommodation"], "Hotel in Leh")
+		self.assertTrue(parsed["days"][0]["meals"]["dinner"])
+
+	def test_endpoint_works_without_an_ai_provider(self):
+		doc = self.new_itinerary()
+		with patch("crm.api.itinerary.is_configured", return_value=False):
+			payload = api.import_pasted_itinerary(doc.name, self.TEXT)
+
+		self.assertEqual(payload["import_method"], "local")
+		self.assertEqual(payload["destination"], "Ladakh")
+		self.assertEqual(payload["num_days"], 2)
+		self.assertEqual(payload["days"][0]["highlights"], ["Airport welcome", "Old Leh walk"])
+
+	def test_ai_parser_is_used_when_configured(self):
+		doc = self.new_itinerary()
+		answer = {
+			"title": "Model title",
+			"subtitle": "Model subtitle",
+			"destination": "Himachal",
+			"duration_label": "1 Day",
+			"days": [
+				{
+					"day_number": 1,
+					"title": "Mountain arrival",
+					"summary": "Arrive safely.",
+					"highlights": ["Valley views"],
+					"description": "A careful mountain transfer.",
+					"accommodation": "Mountain lodge",
+					"meals": {"breakfast": False, "lunch": False, "dinner": True},
+				}
+			],
+		}
+		with (
+			patch("crm.api.itinerary.is_configured", return_value=True),
+			patch("crm.api.itinerary.complete", return_value=answer),
+		):
+			payload = api.import_pasted_itinerary(doc.name, self.TEXT)
+
+		self.assertEqual(payload["import_method"], "ai")
+		self.assertEqual(payload["destination"], "Himachal")
+		self.assertEqual(payload["days"][0]["accommodation"], "Mountain lodge")
 
 
 # --- permissions -----------------------------------------------------------
@@ -810,6 +927,50 @@ class TestStatusAndVersion(ItineraryTestCase):
 # --- security regressions --------------------------------------------------
 
 
+class TestImageSourceSecurity(FrappeTestCase):
+	def svg_data(self, markup: str) -> str:
+		return "data:image/svg+xml;base64," + base64.b64encode(markup.encode()).decode()
+
+	def test_uploaded_site_images_are_allowed(self):
+		self.assertEqual(clean_image("/files/cover image.webp", "cover"), "/files/cover image.webp")
+		self.assertEqual(
+			clean_image("/private/files/agency-logo.png", "logo"),
+			"/private/files/agency-logo.png",
+		)
+
+	def test_remote_images_are_rejected_before_pdf_rendering(self):
+		for value in (
+			"http://169.254.169.254/latest/meta-data/",
+			"https://images.example.com/cover.jpg",
+			"//images.example.com/cover.jpg",
+		):
+			with self.subTest(value=value), self.assertRaises(ItinerarySchemaError):
+				clean_image(value, "cover")
+
+	def test_generated_passive_svg_is_allowed(self):
+		value = self.svg_data(
+			'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">'
+			'<rect width="10" height="10" fill="#123456"/>'
+			'<text x="1" y="8" font-family="Arial" font-size="3">Day 1</text>'
+			"</svg>"
+		)
+		self.assertEqual(clean_image(value, "day 1"), value)
+
+	def test_svg_scripts_and_remote_resources_are_rejected(self):
+		values = (
+			self.svg_data('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'),
+			self.svg_data(
+				'<svg xmlns="http://www.w3.org/2000/svg"><path fill="url(https://internal/x)"/></svg>'
+			),
+			self.svg_data(
+				'<svg xmlns="http://www.w3.org/2000/svg"><image href="http://169.254.169.254/x"/></svg>'
+			),
+		)
+		for value in values:
+			with self.subTest(value=value[:60]), self.assertRaises(ItinerarySchemaError):
+				clean_image(value, "day 1")
+
+
 class TestGenericApiIsolation(ItineraryTestCase):
 	"""An itinerary must be exactly as visible as the lead behind it.
 
@@ -966,6 +1127,7 @@ class TestPostOnlyEndpoints(ItineraryTestCase):
 		"create_from_lead",
 		"generate_skeleton",
 		"generate_day",
+		"import_pasted_itinerary",
 		"update_days",
 		"update_details",
 		"get_pdf",
@@ -984,7 +1146,7 @@ class TestPostOnlyEndpoints(ItineraryTestCase):
 
 	def test_every_state_changing_endpoint_is_post_only(self):
 		for name in self.CHANGES_STATE:
-			self.assertEqual(self.allowed_methods(name), ["POST"], f"{name} still accepts GET")
+			self.assertEqual(list(self.allowed_methods(name)), ["POST"], f"{name} still accepts GET")
 
 	def test_the_read_only_endpoints_stay_readable(self):
 		for name in ("get_itinerary_for_editor", "get_draft_for_lead", "can_use_itineraries"):

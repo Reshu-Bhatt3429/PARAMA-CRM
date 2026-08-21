@@ -1,7 +1,24 @@
+from html import escape
+from urllib.parse import urlsplit
+
 import frappe
 
 
-@frappe.whitelist(allow_guest=True)
+def safe_provider_icon_url(value: str | None) -> str | None:
+	"""Allow only same-site paths or explicit HTTP(S) provider icons."""
+	value = str(value or "").strip()
+	if not value:
+		return None
+	if value.startswith("/") and not value.startswith("//"):
+		return value
+
+	parsed = urlsplit(value)
+	if parsed.scheme.lower() in {"http", "https"} and parsed.netloc:
+		return value
+	return None
+
+
+@frappe.whitelist(allow_guest=True)  # nosemgrep
 def oauth_providers():
 	from frappe.utils.html_utils import get_icon_html
 	from frappe.utils.oauth import get_oauth2_authorize_url, get_oauth_keys
@@ -24,8 +41,11 @@ def oauth_providers():
 		if provider.icon:
 			if provider.provider_name == "Custom":
 				icon = get_icon_html(provider.icon, small=True)
-			else:
-				icon = f"<img src='{provider.icon}' alt={provider.provider_name}>"
+			elif icon_url := safe_provider_icon_url(provider.icon):
+				icon = (
+					f'<img src="{escape(icon_url, quote=True)}" '
+					f'alt="{escape(str(provider.provider_name or ""), quote=True)}">'
+				)
 
 		if provider.client_id and provider.base_url and get_oauth_keys(provider.name):
 			out.append(

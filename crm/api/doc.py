@@ -204,7 +204,7 @@ def get_quick_filters(doctype: str, cached: bool = True):
 	return quick_filters
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def update_quick_filters(quick_filters: str, old_filters: str, doctype: str):
 	# writes site-wide CRM Global Settings and Property Setters
 	frappe.only_for(["Sales Manager", "System Manager"], True)
@@ -590,7 +590,7 @@ def get_records_based_on_order(doctype, rows, filters, page_length, order):
 	return records
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def remove_assignments(doctype: str, name: str, assignees: str | list):
 	assignees = frappe.parse_json(assignees)
 
@@ -783,7 +783,7 @@ def remove_contact_link(doctype, docname):
 		pass
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def remove_linked_doc_reference(items: str | list, remove_contact: bool = False, delete: bool = False):
 	if isinstance(items, str):
 		items = frappe.parse_json(items)
@@ -810,7 +810,7 @@ def remove_linked_doc_reference(items: str | list, remove_contact: bool = False,
 	return "success"
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def delete_bulk_docs(doctype: str, items: str | list, delete_linked: bool = False):
 	from frappe.desk.reportview import delete_bulk
 

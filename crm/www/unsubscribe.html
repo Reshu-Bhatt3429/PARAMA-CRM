@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{{ heading }}</title>
     <meta name="robots" content="noindex" />
-    <style>
+    <style nonce="{{ csp_nonce }}">
       /* Deliberately self-contained and font-free. This page is opened from a
          mail client on an unknown network by somebody who is annoyed with us;
          it must render instantly and never depend on an asset bundle. Tokens

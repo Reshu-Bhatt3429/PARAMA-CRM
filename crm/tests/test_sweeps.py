@@ -321,9 +321,11 @@ class TestFeatureFlags(FrappeTestCase):
 			self.assertTrue(meta.has_field(flag), f"{flag} is registered but has no settings field")
 
 	def test_every_registered_flag_is_off(self):
-		from crm.feature_flags import all_flags
+		from crm.feature_flags import FLAGS
 
-		self.assertEqual(set(all_flags().values()), {False})
+		meta = frappe.get_meta("FCRM Settings")
+		for flag in FLAGS:
+			self.assertFalse(frappe.utils.cint(meta.get_field(flag).default), flag)
 
 	def test_an_unknown_flag_reads_as_off(self):
 		from crm.feature_flags import is_enabled

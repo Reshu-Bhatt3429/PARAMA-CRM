@@ -47,7 +47,7 @@ def create_demo_data(_args: dict | None = None):
 	capture("demo_data_created", "crm")
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def clear_demo_data():
 	frappe.only_for(["Sales Manager", "System Manager"], True)
 

@@ -4,11 +4,15 @@ import {
   addItem,
   countItems,
   countUnverifiedPlaces,
+  buildDemoItinerary,
   emptyDay,
   emptyDayNumbers,
   emptyItem,
   isDayEmpty,
+  linesToArray,
+  moveDay,
   moveItem,
+  normalizeHighlights,
   normalizeDays,
   removeDay,
   removeItem,
@@ -130,7 +134,12 @@ describe('serializeDays', () => {
     const payload = serializeDays([day])
     expect(Object.keys(payload)).toEqual(['days'])
     expect(Object.keys(payload.days[0]).sort()).toEqual([
+      'accommodation',
       'day_number',
+      'description',
+      'highlights',
+      'image',
+      'meals',
       'slots',
       'summary',
       'title',
@@ -193,6 +202,55 @@ describe('serializeDays', () => {
       'Museum visit',
     )
   })
+
+  it('serializes highlights, meals, accommodation, narrative, and image', () => {
+    const day = emptyDay(1)
+    day.highlights_input = '  Monastery, Valley, Monastery '
+    day.description = '  A measured day in the valley. '
+    day.accommodation = ' Leh hotel '
+    day.meals = { breakfast: true, lunch: false, dinner: true }
+    day.image = 'https://example.com/leh.jpg'
+
+    const saved = serializeDays([day]).days[0]
+    expect(saved.highlights).toEqual(['Monastery', 'Valley', 'Monastery'])
+    expect(saved.description).toBe('A measured day in the valley.')
+    expect(saved.accommodation).toBe('Leh hotel')
+    expect(saved.meals).toEqual({ breakfast: true, lunch: false, dinner: true })
+    expect(saved.image).toBe('https://example.com/leh.jpg')
+  })
+})
+
+describe('proposal helpers', () => {
+  it('normalizes comma-separated highlights and caps them at eight', () => {
+    expect(normalizeHighlights('A, B, , C')).toEqual(['A', 'B', 'C'])
+    expect(normalizeHighlights('1,2,3,4,5,6,7,8,9')).toHaveLength(8)
+  })
+
+  it('splits customer lists on lines', () => {
+    expect(linesToArray('Transfer\n\n Breakfast ')).toEqual([
+      'Transfer',
+      'Breakfast',
+    ])
+  })
+
+  it('moves and renumbers complete days', () => {
+    const days = [emptyDay(1, 'A'), emptyDay(2, 'B'), emptyDay(3, 'C')]
+    expect(
+      moveDay(days, 2, -1).map((day) => [day.day_number, day.title]),
+    ).toEqual([
+      [1, 'B'],
+      [2, 'A'],
+      [3, 'C'],
+    ])
+  })
+
+  it('builds a complete sample without putting a data URL in an Attach Image field', () => {
+    const demo = buildDemoItinerary({ name: 'Travel Desk' })
+    expect(demo.details.cover_image).toBe('')
+    expect(demo.days).toHaveLength(3)
+    expect(demo.days[0].image).toMatch(/^data:image\/svg\+xml;base64,/)
+    expect(demo.details.price_tiers.length).toBeGreaterThan(0)
+  })
 })
 
 describe('moveItem', () => {
@@ -250,7 +308,12 @@ describe('addItem and removeItem', () => {
   })
 
   it('removes the item at the given index', () => {
-    const result = removeItem([dayWithItems(1, ['A', 'B', 'C'])], 1, 'morning', 1)
+    const result = removeItem(
+      [dayWithItems(1, ['A', 'B', 'C'])],
+      1,
+      'morning',
+      1,
+    )
     expect(result[0].slots[0].items.map((item) => item.title)).toEqual([
       'A',
       'C',
@@ -266,7 +329,11 @@ describe('addDay and removeDay', () => {
   })
 
   it('renumbers the days that are left after a delete', () => {
-    const days = [dayWithItems(1, ['A']), dayWithItems(2, ['B']), dayWithItems(3, ['C'])]
+    const days = [
+      dayWithItems(1, ['A']),
+      dayWithItems(2, ['B']),
+      dayWithItems(3, ['C']),
+    ]
     const result = removeDay(days, 2)
 
     expect(result.map((day) => day.day_number)).toEqual([1, 2])
@@ -275,7 +342,9 @@ describe('addDay and removeDay', () => {
   })
 
   it('does nothing when the day is not there', () => {
-    expect(removeDay([emptyDay(1)], 7).map((day) => day.day_number)).toEqual([1])
+    expect(removeDay([emptyDay(1)], 7).map((day) => day.day_number)).toEqual([
+      1,
+    ])
   })
 })
 
@@ -304,7 +373,11 @@ describe('toggleVerified', () => {
 })
 
 describe('counting helpers', () => {
-  const days = [dayWithItems(1, ['A', 'B']), emptyDay(2), dayWithItems(3, ['C'])]
+  const days = [
+    dayWithItems(1, ['A', 'B']),
+    emptyDay(2),
+    dayWithItems(3, ['C']),
+  ]
 
   it('counts every item across every slot', () => {
     expect(countItems(days)).toBe(3)

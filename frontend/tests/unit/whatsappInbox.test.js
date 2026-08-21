@@ -6,6 +6,7 @@ import {
   groupSizeLabel,
   humanizeAge,
   isSameConversation,
+  normalizeDialablePhone,
   priorityMeta,
   priorityPill,
   statusPill,
@@ -38,6 +39,17 @@ describe('conversationKey', () => {
     expect(conversationKey({})).toBe('')
     expect(conversationKey({ reference_doctype: 'CRM Lead' })).toBe('')
   })
+})
+
+describe('normalizeDialablePhone', () => {
+  it('keeps a dialable number while removing visual formatting', () => {
+    expect(normalizeDialablePhone('+91 (987) 654-3210')).toBe('+919876543210')
+  })
+
+  it.each(['', '12', '123?body=secret', 'javascript:alert(1)', '++91123'])(
+    'rejects unsafe or unusable telephone payload %s',
+    (value) => expect(normalizeDialablePhone(value)).toBeNull(),
+  )
 })
 
 describe('isSameConversation', () => {

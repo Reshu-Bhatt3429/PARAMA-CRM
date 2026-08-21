@@ -318,14 +318,13 @@ function createUpdateNote() {
       call_sid: callData.value.CallSid,
       note: note.value,
     },
-    auto: true,
     onSuccess(_note) {
       note.value['name'] = _note.name
       nextTick(() => {
         dirty.value = false
       })
     },
-  })
+  }).submit()
 }
 
 const task = ref({
@@ -357,14 +356,13 @@ function createUpdateTask() {
       call_sid: callData.value.CallSid,
       task: task.value,
     },
-    auto: true,
     onSuccess(_task) {
       task.value['name'] = _task.name
       nextTick(() => {
         dirty.value = false
       })
     },
-  })
+  }).submit()
 }
 
 watch([note, task], () => (dirty.value = true), { deep: true })
@@ -389,7 +387,6 @@ function makeOutgoingCall(number) {
   createResource({
     url: 'crm.integrations.exotel.handler.make_a_call',
     params: { to_number: phoneNumber.value },
-    auto: true,
     onSuccess(callDetails) {
       callData.value = callDetails
       console.log(callDetails)
@@ -401,7 +398,7 @@ function makeOutgoingCall(number) {
     onError(err) {
       toast.error(err.messages[0])
     },
-  })
+  }).submit()
 }
 
 function setup() {

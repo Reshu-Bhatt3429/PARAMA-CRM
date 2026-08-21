@@ -8,40 +8,12 @@
             <h3 class="text-2xl-semibold text-ink-gray-9">PARAMA CRM</h3>
           </div>
         </div>
-        <hr class="border-t my-3 mx-2" />
-        <div>
-          <a
-            v-for="link in links"
-            :key="link.label"
-            class="flex py-2 px-2 hover:bg-surface-gray-1 rounded cursor-pointer"
-            target="_blank"
-            :href="link.url"
-          >
-            <component
-              :is="link.icon"
-              v-if="link.icon"
-              class="size-4 mr-2 text-ink-gray-7"
-            />
-            <span class="text-base text-ink-gray-8">
-              {{ link.label }}
-            </span>
-          </a>
-        </div>
-        <hr class="border-t my-3 mx-2" />
-        <!-- AGPLv3 attribution: this product is a fork of Frappe CRM. Keep this
-             line and the upstream copyright below it. -->
-        <p class="text-sm text-ink-gray-6 px-2 mt-2">
-          {{ __('Built on Frappe CRM (AGPLv3)') }} —
-          <a
-            class="underline"
-            target="_blank"
-            href="https://github.com/frappe/crm"
-          >
-            github.com/frappe/crm
-          </a>
-        </p>
-        <p class="text-sm text-ink-gray-6 px-2 mt-1">
-          © Frappe Technologies Pvt. Ltd. and contributors
+        <p class="mt-3 px-2 text-center text-sm text-ink-gray-6">
+          {{
+            __(
+              'Travel sales, customer communication, itineraries, and follow-ups in one workspace.',
+            )
+          }}
         </p>
       </div>
     </template>
@@ -49,39 +21,6 @@
 </template>
 <script setup>
 import CRMLogo from '@/components/Icons/CRMLogo.vue'
-import LucideGlobe from '~icons/lucide/globe'
-import LucideGitHub from '~icons/lucide/github'
-import LucideHeadset from '~icons/lucide/headset'
-import LucideBug from '~icons/lucide/bug'
-import LucideBookOpen from '~icons/lucide/book-open'
 
 let show = defineModel({ type: Boolean })
-
-let links = [
-  {
-    label: __('Website'),
-    url: 'https://frappe.io/crm',
-    icon: LucideGlobe,
-  },
-  {
-    label: __('GitHub Repository'),
-    url: 'https://github.com/frappe/crm',
-    icon: LucideGitHub,
-  },
-  {
-    label: __('Documentation'),
-    url: 'https://docs.frappe.io/crm',
-    icon: LucideBookOpen,
-  },
-  {
-    label: __('Report an Issue'),
-    url: 'https://github.com/frappe/crm/issues',
-    icon: LucideBug,
-  },
-  {
-    label: __('Contact Support'),
-    url: 'https://support.frappe.io',
-    icon: LucideHeadset,
-  },
-]
 </script>

@@ -5,6 +5,7 @@ import requests
 from frappe import _
 from frappe.integrations.utils import create_request_log
 
+from crm.fcrm.doctype.crm_exotel_settings.crm_exotel_settings import validate_exotel_subdomain
 from crm.integrations.api import get_contact_by_phone_number
 
 # header that carries the webhook verify token, it keeps the token out of the URL
@@ -24,7 +25,7 @@ WEBHOOK_TOKEN_HEADER = "X-Webhook-Token"
 # Exotel's servers call this webhook unauthenticated; validate_request()
 # verifies the shared webhook token (constant-time) before any work is done.
 @frappe.whitelist(allow_guest=True)  # nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
-def handle_request(**kwargs):
+def handle_request(**kwargs: str):
 	validate_request()
 	if not is_integration_enabled():
 		return
@@ -45,7 +46,7 @@ def handle_request(**kwargs):
 
 		call_payload = kwargs
 
-		frappe.publish_realtime("exotel_call", call_payload)
+		_publish_call_update(call_payload)
 		status = call_payload.get("Status")
 		if status == "free":
 			return
@@ -66,14 +67,22 @@ def handle_request(**kwargs):
 		request_log.error = frappe.get_traceback()
 		frappe.db.rollback()
 		frappe.log_error(title="Error while creating/updating call record")
-		frappe.db.commit()
+		frappe.db.commit()  # nosemgrep
 	finally:
 		request_log.save(ignore_permissions=True)
-		frappe.db.commit()
+		frappe.db.commit()  # nosemgrep
+
+
+def _publish_call_update(call_payload):
+	"""Publish phone/caller data only to the CRM agent assigned by Exotel."""
+	agent = frappe.utils.cstr(call_payload.get("AgentEmail")).strip()
+	if not agent or not frappe.db.exists("CRM Telephony Agent", agent):
+		return
+	frappe.publish_realtime("exotel_call", call_payload, user=agent)
 
 
 # Outgoing Call
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def make_a_call(to_number: str, from_number: str | None = None, caller_id: str | None = None):
 	if not is_integration_enabled():
 		frappe.throw(_("Please setup Exotel intergration"), title=_("Integration Not Enabled"))
@@ -105,6 +114,7 @@ def make_a_call(to_number: str, from_number: str | None = None, caller_id: str |
 		response = requests.post(
 			endpoint,
 			auth=get_exotel_auth(),
+			timeout=15,
 			data={
 				"From": from_number,
 				"To": to_number,
@@ -142,7 +152,7 @@ def get_exotel_endpoint(action=None, version="v1"):
 	# because a URL is written to proxy logs, to error reports and to request logs
 	settings = get_exotel_settings()
 	return "https://{subdomain}/{version}/Accounts/{sid}/{action}".format(
-		subdomain=settings.subdomain,
+		subdomain=validate_exotel_subdomain(settings.subdomain),
 		version=version,
 		sid=settings.account_sid,
 		action=action,
@@ -157,7 +167,8 @@ def get_exotel_auth():
 
 def get_all_exophones():
 	endpoint = get_exotel_endpoint("IncomingPhoneNumbers", "v2_beta")
-	response = requests.get(endpoint, auth=get_exotel_auth())
+	response = requests.get(endpoint, auth=get_exotel_auth(), timeout=15)
+	response.raise_for_status()
 	return [phone.get("friendly_name") for phone in response.json().get("incoming_phone_numbers", [])]
 
 
@@ -168,12 +179,16 @@ def get_status_updater_url():
 	# verify token has to stay in this query string. Validation accepts the token in the
 	# WEBHOOK_TOKEN_HEADER header first, so a gateway that can inject the header keeps the
 	# token out of the URL. Rotate the token if the proxy logs are exposed.
-	webhook_verify_token = frappe.db.get_single_value("CRM Exotel Settings", "webhook_verify_token")
+	webhook_verify_token = get_webhook_verify_token()
 	return get_url(f"api/method/crm.integrations.exotel.handler.handle_request?key={webhook_verify_token}")
 
 
 def get_exotel_settings():
 	return frappe.get_single("CRM Exotel Settings")
+
+
+def get_webhook_verify_token():
+	return get_exotel_settings().get_password("webhook_verify_token", raise_exception=False)
 
 
 def get_request_headers_for_log():
@@ -185,7 +200,7 @@ def validate_request():
 	# workaround security since exotel does not support request signature.
 	# preferred: the token travels in the WEBHOOK_TOKEN_HEADER header.
 	# fallback (Exotel itself): /api/method/<exotel-integration-method>?key=<token>
-	webhook_verify_token = frappe.db.get_single_value("CRM Exotel Settings", "webhook_verify_token")
+	webhook_verify_token = get_webhook_verify_token()
 	key = frappe.request.headers.get(WEBHOOK_TOKEN_HEADER) or frappe.request.args.get("key")
 	is_valid = (
 		bool(webhook_verify_token)
@@ -231,7 +246,7 @@ def create_call_log(
 	link(contact_number, call_log)
 
 	call_log.save(ignore_permissions=True)
-	frappe.db.commit()
+	frappe.db.commit()  # nosemgrep
 	return call_log
 
 

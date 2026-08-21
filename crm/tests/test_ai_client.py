@@ -198,6 +198,10 @@ class TestSchemaValidator(FrappeTestCase):
 			{
 				"title": "Day 1",
 				"summary": "Arrival",
+				"highlights": ["Airport pickup"],
+				"description": "Arrive and settle in.",
+				"accommodation": "Hotel",
+				"meals": {"breakfast": False, "lunch": True, "dinner": True},
 				"slots": [
 					{
 						"time_of_day": "morning",

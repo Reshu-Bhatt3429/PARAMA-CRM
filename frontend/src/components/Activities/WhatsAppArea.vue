@@ -22,11 +22,11 @@
         />
         <div
           v-if="whatsapp.is_reply"
-          class="mb-1 cursor-pointer rounded border-0 border-l-4 bg-surface-gray-3 p-2 text-ink-gray-5"
+          class="mb-1 cursor-pointer rounded border border-outline-gray-2 p-2 text-ink-gray-5"
           :class="
             whatsapp.reply_to_type == 'Incoming'
-              ? 'border-green-500'
-              : 'border-blue-400'
+              ? 'bg-surface-green-1'
+              : 'bg-surface-blue-1'
           "
           @click="() => scrollToMessage(whatsapp.reply_to)"
         >
@@ -96,11 +96,15 @@
           />
           <div v-else-if="whatsapp.content_type == 'image'">
             <img
-              :src="whatsapp.attach"
+              v-if="mediaUrl(whatsapp)"
+              :src="mediaUrl(whatsapp)"
               class="h-40 cursor-pointer rounded-md"
               @click="() => openFileInAnotherTab(whatsapp.attach)"
               @load="emit('mediaLoad')"
             />
+            <div v-else class="text-sm text-ink-gray-5">
+              {{ __('Attachment unavailable') }}
+            </div>
             <div
               v-if="!(whatsapp.message || '').startsWith('/files/')"
               class="mt-1.5"
@@ -121,18 +125,30 @@
             v-else-if="whatsapp.content_type == 'audio'"
             class="flex items-center gap-2"
           >
-            <audio :src="whatsapp.attach" controls class="cursor-pointer" />
+            <audio
+              v-if="mediaUrl(whatsapp)"
+              :src="mediaUrl(whatsapp)"
+              controls
+              class="cursor-pointer"
+            />
+            <div v-else class="text-sm text-ink-gray-5">
+              {{ __('Attachment unavailable') }}
+            </div>
           </div>
           <div
             v-else-if="whatsapp.content_type == 'video'"
             class="flex-col items-center gap-2"
           >
             <video
-              :src="whatsapp.attach"
+              v-if="mediaUrl(whatsapp)"
+              :src="mediaUrl(whatsapp)"
               controls
               class="h-40 cursor-pointer rounded-md"
               @loadeddata="emit('mediaLoad')"
             />
+            <div v-else class="text-sm text-ink-gray-5">
+              {{ __('Attachment unavailable') }}
+            </div>
             <div
               v-if="!(whatsapp.message || '').startsWith('/files/')"
               class="mt-1.5"
@@ -190,6 +206,7 @@ import DoubleCheckIcon from '@/components/Icons/DoubleCheckIcon.vue'
 import DocumentIcon from '@/components/Icons/DocumentIcon.vue'
 import ReactIcon from '@/components/Icons/ReactIcon.vue'
 import { formatDate, sanitizeHTML } from '@/utils'
+import { getSafeHttpUrl, openSafeUrl } from '@/utils/safeUrl'
 import { useTelemetry } from 'frappe-ui/frappe'
 import { Tooltip, Dropdown, createResource, toast } from 'frappe-ui'
 import { ref } from 'vue'
@@ -207,11 +224,15 @@ const list = defineModel({ type: Object })
 const { capture } = useTelemetry()
 
 function openFileInAnotherTab(url) {
-  window.open(url, '_blank')
+  if (!openSafeUrl(url)) toast.error(__('Invalid attachment URL'))
+}
+
+function mediaUrl(message) {
+  return getSafeHttpUrl(message?.attach)
 }
 
 // An inbound message is attacker-controlled text, never markup. Escaping it
-// before the WhatsApp markdown rules run is what keeps a raw <a> or <img> in
+// before the WhatsApp markdown rules run is what keeps raw link or image tags in
 // the payload from surviving as a live tag; sanitizeHTML then only has to vet
 // the tags this function itself produced.
 function escapeHTML(text) {
@@ -262,7 +283,6 @@ function reactOnMessage(name, emoji) {
       emoji,
       reply_to_name: name,
     },
-    auto: true,
     onSuccess() {
       capture('whatsapp_react_on_message')
       list.value.reload()
@@ -272,7 +292,7 @@ function reactOnMessage(name, emoji) {
         error.messages?.[0] || __('Failed to add reaction to the message'),
       )
     },
-  })
+  }).submit()
 }
 
 const reply = defineModel('reply', { type: Object, default: () => ({}) })

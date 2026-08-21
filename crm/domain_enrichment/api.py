@@ -60,7 +60,7 @@ def _enqueue_run(cfg, reference_doctype: str, reference_name: str, website: str)
 	return enqueue_enrichment(reference_doctype, reference_name, website, frappe.session.user)
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 @rate_limit(limit=ENRICH_RATE_LIMIT, seconds=60)
 def enrich(reference_doctype: str, reference_name: str) -> dict:
 	"""Enqueue a full enrichment run for one CRM record, using the record's own
@@ -74,7 +74,7 @@ def enrich(reference_doctype: str, reference_name: str) -> dict:
 	return _enqueue_run(cfg, reference_doctype, reference_name, website)
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 @rate_limit(limit=ENRICH_RATE_LIMIT, seconds=60)
 def retry(run: str) -> dict:
 	"""Re-run the enrichment recorded by a ``CRM Enrichment Run`` (the desk "Retry"
@@ -93,7 +93,7 @@ def retry(run: str) -> dict:
 	return _enqueue_run(cfg, run_doc.reference_doctype, run_doc.reference_name, website)
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 @rate_limit(limit=ENRICH_RATE_LIMIT, seconds=60)
 def enrich_preview(website: str, doctype: str = "CRM Deal") -> dict:
 	"""Fast, metadata-only prefill for the create-record modal.

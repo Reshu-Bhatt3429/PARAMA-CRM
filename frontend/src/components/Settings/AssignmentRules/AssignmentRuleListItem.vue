@@ -125,8 +125,7 @@ const deleteAssignmentRule = () => {
       isConfirmingDelete.value = false
       toast.success(__('Assignment rule deleted'))
     },
-    auto: true,
-  })
+  }).submit()
 }
 
 const dropdownOptions = [
@@ -160,8 +159,7 @@ const duplicate = () => {
       duplicateDialog.value.name = ''
       updateStep('view', data)
     },
-    auto: true,
-  })
+  }).submit()
 }
 
 const onPriorityChange = () => {
@@ -190,7 +188,6 @@ const setAssignmentRuleValue = (key, value, fieldName = undefined) => {
       assignmentRulesList.reload()
       toast.success(__('Assignment rule {0} updated', [fieldName || key]))
     },
-    auto: true,
-  })
+  }).submit()
 }
 </script>

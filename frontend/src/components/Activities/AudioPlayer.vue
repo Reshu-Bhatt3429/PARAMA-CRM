@@ -72,7 +72,7 @@
 
     <audio
       ref="audio"
-      :src="src"
+      :src="safeSrc"
       crossorigin="anonymous"
       @loadedmetadata="setupDuration"
       @timeupdate="updateCurrentTime"
@@ -89,6 +89,7 @@ import VolumnHighIcon from '@/components/Icons/VolumnHighIcon.vue'
 import MuteIcon from '@/components/Icons/MuteIcon.vue'
 import PlaybackSpeedIcon from '@/components/Icons/PlaybackSpeedIcon.vue'
 import PlaybackSpeedOption from '@/components/Activities/PlaybackSpeedOption.vue'
+import { getSafeHttpUrl } from '@/utils/safeUrl'
 import { Dropdown } from 'frappe-ui'
 import { computed, h, ref } from 'vue'
 
@@ -97,6 +98,7 @@ const props = defineProps({
 })
 
 const audio = ref(null)
+const safeSrc = computed(() => getSafeHttpUrl(props.src) || '')
 const isPaused = ref(true)
 
 const duration = ref(0)

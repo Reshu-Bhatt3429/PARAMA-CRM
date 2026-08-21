@@ -1,6 +1,10 @@
 <template>
   <span>
-    <a :href="isShowable ? null : url" target="_blank">
+    <a
+      :href="isShowable ? null : safeUrl"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
       <Button
         :label="label"
         theme="gray"
@@ -21,15 +25,20 @@
         >
           {{ content }}
         </div>
-        <img v-if="isImage" :src="url" class="m-auto rounded border" />
+        <img
+          v-if="isImage && safeUrl"
+          :src="safeUrl"
+          class="m-auto rounded border"
+        />
       </template>
     </Dialog>
   </span>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import mime from 'mime'
+import { getSafeHttpUrl } from '@/utils/safeUrl'
 import FileTypeIcon from '@/components/Icons/FileTypeIcon.vue'
 import FileImageIcon from '@/components/Icons/FileImageIcon.vue'
 import FileTextIcon from '@/components/Icons/FileTextIcon.vue'
@@ -47,7 +56,8 @@ const isImage = mimeType.startsWith('image/')
 const isPdf = mimeType === 'application/pdf'
 const isSpreadsheet = mimeType.includes('spreadsheet')
 const isText = mimeType === 'text/plain'
-const isShowable = props.url && (isText || isImage)
+const safeUrl = computed(() => getSafeHttpUrl(props.url))
+const isShowable = computed(() => safeUrl.value && (isText || isImage))
 const content = ref('')
 
 function getIcon() {
@@ -59,9 +69,11 @@ function getIcon() {
 }
 
 function toggleDialog() {
-  if (!isShowable) return
+  if (!isShowable.value) return
   if (isText) {
-    fetch(props.url).then((res) => res.text().then((t) => (content.value = t)))
+    fetch(safeUrl.value).then((res) =>
+      res.text().then((text) => (content.value = text)),
+    )
   }
   showDialog.value = !showDialog.value
 }

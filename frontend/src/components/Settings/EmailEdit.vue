@@ -9,7 +9,7 @@
     <div class="w-fit">
       <EmailProviderIcon
         :logo="emailIcon[accountData.service]"
-        :label="accountData.service"
+        :label="serviceLabel"
       />
     </div>
     <!-- banner for setting up email account -->
@@ -21,7 +21,12 @@
       />
       <div class="text-xs text-ink-gray-6 text-wrap">
         {{ info.description }}
-        <a :href="info.link" target="_blank" class="underline">
+        <a
+          :href="info.link"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="underline"
+        >
           {{ __('here') }}
         </a>
         .
@@ -125,6 +130,12 @@ const info = {
 const isCustomService = computed(() => {
   return services.find((s) => s.name === props.accountData.service)?.custom
 })
+
+const serviceLabel = computed(() =>
+  props.accountData.service === 'Frappe Mail'
+    ? __('Custom Mail API')
+    : props.accountData.service,
+)
 
 const fields = computed(() => {
   if (isCustomService.value) {

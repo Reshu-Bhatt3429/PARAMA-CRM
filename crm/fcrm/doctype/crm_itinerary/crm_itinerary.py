@@ -43,7 +43,11 @@ No key outside the sets below is accepted. A silently-dropped key would let the
 editor and the print format drift apart without anyone noticing.
 """
 
+import base64
+import binascii
 import json
+import re
+from xml.etree import ElementTree
 
 import frappe
 from frappe import _
@@ -54,9 +58,20 @@ from frappe.utils import cint, flt
 
 TIMES_OF_DAY = ("morning", "afternoon", "evening")
 
-DAY_KEYS = ("day_number", "title", "summary", "slots")
+DAY_KEYS = (
+	"day_number",
+	"title",
+	"summary",
+	"highlights",
+	"description",
+	"accommodation",
+	"meals",
+	"image",
+	"slots",
+)
 SLOT_KEYS = ("time_of_day", "items")
 ITEM_KEYS = ("title", "description", "place_name", "duration_hours", "est_cost", "verified")
+MEAL_KEYS = ("breakfast", "lunch", "dinner")
 
 # An itinerary shorter than a day is meaningless and one longer than a month is
 # a data-entry accident. The bound also caps how many AI calls one document can
@@ -68,17 +83,63 @@ MAX_DAYS = 30
 # would break the PDF layout and blow up `days_json`.
 MAX_TITLE_LENGTH = 200
 MAX_TEXT_LENGTH = 2000
+MAX_DESCRIPTION_LENGTH = 6000
+MAX_HIGHLIGHTS = 8
+MAX_IMAGE_LENGTH = 300_000
 MAX_ITEMS_PER_SLOT = 20
+
+LOCAL_IMAGE_PATTERN = re.compile(r"^/(?:private/)?files/[^\x00-\x1f?#]+(?:\?[^\x00-\x1f#]*)?$", re.IGNORECASE)
+SVG_DATA_PREFIX = "data:image/svg+xml;base64,"
+SAFE_SVG_TAGS = {"svg", "rect", "circle", "path", "text"}
+SAFE_SVG_ATTRIBUTES = {
+	"viewBox",
+	"x",
+	"y",
+	"width",
+	"height",
+	"rx",
+	"cx",
+	"cy",
+	"r",
+	"d",
+	"fill",
+	"opacity",
+	"stroke",
+	"stroke-opacity",
+	"stroke-width",
+	"font-family",
+	"font-size",
+	"font-weight",
+	"letter-spacing",
+}
 
 # The fields whose change turns a Sent itinerary back into a Revised one.
 CONTENT_FIELDS = (
 	"title",
+	"subtitle",
+	"customer_name",
 	"destination",
 	"start_date",
 	"num_days",
+	"duration_label",
+	"departure_type",
 	"group_size",
+	"group_size_label",
 	"budget",
 	"currency",
+	"cover_image",
+	"brand_logo",
+	"theme",
+	"font_preset",
+	"title_weight",
+	"title_style",
+	"tagline_style",
+	"title_case",
+	"contact_email",
+	"contact_phone",
+	"contact_website",
+	"trip_vibe",
+	"ai_instructions",
 	"days_json",
 	"inclusions",
 	"exclusions",
@@ -96,6 +157,11 @@ def empty_day(day_number: int, title: str = "", summary: str = "") -> dict:
 		"day_number": cint(day_number),
 		"title": title or "",
 		"summary": summary or "",
+		"highlights": [],
+		"description": "",
+		"accommodation": "",
+		"meals": {meal: False for meal in MEAL_KEYS},
+		"image": None,
 		"slots": [{"time_of_day": part, "items": []} for part in TIMES_OF_DAY],
 	}
 
@@ -171,12 +237,110 @@ def validate_days(days) -> list[dict]:
 				"day_number": day_number,
 				"title": clean_text(day.get("title"), _("title"), where, MAX_TITLE_LENGTH),
 				"summary": clean_text(day.get("summary"), _("summary"), where, MAX_TEXT_LENGTH),
+				"highlights": validate_highlights(day.get("highlights"), where),
+				"description": clean_text(
+					day.get("description"), _("description"), where, MAX_DESCRIPTION_LENGTH
+				),
+				"accommodation": clean_text(
+					day.get("accommodation"), _("accommodation"), where, MAX_TITLE_LENGTH
+				),
+				"meals": validate_meals(day.get("meals"), where),
+				"image": clean_image(day.get("image"), where),
 				"slots": validate_slots(day.get("slots"), _("day {0}").format(day_number)),
 			}
 		)
 
 	clean_days.sort(key=lambda day: day["day_number"])
 	return clean_days
+
+
+def validate_highlights(highlights, where: str) -> list[str]:
+	if highlights is None:
+		return []
+	if isinstance(highlights, str):
+		highlights = highlights.split(",")
+	if not isinstance(highlights, list):
+		raise ItinerarySchemaError(_("The highlights of {0} must be a list.").format(where))
+	if len(highlights) > MAX_HIGHLIGHTS:
+		raise ItinerarySchemaError(
+			_("The highlights of {0} cannot contain more than {1} items.").format(where, MAX_HIGHLIGHTS)
+		)
+
+	clean = []
+	for highlight in highlights:
+		value = clean_text(highlight, _("highlight"), where, MAX_TITLE_LENGTH)
+		if value:
+			clean.append(value)
+	return clean
+
+
+def validate_meals(meals, where: str) -> dict[str, bool]:
+	if meals is None:
+		return {meal: False for meal in MEAL_KEYS}
+	if not isinstance(meals, dict):
+		raise ItinerarySchemaError(_("The meals of {0} must be an object.").format(where))
+	reject_unknown_keys(meals, MEAL_KEYS, _("the meals of {0}").format(where))
+	return {meal: meals.get(meal) is True for meal in MEAL_KEYS}
+
+
+def clean_image(value, where: str) -> str | None:
+	if value is None or value == "":
+		return None
+	if not isinstance(value, str):
+		raise ItinerarySchemaError(_("The image of {0} must be text or null.").format(where))
+
+	value = value.strip()
+	if len(value) > MAX_IMAGE_LENGTH:
+		raise ItinerarySchemaError(_("The image of {0} is too large.").format(where))
+	if LOCAL_IMAGE_PATTERN.fullmatch(value):
+		return value
+	if value.lower().startswith(SVG_DATA_PREFIX):
+		_validate_generated_svg(value, where)
+		return value
+
+	raise ItinerarySchemaError(
+		_("The image of {0} must be an uploaded file or generated artwork.").format(where)
+	)
+
+
+def _validate_generated_svg(value: str, where: str) -> None:
+	"""Accept the small, passive SVG vocabulary produced by the itinerary UI.
+
+	Arbitrary remote URLs are forbidden because the PDF renderer fetches image
+	sources server-side. Arbitrary SVG is forbidden for the same reason: SVG can
+	contain scripts, event attributes and nested remote-resource references.
+	"""
+	payload = value[len(SVG_DATA_PREFIX) :]
+	try:
+		raw = base64.b64decode(payload, validate=True)
+		text = raw.decode("utf-8")
+	except (binascii.Error, UnicodeDecodeError, ValueError):
+		raise ItinerarySchemaError(_("The generated image of {0} is invalid.").format(where)) from None
+
+	if "<!DOCTYPE" in text.upper() or "<!ENTITY" in text.upper():
+		raise ItinerarySchemaError(_("The generated image of {0} is invalid.").format(where))
+
+	try:
+		root = ElementTree.fromstring(text)
+	except ElementTree.ParseError:
+		raise ItinerarySchemaError(_("The generated image of {0} is invalid.").format(where)) from None
+
+	elements = list(root.iter())
+	if len(elements) > 64:
+		raise ItinerarySchemaError(_("The generated image of {0} is too complex.").format(where))
+
+	for element in elements:
+		tag = element.tag.rsplit("}", 1)[-1]
+		if tag not in SAFE_SVG_TAGS or any(
+			attribute.rsplit("}", 1)[-1] not in SAFE_SVG_ATTRIBUTES for attribute in element.attrib
+		):
+			raise ItinerarySchemaError(_("The generated image of {0} contains unsafe markup.").format(where))
+		for attribute_value in element.attrib.values():
+			lowered = attribute_value.lower()
+			if any(marker in lowered for marker in ("url(", "javascript:", "data:", "http:", "https:", "//")):
+				raise ItinerarySchemaError(
+					_("The generated image of {0} contains an external resource.").format(where)
+				)
 
 
 def validate_slots(slots, where: str) -> list[dict]:
@@ -321,13 +485,24 @@ class CRMItinerary(Document):
 			CRMItineraryPriceTier,
 		)
 
+		ai_instructions: DF.SmallText | None
+		brand_logo: DF.AttachImage | None
 		budget: DF.Currency
+		contact_email: DF.Data | None
+		contact_phone: DF.Data | None
+		contact_website: DF.Data | None
+		cover_image: DF.AttachImage | None
 		currency: DF.Link | None
+		customer_name: DF.Data | None
 		days_json: DF.LongText | None
 		deal: DF.Link | None
+		departure_type: DF.Literal["Private Departure", "Group Departure"]
 		destination: DF.Data | None
+		duration_label: DF.Data | None
 		exclusions: DF.SmallText | None
+		font_preset: DF.Literal["Modern Alpine", "Classic Bold", "Elegant Serif", "Clean Geometric"]
 		group_size: DF.Int
+		group_size_label: DF.Data | None
 		inclusions: DF.SmallText | None
 		internal_notes: DF.SmallText | None
 		lead: DF.Link
@@ -335,15 +510,36 @@ class CRMItinerary(Document):
 		price_tiers: DF.Table[CRMItineraryPriceTier]
 		start_date: DF.Date | None
 		status: DF.Literal["Draft", "Sent", "Revised"]
+		subtitle: DF.SmallText | None
+		tagline_style: DF.Literal["Bold Normal", "Bold Italic", "Medium Normal", "Medium Italic"]
 		terms: DF.SmallText | None
+		theme: DF.Literal["Sunrise", "Midnight", "Meadow"]
 		title: DF.Data
+		title_case: DF.Literal["Uppercase", "Capitalize", "Normal"]
+		title_style: DF.Literal["Normal", "Italic"]
+		title_weight: DF.Literal["900", "700", "500", "400"]
+		trip_vibe: DF.Literal["Adventure", "Cultural", "Leisure", "Budget"]
 		version: DF.Int
 	# end: auto-generated types
 
 	def validate(self):
 		self.num_days = clamp_days(self.num_days)
+		self.cover_image = clean_image(self.cover_image, _("the itinerary cover"))
+		self.brand_logo = clean_image(self.brand_logo, _("the itinerary logo"))
 		if not self.currency:
 			self.currency = "INR"
+		if not self.duration_label:
+			self.duration_label = duration_label(self.num_days)
+		if not self.group_size_label and cint(self.group_size):
+			self.group_size_label = _("{0} travellers").format(cint(self.group_size))
+		self.departure_type = self.departure_type or "Group Departure"
+		self.theme = self.theme or "Sunrise"
+		self.font_preset = self.font_preset or "Modern Alpine"
+		self.title_weight = self.title_weight or "900"
+		self.title_style = self.title_style or "Normal"
+		self.tagline_style = self.tagline_style or "Bold Normal"
+		self.title_case = self.title_case or "Uppercase"
+		self.trip_vibe = self.trip_vibe or "Adventure"
 		if self.version < 1:
 			self.version = 1
 
@@ -390,7 +586,43 @@ class CRMItinerary(Document):
 		return frappe.utils.fmt_money(flt(value), currency=self.currency or "INR")
 
 	def render_agency(self) -> dict:
-		return get_agency_details()
+		details = get_agency_details()
+		for source, target in (
+			("contact_phone", "phone"),
+			("contact_email", "email"),
+			("contact_website", "website"),
+		):
+			if self.get(source):
+				details[target] = self.get(source)
+		details["logo"] = self.brand_logo or ""
+		return details
+
+	def render_duration(self) -> str:
+		return self.duration_label or duration_label(self.num_days)
+
+	def render_group_size(self) -> str:
+		if self.group_size_label:
+			return self.group_size_label
+		return _("{0} travellers").format(cint(self.group_size)) if cint(self.group_size) else ""
+
+	def render_title(self) -> str:
+		value = frappe.utils.cstr(self.title)
+		if self.title_case == "Uppercase":
+			return value.upper()
+		if self.title_case == "Capitalize":
+			return value.title()
+		return value
+
+	def render_theme(self) -> str:
+		return self.theme if self.theme in ("Sunrise", "Midnight", "Meadow") else "Sunrise"
+
+	def render_font_family(self) -> str:
+		return {
+			"Modern Alpine": '"Trebuchet MS", Arial, sans-serif',
+			"Classic Bold": 'Arial, "Helvetica Neue", sans-serif',
+			"Elegant Serif": 'Georgia, "Times New Roman", serif',
+			"Clean Geometric": "Verdana, Arial, sans-serif",
+		}.get(self.font_preset, '"Trebuchet MS", Arial, sans-serif')
 
 	def render_day_date(self, day_number) -> str:
 		"""The calendar date of one day, when the trip has a start date."""
@@ -413,6 +645,14 @@ class CRMItinerary(Document):
 
 def clamp_days(num_days) -> int:
 	return max(MIN_DAYS, min(MAX_DAYS, cint(num_days) or MIN_DAYS))
+
+
+def duration_label(num_days) -> str:
+	days = clamp_days(num_days)
+	nights = max(0, days - 1)
+	day_unit = _("Day") if days == 1 else _("Days")
+	night_unit = _("Night") if nights == 1 else _("Nights")
+	return _("{0} {1} / {2} {3}").format(days, day_unit, nights, night_unit)
 
 
 def get_agency_details() -> dict:

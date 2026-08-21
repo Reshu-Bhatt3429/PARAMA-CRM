@@ -4,16 +4,9 @@
     :description="__('Manage ERPNext integration settings')"
   >
     <template #title>
-      <div class="flex gap-2 items-center">
-        <h2 class="flex text-2xl-semibold leading-none h-5">
-          {{ __('ERPNext Settings') }}
-        </h2>
-        <Tooltip text="View documentation">
-          <a href="https://docs.frappe.io/crm/erpnext" target="_blank">
-            <lucide-circle-question-mark class="h-4 w-4 text-ink-gray-6" />
-          </a>
-        </Tooltip>
-      </div>
+      <h2 class="flex h-5 text-2xl-semibold leading-none">
+        {{ __('ERPNext Settings') }}
+      </h2>
     </template>
     <template #header-actions>
       <div
@@ -466,7 +459,6 @@ import {
   LoadingIndicator,
   Switch,
   toast,
-  Tooltip,
 } from 'frappe-ui'
 import SettingsLayoutBase from '@/components/Layouts/SettingsLayoutBase.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'

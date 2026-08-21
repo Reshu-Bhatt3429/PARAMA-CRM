@@ -182,6 +182,7 @@ import CheckCircleIcon from '@/components/Icons/CheckCircleIcon.vue'
 import FadedScrollableDiv from '@/components/FadedScrollableDiv.vue'
 import { getCallLogDetail } from '@/utils/callLog'
 import { sanitizeHTML } from '@/utils'
+import { getSafeHttpUrl } from '@/utils/safeUrl'
 import { isMobileView } from '@/composables/settings'
 import { useDoctypeModal } from '@/composables/doctypeModal'
 import { useDocument } from '@/data/document'
@@ -327,7 +328,7 @@ const detailFields = computed(() => {
         class: 'h-4 w-4 mt-2',
       }),
       name: 'recording_url_path',
-      value: data.recording_url_path,
+      value: getSafeHttpUrl(data.recording_url_path),
     },
     {
       icon: NoteIcon,

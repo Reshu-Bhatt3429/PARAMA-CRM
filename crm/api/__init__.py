@@ -1,5 +1,4 @@
 import frappe
-from bs4 import BeautifulSoup
 from frappe import _
 from frappe.core.api.file import get_max_file_size
 from frappe.rate_limiter import rate_limit
@@ -9,7 +8,7 @@ from frappe.utils import cstr, split_emails, validate_email_address
 from crm.utils import is_frappe_version
 
 
-@frappe.whitelist(allow_guest=True)
+@frappe.whitelist(allow_guest=True)  # nosemgrep
 def get_translations():
 	if frappe.session.user != "Guest":
 		language = frappe.db.get_value("User", frappe.session.user, "language")
@@ -41,15 +40,12 @@ def get_user_signature():
 	if not signature:
 		return
 
-	soup = BeautifulSoup(signature, "html.parser")
-	html_signature = soup.find("div", {"class": "ql-editor read-mode"})
-	_signature = None
-	if html_signature:
-		_signature = html_signature.renderContents()
-	content = ""
-	if cstr(_signature) or signature:
-		content = f'<br><p class="signature">{signature}</p>'
-	return content
+	# A shared Email Account signature is authored by a manager but rendered in
+	# every agent's rich-text editor. Sanitize at this trust boundary so it cannot
+	# become cross-user stored XSS even if an old/imported row bypassed DocType
+	# field sanitization.
+	safe_signature = frappe.utils.sanitize_html(cstr(signature), always_sanitize=True)
+	return f'<br><div class="signature">{safe_signature}</div>'
 
 
 def check_app_permission():
@@ -76,20 +72,32 @@ def check_app_permission():
 	return False
 
 
-@frappe.whitelist(allow_guest=True)
+@frappe.whitelist(allow_guest=True, methods=["POST"])  # nosemgrep
 @rate_limit(limit=10, seconds=60 * 60)
 def accept_invitation(key: str | None = None):
 	if not key:
 		frappe.throw(_("Invalid or expired key"))
 
-	result = frappe.db.get_all("CRM Invitation", filters={"key": key}, pluck="name")
+	# The emailed link now lands on a read-only confirmation page. Only this POST
+	# consumes it, so mail/link-preview scanners cannot create a user or log in as
+	# the invitee merely by fetching the URL.
+	result = frappe.db.get_all(
+		"CRM Invitation",
+		filters={
+			"key": key,
+			"status": "Pending",
+			"creation": [">=", frappe.utils.add_days(frappe.utils.now_datetime(), -3)],
+		},
+		pluck="name",
+		limit=1,
+	)
 	if not result:
 		frappe.throw(_("Invalid or expired key"))
 	invitation = frappe.get_doc("CRM Invitation", result[0])
 	is_new_user = invitation.accept()
 	invitation.reload()
 
-	# this is a GET request, which is rolled back unless a commit is requested
+	# Keep the accepted invitation/user changes when the response becomes a redirect.
 	frappe.local.flags.commit = True
 
 	if invitation.status == "Accepted":
@@ -104,7 +112,7 @@ def accept_invitation(key: str | None = None):
 			frappe.local.response["location"] = "/crm"
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def invite_by_email(emails: str, role: str):
 	frappe.only_for(["Sales Manager", "System Manager"], True)
 

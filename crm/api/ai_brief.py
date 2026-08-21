@@ -253,7 +253,10 @@ def ask_model(prompt: str) -> dict:
 		# key is configured"). The button points at Settings -> AI & Follow-ups.
 		raise
 	except AIResponseError as error:
-		frappe.throw(_("The AI could not write this brief: {0}").format(error), title=_("Brief Failed"))
+		frappe.throw(
+			_("The AI could not write this brief: {0}").format(frappe.utils.escape_html(str(error))),
+			title=_("Brief Failed"),
+		)
 
 	if not isinstance(answer, dict):
 		frappe.throw(_("The AI answered with something that is not a brief."))

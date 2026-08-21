@@ -344,7 +344,7 @@ def commit():
 	commit inside a `FrappeTestCase` would end the transaction the test harness
 	rolls back, so the tests replace this function rather than the database.
 	"""
-	frappe.db.commit()
+	frappe.db.commit()  # nosemgrep
 
 
 def reserve_request(settings, month: str, used: int, isolate: bool = False) -> None:

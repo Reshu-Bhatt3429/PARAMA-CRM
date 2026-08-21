@@ -34,7 +34,7 @@ def after_install(force=False):
 	create_assignment_rule_custom_fields()
 	add_assignment_rule_property_setters()
 	seed_default_rules_and_mappings()
-	frappe.db.commit()
+	frappe.db.commit()  # nosemgrep
 
 
 def add_default_lead_statuses():

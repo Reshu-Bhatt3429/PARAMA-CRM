@@ -56,7 +56,7 @@ def get_user_default_calling_medium():
 	return default_medium
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def set_default_calling_medium(medium: str):
 	if not frappe.db.exists("CRM Telephony Agent", frappe.session.user):
 		frappe.get_doc(
@@ -72,7 +72,7 @@ def set_default_calling_medium(medium: str):
 	return get_user_default_calling_medium()
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def add_note_to_call_log(call_sid: str, note: dict):
 	"""Add/Update note to call log based on call sid."""
 	if not frappe.has_permission("CRM Call Log", "write", call_sid):
@@ -99,7 +99,7 @@ def add_note_to_call_log(call_sid: str, note: dict):
 	return _note
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def add_task_to_call_log(call_sid: str, task: dict):
 	"""Add/Update task to call log based on call sid."""
 	if not frappe.has_permission("CRM Call Log", "write", call_sid):

@@ -151,12 +151,6 @@
                   documentType,
                 ])
               }}
-              <a
-                class="font-medium underline"
-                href="https://docs.frappe.io/crm/assignment-rule"
-                target="_blank"
-                >{{ __('Learn about conditions') }}</a
-              >
             </span>
             <div v-if="isOldSla && step.data">
               <Popover trigger="hover" :hoverDelay="0.25" placement="top-end">
@@ -186,9 +180,13 @@
           >
             <span class="text-p-sm">
               {{ __('Conditions for this rule were created from') }}
-              <a :href="deskUrl" target="_blank" class="underline">{{
-                __('desk')
-              }}</a>
+              <a
+                :href="deskUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="underline"
+                >{{ __('desk') }}</a
+              >
               {{
                 __(
                   'which are not compatible with this UI, you will need to recreate the conditions here if you want to manage and add new conditions from this UI.',
@@ -231,12 +229,6 @@
                   [documentType],
                 )
               }}
-              <a
-                class="font-medium underline"
-                href="https://docs.frappe.io/crm/assignment-rule"
-                target="_blank"
-                >{{ __('Learn about conditions') }}</a
-              >
             </span>
             <div
               v-if="
@@ -270,7 +262,12 @@
           >
             <span class="text-p-sm">
               {{ __('Conditions for this rule were created from') }}
-              <a :href="deskUrl" target="_blank" class="underline">
+              <a
+                :href="deskUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="underline"
+              >
                 {{ __('desk') }}
               </a>
               {{
@@ -688,7 +685,6 @@ const createAssignmentRule = () => {
         ),
       },
     },
-    auto: true,
     onSuccess(data) {
       getAssignmentRuleData
         .submit({
@@ -707,7 +703,7 @@ const createAssignmentRule = () => {
     onError: () => {
       isLoading.value = false
     },
-  })
+  }).submit()
 }
 
 const priorityOptions = [

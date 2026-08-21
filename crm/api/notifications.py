@@ -38,7 +38,7 @@ def get_notifications():
 	return _notifications
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def mark_as_read(doc: str | None = None):
 	user = frappe.session.user
 	filters = {"to_user": user, "read": False}

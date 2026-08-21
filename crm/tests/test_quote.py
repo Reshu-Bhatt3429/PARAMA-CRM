@@ -293,7 +293,7 @@ class LinkTestCase(QuoteTestCase):
 
 	def make_link(self):
 		with self.stub_render():
-			file_doc, sequence = quote.build_pdf(frappe.get_doc(DEAL_DOCTYPE, self.deal.name))
+			file_doc, _sequence = quote.build_pdf(frappe.get_doc(DEAL_DOCTYPE, self.deal.name))
 		return document_links.create_link(DEAL_DOCTYPE, self.deal.name, file_doc, purpose=quote.PURPOSE)
 
 
@@ -612,8 +612,8 @@ class TestPermissions(QuoteTestCase):
 		for method in (quote.download_quote, quote.send_quote_on_whatsapp):
 			self.assertIn(method, frappe.whitelisted, msg=f"{method.__name__} must be whitelisted")
 			self.assertEqual(
-				frappe.allowed_http_methods_for_whitelisted_func[method],
-				["POST"],
+				tuple(frappe.allowed_http_methods_for_whitelisted_func[method]),
+				("POST",),
 				msg=f"{method.__name__} must be POST only",
 			)
 

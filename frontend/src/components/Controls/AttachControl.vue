@@ -31,7 +31,8 @@
       <template #body>
         <div v-if="isImage" class="overflow-hidden rounded shadow-xl">
           <img
-            :src="value"
+            v-if="safeValue"
+            :src="safeValue"
             class="max-h-40 max-w-xs object-contain"
             :alt="filename"
           />
@@ -45,7 +46,7 @@
       </template>
       <a
         class="block min-w-0 truncate text-ink-gray-8 hover:underline"
-        :href="value"
+        :href="safeValue"
         target="_blank"
         rel="noopener noreferrer"
       >
@@ -77,6 +78,7 @@
 import { ref, computed, useAttrs } from 'vue'
 import { Tooltip } from 'frappe-ui'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
+import { getSafeHttpUrl } from '@/utils/safeUrl'
 
 defineOptions({ inheritAttrs: false })
 
@@ -96,6 +98,7 @@ const emit = defineEmits(['change'])
 const attrs = useAttrs()
 
 const showUploader = ref(false)
+const safeValue = computed(() => getSafeHttpUrl(props.value))
 
 // Mirror frappe-ui TextInput size classes
 const sizeClasses = computed(

@@ -1,8 +1,7 @@
-# import frappe
-from frappe.contacts.doctype.contact.contact import Contact
+from frappe.model.base_document import BaseDocument
 
 
-class CustomContact(Contact):
+class CustomContact(BaseDocument):
 	@staticmethod
 	def default_list_data():
 		columns = [

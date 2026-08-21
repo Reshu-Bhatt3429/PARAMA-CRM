@@ -525,7 +525,7 @@ class CRMLead(Document):
 		}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def convert_to_deal(
 	lead: str,
 	doc: Document | None = None,

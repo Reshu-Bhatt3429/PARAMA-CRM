@@ -163,7 +163,7 @@ def get_my_preferences() -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
-def set_my_preference(key: str, value) -> dict:
+def set_my_preference(key: str, value: str | int | bool) -> dict:
 	"""Set one of this user's own preferences. Refuses an unregistered key.
 
 	Authorization: as above -- the row written is always this session's user's.

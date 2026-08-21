@@ -23,7 +23,7 @@ def get_assignment_rules_list():
 	return assignment_rules
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def duplicate_assignment_rule(docname: str, new_name: str):
 	doc = frappe.get_doc("Assignment Rule", docname)
 	# the source rule is addressed by name, so the caller must be allowed to read it

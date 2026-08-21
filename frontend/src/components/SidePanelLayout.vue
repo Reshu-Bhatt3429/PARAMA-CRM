@@ -444,6 +444,7 @@ import {
   interpolateTemplate,
 } from '@/utils'
 import { flt } from '@/utils/numberFormat.js'
+import { openSafeUrl } from '@/utils/safeUrl'
 import {
   Checkbox,
   DatePicker,
@@ -573,7 +574,7 @@ function isExternalUrl(value) {
 }
 
 function openExternalUrl(value) {
-  window.open(value.trim(), '_blank', 'noopener,noreferrer')
+  openSafeUrl(value)
 }
 
 async function fieldChange(value, df) {

@@ -39,13 +39,15 @@ from frappe.permissions import add_permission, update_permission_property
 from frappe.utils import cint, flt
 
 from crm import document_links
-from crm.ai.client import AIConfigurationError, AIResponseError, complete
+from crm.ai.client import AIConfigurationError, AIResponseError, complete, is_configured
 from crm.fcrm.doctype.crm_itinerary.crm_itinerary import (
+	MAX_DAYS,
 	MIN_DAYS,
 	TIMES_OF_DAY,
 	ItinerarySchemaError,
 	clamp_days,
 	dump_days,
+	duration_label,
 	empty_day,
 	parse_days,
 	validate_days,
@@ -60,6 +62,8 @@ PRINT_FORMAT = "Travel Itinerary A4"
 SKELETON_TOKENS_PER_DAY = 120
 SKELETON_TOKENS_MIN = 800
 DAY_TOKENS = 2000
+IMPORT_TOKENS = 6000
+MAX_IMPORT_LENGTH = 40_000
 
 # How many neighbouring days the model is shown so it does not repeat itself.
 DEDUP_NEIGHBOURS = 2
@@ -94,6 +98,46 @@ DAY_SYSTEM = (
 	"to four items in a slot at most, and fewer on an arrival or departure day. Prefer "
 	"real, well-known places at the destination. Never repeat an activity that another "
 	"day already covers. Never write a URL, a phone number or a booking reference."
+)
+
+IMPORT_SYSTEM = (
+	"You turn pasted travel proposals into structured itinerary data. Preserve factual "
+	"details from the source, but never invent bookings, prices, links, contacts or places. "
+	"Keep day descriptions customer-ready and return only the requested JSON."
+)
+
+NUMBER_WORDS = {
+	"one": 1,
+	"two": 2,
+	"three": 3,
+	"four": 4,
+	"five": 5,
+	"six": 6,
+	"seven": 7,
+	"eight": 8,
+	"nine": 9,
+	"ten": 10,
+	"eleven": 11,
+	"twelve": 12,
+	"first": 1,
+	"second": 2,
+	"third": 3,
+	"fourth": 4,
+	"fifth": 5,
+	"sixth": 6,
+	"seventh": 7,
+	"eighth": 8,
+	"ninth": 9,
+	"tenth": 10,
+	"eleventh": 11,
+	"twelfth": 12,
+}
+
+DAY_HEADER_PATTERN = re.compile(
+	r"^(?:(?:day\s*[-:#]?\s*(?P<day>\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve))|"
+	r"(?:(?P<ordinal>first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\s+day)|"
+	r"(?P<numeric>\d+)[.)])\s*[:—-]?\s*(?P<title>.*)$",
+	re.IGNORECASE,
 )
 
 SKELETON_SCHEMA = {
@@ -132,6 +176,18 @@ DAY_SCHEMA = {
 	"properties": {
 		"title": {"type": "string"},
 		"summary": {"type": "string"},
+		"highlights": {"type": "array", "items": {"type": "string"}},
+		"description": {"type": "string"},
+		"accommodation": {"type": "string"},
+		"meals": {
+			"type": "object",
+			"properties": {
+				"breakfast": {"type": "boolean"},
+				"lunch": {"type": "boolean"},
+				"dinner": {"type": "boolean"},
+			},
+			"required": ["breakfast", "lunch", "dinner"],
+		},
 		"slots": {
 			"type": "array",
 			"items": {
@@ -144,20 +200,72 @@ DAY_SCHEMA = {
 			},
 		},
 	},
-	"required": ["slots"],
+	"required": ["slots", "highlights", "description", "accommodation", "meals"],
+}
+
+IMPORT_DAY_SCHEMA = {
+	"type": "object",
+	"properties": {
+		"day_number": {"type": "integer"},
+		"title": {"type": "string"},
+		"summary": {"type": "string"},
+		"highlights": {"type": "array", "items": {"type": "string"}},
+		"description": {"type": "string"},
+		"accommodation": {"type": "string"},
+		"meals": {
+			"type": "object",
+			"properties": {
+				"breakfast": {"type": "boolean"},
+				"lunch": {"type": "boolean"},
+				"dinner": {"type": "boolean"},
+			},
+			"required": ["breakfast", "lunch", "dinner"],
+		},
+	},
+	"required": ["day_number", "title", "summary", "highlights", "description", "accommodation", "meals"],
+}
+
+IMPORT_SCHEMA = {
+	"type": "object",
+	"properties": {
+		"title": {"type": "string"},
+		"subtitle": {"type": "string"},
+		"destination": {"type": "string"},
+		"duration_label": {"type": "string"},
+		"days": {"type": "array", "items": IMPORT_DAY_SCHEMA},
+	},
+	"required": ["title", "subtitle", "destination", "duration_label", "days"],
 }
 
 # What the editor may write through `update_details`. `status`, `version`,
 # `lead` and `days_json` are missing on purpose -- each has its own endpoint.
 EDITABLE_FIELDS = (
 	"title",
+	"subtitle",
+	"customer_name",
 	"deal",
 	"destination",
 	"start_date",
 	"num_days",
+	"duration_label",
+	"departure_type",
 	"group_size",
+	"group_size_label",
 	"budget",
 	"currency",
+	"cover_image",
+	"brand_logo",
+	"theme",
+	"font_preset",
+	"title_weight",
+	"title_style",
+	"tagline_style",
+	"title_case",
+	"contact_email",
+	"contact_phone",
+	"contact_website",
+	"trip_vibe",
+	"ai_instructions",
 	"inclusions",
 	"exclusions",
 	"terms",
@@ -280,18 +388,28 @@ def create_from_lead(lead: str):
 	lead_doc = frappe.get_doc(LEAD_DOCTYPE, lead)
 	destination = (lead_doc.get("destination") or "").strip()
 	customer = (lead_doc.get("lead_name") or lead_doc.get("organization") or "").strip()
+	num_days = days_between(lead_doc.get("travel_start_date"), lead_doc.get("travel_end_date"))
+	group_size = cint(lead_doc.get("group_size"))
 
 	doc = frappe.new_doc(DOCTYPE)
+	agency = doc.render_agency()
 	doc.update(
 		{
 			"lead": lead,
 			"title": build_title(destination, customer),
+			"customer_name": customer,
 			"destination": destination,
 			"start_date": lead_doc.get("travel_start_date"),
-			"num_days": days_between(lead_doc.get("travel_start_date"), lead_doc.get("travel_end_date")),
-			"group_size": cint(lead_doc.get("group_size")),
+			"num_days": num_days,
+			"duration_label": duration_label(num_days),
+			"departure_type": "Group Departure",
+			"group_size": group_size,
+			"group_size_label": _("{0} travellers").format(group_size) if group_size else "",
 			"budget": flt(lead_doc.get("budget")),
 			"currency": frappe.db.get_default("currency") or "INR",
+			"contact_email": agency.get("email"),
+			"contact_phone": agency.get("phone"),
+			"contact_website": agency.get("website"),
 			"status": "Draft",
 			"version": 1,
 			"days_json": dump_days([]),
@@ -360,7 +478,7 @@ def generate_skeleton(itinerary: str):
 
 
 @frappe.whitelist(methods=["POST"])
-def generate_day(itinerary: str, day_number):
+def generate_day(itinerary: str, day_number: int):
 	"""Fill in the slots of exactly one day. Every other day is left untouched."""
 	doc = get_itinerary(itinerary, "write")
 	day_number = cint(day_number)
@@ -384,6 +502,10 @@ def generate_day(itinerary: str, day_number):
 	day = days[index]
 	day["title"] = day.get("title") or clean_ai_text(answer.get("title"))
 	day["summary"] = day.get("summary") or clean_ai_text(answer.get("summary"))
+	day["highlights"] = clean_ai_list(answer.get("highlights"))
+	day["description"] = clean_ai_text(answer.get("description"))
+	day["accommodation"] = clean_ai_text(answer.get("accommodation"))
+	day["meals"] = clean_ai_meals(answer.get("meals"))
 	day["slots"] = build_slots(answer.get("slots"))
 
 	doc.days_json = dump_days(validate_days(days))
@@ -439,6 +561,19 @@ def clean_ai_text(value) -> str:
 	return URL_PATTERN.sub("", value).strip()
 
 
+def clean_ai_list(values, limit: int = 8) -> list[str]:
+	if isinstance(values, str):
+		values = values.split(",")
+	if not isinstance(values, list):
+		return []
+	return [text for value in values[:limit] if (text := clean_ai_text(value))]
+
+
+def clean_ai_meals(value) -> dict[str, bool]:
+	value = value if isinstance(value, dict) else {}
+	return {meal: value.get(meal) is True for meal in ("breakfast", "lunch", "dinner")}
+
+
 def ask_model(prompt: str, system: str, max_tokens: int, schema: dict) -> dict:
 	"""One `complete()` call, with the two AI failures turned into clear errors."""
 	try:
@@ -450,7 +585,10 @@ def ask_model(prompt: str, system: str, max_tokens: int, schema: dict) -> dict:
 		raise
 	except AIResponseError as error:
 		frappe.throw(
-			_("The AI could not draft this itinerary: {0}").format(error), title=_("AI Draft Failed")
+			_("The AI could not draft this itinerary: {0}").format(
+				frappe.utils.escape_html(str(error))
+			),
+			title=_("AI Draft Failed"),
 		)
 
 	if not isinstance(answer, dict):
@@ -473,7 +611,11 @@ def trip_context(doc) -> str:
 		lines.append("Start date: not given")
 
 	lines.append(f"Length: {clamp_days(doc.num_days)} days")
-	lines.append(f"Group size: {cint(doc.group_size) or 'not given'} travellers")
+	lines.append(f"Group size: {doc.group_size_label or cint(doc.group_size) or 'not given'}")
+	lines.append(f"Departure type: {doc.departure_type or 'not given'}")
+	lines.append(f"Trip style: {doc.trip_vibe or 'not given'}")
+	if doc.ai_instructions:
+		lines.append(f"Agency instructions: {clean_ai_text(doc.ai_instructions)}")
 
 	if flt(doc.budget):
 		lines.append(f"Total budget: {doc.render_amount(doc.budget)}")
@@ -523,13 +665,15 @@ def day_prompt(doc, days: list[dict], day_number: int) -> str:
 	if already:
 		parts += [
 			"",
-			"These activities are already booked on the neighbouring days. Do not " "repeat any of them:",
+			"These activities are already booked on the neighbouring days. Do not repeat any of them:",
 			"\n".join(f"- {title}" for title in already),
 		]
 
 	parts += [
 		"",
-		"Return the morning, afternoon and evening slots for this one day. Two to four "
+		"Return three to six short highlights, one customer-facing paragraph describing "
+		"the day, the accommodation or an empty string, and explicit breakfast, lunch, "
+		"and dinner booleans. Also return the morning, afternoon and evening slots. Two to four "
 		"items per slot at most. For each item give a short title, a description of one "
 		"or two sentences a customer can read, the name of a real well-known place at "
 		f"the destination or null, the duration in hours or null, and the estimated cost "
@@ -553,11 +697,219 @@ def neighbouring_titles(days: list[dict], day_number: int) -> list[str]:
 	return titles
 
 
+# --- paste importer --------------------------------------------------------
+
+
+@frappe.whitelist(methods=["POST"])
+def import_pasted_itinerary(itinerary: str, text: str, prefer_ai: int = 1):
+	"""Replace the day plan with structured data parsed from pasted prose.
+
+	A configured server-side provider gets the first attempt. If it is missing or
+	returns an unusable answer, the deterministic parser still handles common
+	"Day 1", bullet, accommodation and meal formats. API keys never enter the
+	browser or the itinerary document.
+	"""
+	doc = get_itinerary(itinerary, "write")
+	raw_text = frappe.utils.cstr(text).strip()
+	if not raw_text:
+		frappe.throw(_("Paste an itinerary before importing it."))
+	if len(raw_text) > MAX_IMPORT_LENGTH:
+		frappe.throw(
+			_("The pasted itinerary is too long. Keep it below {0} characters.").format(MAX_IMPORT_LENGTH)
+		)
+
+	parsed = None
+	method = "local"
+	if cint(prefer_ai) and is_configured():
+		parsed = parse_import_with_ai(raw_text)
+		if parsed:
+			method = "ai"
+
+	parsed = parsed or parse_pasted_itinerary(raw_text)
+	days = imported_days(parsed.get("days"))
+	if not days:
+		frappe.throw(_("No itinerary days could be found in the pasted text."))
+
+	for source, field in (
+		("title", "title"),
+		("subtitle", "subtitle"),
+		("destination", "destination"),
+		("duration_label", "duration_label"),
+	):
+		value = clean_ai_text(parsed.get(source))
+		if value:
+			doc.set(field, value)
+
+	doc.num_days = len(days)
+	if not doc.duration_label:
+		doc.duration_label = duration_label(len(days))
+	doc.days_json = dump_days(validate_days(days))
+	doc.save()
+
+	payload = itinerary_payload(doc)
+	payload["import_method"] = method
+	return payload
+
+
+def parse_import_with_ai(raw_text: str) -> dict | None:
+	prompt = (
+		"Extract the itinerary below. Keep every day in source order. Highlights must be "
+		"short phrases. Summary is one sentence; description keeps the useful operational "
+		"detail. Use an empty string for a missing accommodation and false for an unmentioned meal.\n\n"
+		f"PASTED ITINERARY\n{raw_text}"
+	)
+	try:
+		answer = complete(
+			prompt,
+			system=IMPORT_SYSTEM,
+			max_tokens=IMPORT_TOKENS,
+			json_schema=IMPORT_SCHEMA,
+		)
+	except (AIConfigurationError, AIResponseError):
+		return None
+	return (
+		answer
+		if isinstance(answer, dict) and isinstance(answer.get("days"), list) and answer["days"]
+		else None
+	)
+
+
+def parse_pasted_itinerary(raw_text: str) -> dict:
+	"""Parse the common itinerary format without a model.
+
+	This intentionally favours preserving prose over guessing. It recognises day
+	headings, labelled highlights/accommodation/duration/destination and meal words;
+	anything else remains in the day's description for the agent to edit.
+	"""
+	lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+	if not lines:
+		return {"days": []}
+
+	preamble = []
+	blocks = []
+	current = None
+	for line in lines:
+		match = DAY_HEADER_PATTERN.match(line)
+		if match:
+			if current:
+				blocks.append(current)
+			current = {"title": (match.group("title") or "").strip(), "lines": []}
+		elif current:
+			current["lines"].append(line)
+		else:
+			preamble.append(line)
+	if current:
+		blocks.append(current)
+
+	# A proposal without day headings is still importable as a one-day draft.
+	if not blocks:
+		blocks = [{"title": "", "lines": lines}]
+		preamble = []
+
+	days = []
+	for index, block in enumerate(blocks, 1):
+		content = block["lines"]
+		title = block["title"] or first_content_line(content) or _("Day {0}").format(index)
+		highlights = extract_highlights(content)
+		accommodation = extract_label(content, ("accommodation", "overnight", "stay"))
+		description_lines = [
+			line
+			for line in content
+			if not is_labeled_line(line, ("highlights", "accommodation", "overnight", "stay", "meals"))
+		]
+		description = " ".join(strip_bullet(line) for line in description_lines).strip()
+		lower = " ".join(content).lower()
+		days.append(
+			{
+				"day_number": index,
+				"title": title,
+				"summary": first_sentence(description),
+				"highlights": highlights,
+				"description": description,
+				"accommodation": accommodation,
+				"meals": {
+					"breakfast": bool(re.search(r"\b(?:breakfast|b'fast|morning tea)\b", lower)),
+					"lunch": bool(re.search(r"\b(?:lunch|packed lunch|afternoon meal)\b", lower)),
+					"dinner": bool(re.search(r"\b(?:dinner|supper|evening meal)\b", lower)),
+				},
+			}
+		)
+
+	return {
+		"title": extract_label(preamble, ("title", "trip", "expedition")) or first_content_line(preamble),
+		"subtitle": extract_label(preamble, ("subtitle", "tagline")),
+		"destination": extract_label(preamble, ("destination", "location")),
+		"duration_label": extract_label(preamble, ("duration",)),
+		"days": days,
+	}
+
+
+def imported_days(values) -> list[dict]:
+	days = []
+	for index, value in enumerate(values or [], 1):
+		if not isinstance(value, dict) or index > MAX_DAYS:
+			continue
+		day = empty_day(index)
+		day.update(
+			{
+				"title": clean_ai_text(value.get("title")) or _("Day {0}").format(index),
+				"summary": clean_ai_text(value.get("summary")),
+				"highlights": clean_ai_list(value.get("highlights")),
+				"description": clean_ai_text(value.get("description")),
+				"accommodation": clean_ai_text(value.get("accommodation")),
+				"meals": clean_ai_meals(value.get("meals")),
+			}
+		)
+		days.append(day)
+	return days
+
+
+def extract_label(lines: list[str], labels: tuple[str, ...]) -> str:
+	pattern = re.compile(rf"^(?:{'|'.join(re.escape(label) for label in labels)})\s*[:\-]\s*(.+)$", re.I)
+	for line in lines:
+		match = pattern.match(strip_bullet(line))
+		if match:
+			return match.group(1).strip()
+	return ""
+
+
+def is_labeled_line(line: str, labels: tuple[str, ...]) -> bool:
+	return bool(
+		re.match(rf"^(?:{'|'.join(re.escape(label) for label in labels)})\s*[:\-]", strip_bullet(line), re.I)
+	)
+
+
+def extract_highlights(lines: list[str]) -> list[str]:
+	labelled = extract_label(lines, ("highlights", "high points", "key experiences"))
+	if labelled:
+		return [part.strip() for part in labelled.split(",") if part.strip()][:8]
+	return [strip_bullet(line) for line in lines if re.match(r"^[•*\-]", line)][:8]
+
+
+def strip_bullet(value: str) -> str:
+	return re.sub(r"^[•*\-]\s*", "", value).strip()
+
+
+def first_content_line(lines: list[str]) -> str:
+	for line in lines:
+		value = strip_bullet(line)
+		if value and not re.match(r"^[A-Za-z ]+\s*[:\-]", value):
+			return value
+	return ""
+
+
+def first_sentence(value: str) -> str:
+	if not value:
+		return ""
+	match = re.match(r"^(.+?[.!?])(?:\s|$)", value)
+	return (match.group(1) if match else value)[:240]
+
+
 # --- editing ---------------------------------------------------------------
 
 
 @frappe.whitelist(methods=["POST"])
-def update_days(itinerary: str, days_json):
+def update_days(itinerary: str, days_json: dict | list | str):
 	"""The editor's save path. A payload that breaks the schema is refused."""
 	doc = get_itinerary(itinerary, "write")
 
@@ -572,7 +924,7 @@ def update_days(itinerary: str, days_json):
 
 
 @frappe.whitelist(methods=["POST"])
-def update_details(itinerary: str, values):
+def update_details(itinerary: str, values: dict | str):
 	"""Save the itinerary's own fields: the trip facts, the prices, the terms.
 
 	The editor could have used `frappe.client.set_value`, but that checks the
@@ -598,9 +950,26 @@ def update_details(itinerary: str, values):
 	if unknown:
 		frappe.throw(_("These fields cannot be edited here: {0}.").format(", ".join(unknown)))
 
+	previous_num_days = doc.num_days
+	previous_duration = doc.duration_label
+	previous_group_size = doc.group_size
+	previous_group_label = doc.group_size_label
+
 	for field in EDITABLE_FIELDS:
 		if field in values:
 			doc.set(field, coerce_field(field, values[field]))
+
+	if "num_days" in values and "duration_label" not in values:
+		if not previous_duration or previous_duration == duration_label(previous_num_days):
+			doc.duration_label = duration_label(doc.num_days)
+	if "group_size" in values and "group_size_label" not in values:
+		old_default = (
+			_("{0} travellers").format(cint(previous_group_size)) if cint(previous_group_size) else ""
+		)
+		if not previous_group_label or previous_group_label == old_default:
+			doc.group_size_label = (
+				_("{0} travellers").format(cint(doc.group_size)) if cint(doc.group_size) else ""
+			)
 
 	# A shorter trip drops the days past the new end. The editor asks the agent
 	# to confirm before it sends a smaller number, because those days may hold
@@ -661,13 +1030,32 @@ def itinerary_payload(doc) -> dict:
 	return {
 		"name": doc.name,
 		"title": doc.title,
+		"subtitle": doc.subtitle,
+		"customer_name": doc.customer_name,
 		"lead": doc.lead,
+		"deal": doc.deal,
 		"destination": doc.destination,
 		"start_date": doc.start_date,
 		"num_days": doc.num_days,
+		"duration_label": doc.render_duration(),
+		"departure_type": doc.departure_type or "Group Departure",
 		"group_size": doc.group_size,
+		"group_size_label": doc.render_group_size(),
 		"budget": doc.budget,
 		"currency": doc.currency,
+		"cover_image": doc.cover_image,
+		"brand_logo": doc.brand_logo,
+		"theme": doc.render_theme(),
+		"font_preset": doc.font_preset or "Modern Alpine",
+		"title_weight": doc.title_weight or "900",
+		"title_style": doc.title_style or "Normal",
+		"tagline_style": doc.tagline_style or "Bold Normal",
+		"title_case": doc.title_case or "Uppercase",
+		"contact_email": doc.contact_email,
+		"contact_phone": doc.contact_phone,
+		"contact_website": doc.contact_website,
+		"trip_vibe": doc.trip_vibe or "Adventure",
+		"ai_instructions": doc.ai_instructions,
 		"status": doc.status,
 		"version": doc.version,
 		"inclusions": doc.inclusions,
@@ -679,6 +1067,7 @@ def itinerary_payload(doc) -> dict:
 			for row in doc.price_tiers or []
 		],
 		"days": doc.render_days(),
+		"agency": doc.render_agency(),
 	}
 
 
@@ -957,7 +1346,7 @@ def install_print_format():
 
 	path = frappe.get_app_path("crm", "templates", "print_formats", "travel_itinerary_a4.html")
 	try:
-		with open(path) as template:
+		with open(path) as template:  # nosemgrep
 			html = template.read()
 	except OSError:
 		frappe.log_error(f"missing template: {path}", "CRM Itinerary: print format not installed")

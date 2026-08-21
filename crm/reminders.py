@@ -93,7 +93,7 @@ MAX_ERROR_LENGTH = 200
 
 
 def commit():
-	frappe.db.commit()
+	frappe.db.commit()  # nosemgrep
 
 
 def rollback():

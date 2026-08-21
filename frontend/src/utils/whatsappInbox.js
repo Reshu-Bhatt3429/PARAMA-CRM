@@ -32,6 +32,15 @@ export function conversationKey(conversation) {
   return `${doctype}:${name}`
 }
 
+/** A conservative `tel:` payload: formatting is removed and control/query data is refused. */
+export function normalizeDialablePhone(value) {
+  if (typeof value !== 'string' && typeof value !== 'number') return null
+  const normalized = String(value)
+    .trim()
+    .replace(/[\s().-]/g, '')
+  return /^\+?[0-9*#]{3,32}$/.test(normalized) ? normalized : null
+}
+
 /**
  * Whether a realtime `whatsapp_message` payload belongs to a conversation.
  */

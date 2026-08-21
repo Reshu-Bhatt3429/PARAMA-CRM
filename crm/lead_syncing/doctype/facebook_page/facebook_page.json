@@ -9,8 +9,7 @@
   "account_id",
   "category",
   "column_break_eteo",
-  "id",
-  "access_token"
+  "id"
  ],
  "fields": [
   {
@@ -32,11 +31,6 @@
   {
    "fieldname": "column_break_eteo",
    "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "access_token",
-   "fieldtype": "Small Text",
-   "label": "Access Token"
   },
   {
    "fieldname": "page_name",

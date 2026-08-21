@@ -1,7 +1,7 @@
 import frappe
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def create_email_account(data: dict):
 	frappe.only_for(["System Manager"], True)
 

@@ -95,7 +95,7 @@
         <TaskArea :modalRef="modalRef" :tasks="activities" :doctype="doctype" />
       </div>
       <div v-else-if="title == 'Calls'" class="activity">
-        <div v-for="(call, i) in activities" :key="call.name">
+        <div v-for="(callActivity, i) in activities" :key="callActivity.name">
           <div
             class="activity grid grid-cols-[30px_minmax(auto,_1fr)] gap-4 px-3 sm:px-10"
           >
@@ -109,19 +109,21 @@
                 class="flex h-8 w-7 items-center justify-center bg-surface-base text-ink-gray-8"
               >
                 <MissedCallIcon
-                  v-if="call.status == 'No Answer'"
+                  v-if="callActivity.status == 'No Answer'"
                   class="text-ink-red-8"
                 />
-                <DeclinedCallIcon v-else-if="call.status == 'Busy'" />
+                <DeclinedCallIcon v-else-if="callActivity.status == 'Busy'" />
                 <component
                   :is="
-                    call.type == 'Incoming' ? InboundCallIcon : OutboundCallIcon
+                    callActivity.type == 'Incoming'
+                      ? InboundCallIcon
+                      : OutboundCallIcon
                   "
                   v-else
                 />
               </div>
             </div>
-            <CallArea class="mb-4" :activity="call" />
+            <CallArea class="mb-4" :activity="callActivity" />
           </div>
         </div>
       </div>
@@ -253,9 +255,10 @@
                   __(activity.data.type)
                 }}</span>
                 <a
-                  v-if="activity.data.file_url"
-                  :href="activity.data.file_url"
+                  v-if="getSafeHttpUrl(activity.data.file_url)"
+                  :href="getSafeHttpUrl(activity.data.file_url)"
                   target="_blank"
+                  rel="noopener noreferrer"
                 >
                   <span>{{ activity.data.file_name }}</span>
                 </a>
@@ -522,6 +525,7 @@ import AllModals from '@/components/Activities/AllModals.vue'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import TimelineTimestamp from '@/components/Activities/TimelineTimestamp.vue'
 import { startCase } from '@/utils'
+import { getSafeHttpUrl } from '@/utils/safeUrl'
 import {
   briefNoteTitle,
   briefToNoteHtml,
@@ -669,12 +673,11 @@ function sendTemplate(template) {
       to: doc.value.mobile_no,
       template,
     },
-    auto: true,
     onError: (error) => {
       toast.error(error.messages?.[0] || __('Failed to send WhatsApp template'))
     },
     onSuccess: () => whatsappMessages.reload(),
-  })
+  }).submit()
 }
 
 const replyMessage = ref({})

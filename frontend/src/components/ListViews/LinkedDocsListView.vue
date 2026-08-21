@@ -59,6 +59,7 @@
 import ListRows from '@/components/ListViews/ListRows.vue'
 import { ListView, ListHeader, ListHeaderItem, ListRowItem } from 'frappe-ui'
 import { ref } from 'vue'
+import { openSafeUrl } from '@/utils/safeUrl'
 
 defineProps({
   rows: { type: Array, required: true },
@@ -134,7 +135,7 @@ const viewLinkedDoc = (doc) => {
   if (openDesk) {
     base = '/app'
   }
-  window.open(`${base}/${page}/${id}`)
+  openSafeUrl(`${base}/${page}/${encodeURIComponent(id)}`)
 }
 
 const getDoctypeName = (doctype) => {

@@ -22,7 +22,21 @@ class TestCRMInvitation(FrappeTestCase):
 		invitation = self.make_invitation()
 		self.assertEqual(invitation.status, "Pending")
 		self.assertTrue(invitation.key)
+		self.assertEqual(len(invitation.key), 32)
 		self.assertEqual(invitation.invited_by, frappe.session.user)
+
+	def test_invitation_email_uses_confirmation_page(self):
+		with patch.object(frappe, "sendmail") as sendmail:
+			invitation = frappe.get_doc(
+				doctype="CRM Invitation",
+				email="confirmation-page@example.com",
+				role="Sales User",
+			).insert(ignore_permissions=True)
+
+		args = sendmail.call_args.kwargs["args"]
+		self.assertIn("/accept-invitation?key=", args["invite_link"])
+		self.assertNotIn("/api/method/", args["invite_link"])
+		self.assertIn(invitation.key, args["invite_link"])
 
 	def test_accept_pending_invitation(self):
 		invitation = self.make_invitation()
@@ -106,6 +120,19 @@ class TestCRMInvitation(FrappeTestCase):
 
 		login_manager.login_as.assert_called_once_with("existing-invitee@example.com")
 		self.assertEqual(frappe.local.response["location"], "/crm")
+
+	def test_expired_link_cannot_be_consumed_before_scheduler_runs(self):
+		from crm.api import accept_invitation
+
+		invitation = self.make_invitation(email="old-link@example.com")
+		frappe.db.set_value(
+			"CRM Invitation", invitation.name, "creation", add_days(now(), -4), update_modified=False
+		)
+
+		with self.assertRaises(frappe.ValidationError):
+			accept_invitation(key=invitation.key)
+
+		self.assertFalse(frappe.db.exists("User", invitation.email))
 
 	def test_desk_accept_mails_new_user_a_set_password_link(self):
 		invitation = self.make_invitation(email="desk-invitee@example.com")

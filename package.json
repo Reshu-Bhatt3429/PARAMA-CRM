@@ -2,20 +2,14 @@
 	"private": true,
 	"type": "module",
 	"name": "crm",
-	"description": "Frappe CRM helps you work, not slow you down. Open-source, intuitive, and free from extra costs.",
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/frappe/crm.git"
-	},
-	"homepage": "https://frappe.io/crm",
-	"author": "Frappe Technologies Pvt. Ltd.",
+	"packageManager": "yarn@1.22.22",
+	"description": "PARAMA CRM brings travel sales, itineraries, communication, and follow-ups into one workspace.",
+	"author": "PARAMA CRM",
 	"license": "GPL-3.0",
-	"bugs": {
-		"url": "https://github.com/frappe/crm/issues"
-	},
 	"scripts": {
 		"postinstall": "cd frontend && yarn install --check-files",
 		"dev": "cd frontend && yarn dev",
+		"dev:stack": "bash scripts/start-dev.sh",
 		"build": "cd frontend && yarn build",
 		"upgrade-frappeui": "cd frontend && yarn add frappe-ui@latest && cd ..",
 		"test:e2e": "playwright test",

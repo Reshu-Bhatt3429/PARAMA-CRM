@@ -11,6 +11,8 @@ import { toast, dayjsLocal, dayjs, getConfig, FeatherIcon } from 'frappe-ui'
 // dependency; `clear` is aliased because `clearCache` already owns that name.
 import { clear as clearIdbStore } from 'idb-keyval'
 import { h } from 'vue'
+import { getSafeHttpUrl, openSafeUrl } from '@/utils/safeUrl'
+import { htmlToText as htmlToPlainText } from '@/utils/snippets'
 
 export function formatTime(seconds) {
   const days = Math.floor(seconds / (3600 * 24))
@@ -272,33 +274,7 @@ export function taskPriorityOptions(action, data) {
 }
 
 export function getSafeWebsiteUrl(rawUrl) {
-  const allowedProtocols = new Set(['http:', 'https:'])
-
-  if (!rawUrl) {
-    return null
-  }
-
-  const trimmedUrl = rawUrl.trim()
-
-  if (!trimmedUrl) {
-    return null
-  }
-
-  const urlToParse = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmedUrl)
-    ? trimmedUrl
-    : `https://${trimmedUrl}`
-
-  try {
-    const parsedUrl = new URL(urlToParse)
-
-    if (!allowedProtocols.has(parsedUrl.protocol)) {
-      return null
-    }
-
-    return parsedUrl.href
-  } catch {
-    return null
-  }
+  return getSafeHttpUrl(rawUrl, { assumeHttps: true })
 }
 
 export function openWebsite(url) {
@@ -309,8 +285,7 @@ export function openWebsite(url) {
     return false
   }
 
-  window.open(safeUrl, '_blank', 'noopener')
-  return true
+  return openSafeUrl(safeUrl)
 }
 
 export function website(url) {
@@ -318,9 +293,7 @@ export function website(url) {
 }
 
 export function htmlToText(html) {
-  const div = document.createElement('div')
-  div.innerHTML = html
-  return div.textContent || div.innerText || ''
+  return htmlToPlainText(html)
 }
 
 export function isContentEmpty(html) {

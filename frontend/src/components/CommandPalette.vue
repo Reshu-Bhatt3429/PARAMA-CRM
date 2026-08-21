@@ -127,9 +127,6 @@
  *    drops anything the user may no longer read.
  */
 
-import DealModal from '@/components/Modals/DealModal.vue'
-import LeadModal from '@/components/Modals/LeadModal.vue'
-import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import { useRecents } from '@/composables/recents'
 import { showCommandPalette } from '@/composables/commandPalette'
 import {
@@ -141,11 +138,17 @@ import {
   rowSubtitle,
 } from '@/utils/palette'
 import { call, Dialog, LoadingIndicator } from 'frappe-ui'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 const SEARCH_DEBOUNCE_MS = 150
 const MIN_QUERY_LENGTH = 2
+const LeadModal = defineAsyncComponent(
+  () => import('@/components/Modals/LeadModal.vue'),
+)
+const DealModal = defineAsyncComponent(
+  () => import('@/components/Modals/DealModal.vue'),
+)
 
 const router = useRouter()
 const { recents } = useRecents()
@@ -308,18 +311,5 @@ watch(show, (open) => {
   activeIndex.value = 0
   loadRecents()
   nextTick(() => inputRef.value?.focus())
-})
-
-useKeyboardShortcuts({
-  // `ignoreTyping: false` on purpose: Cmd+K has to work while the cursor sits
-  // in a filter box, which is exactly when somebody reaches for it.
-  ignoreTyping: false,
-  shortcuts: [
-    {
-      match: (event) =>
-        (event.metaKey || event.ctrlKey) && event.key?.toLowerCase() === 'k',
-      action: () => (show.value = !show.value),
-    },
-  ],
 })
 </script>

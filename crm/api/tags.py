@@ -109,7 +109,7 @@ def clean_tag(tag) -> str:
 
 
 def split_tags(value) -> list[str]:
-	"""`_user_tags` as a list. The column is stored as ",a,b", so it needs it."""
+	"""Return `_user_tags` as a list across legacy and Frappe 17 formats."""
 	return [tag.strip() for tag in frappe.utils.cstr(value).split(",") if tag.strip()]
 
 

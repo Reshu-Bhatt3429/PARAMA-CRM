@@ -54,7 +54,7 @@
 import { useEventNotificationAlert } from '@/data/notifications'
 import { usersStore } from '@/stores/users'
 import { Button, dayjs } from 'frappe-ui'
-import { computed, onMounted, onBeforeUnmount } from 'vue'
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -118,20 +118,12 @@ function getParticipants(notification) {
     }) || []
   )
 }
-
-let checkInterval
-
-onMounted(() => {
-  checkInterval = setInterval(() => {}, 10000) // Check every 10 seconds
-})
-
-onBeforeUnmount(() => clearInterval?.(checkInterval))
 </script>
 
 <style scoped>
 /* Custom animations for popup appearance */
 .popup-enter-active {
-  transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: all 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .popup-leave-active {
@@ -149,6 +141,6 @@ onBeforeUnmount(() => clearInterval?.(checkInterval))
 }
 
 .popup-move {
-  transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 </style>

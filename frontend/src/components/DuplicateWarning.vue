@@ -15,7 +15,7 @@
           v-if="hrefFor(match)"
           :href="hrefFor(match)"
           target="_blank"
-          rel="noopener"
+          rel="noopener noreferrer"
           class="font-medium underline underline-offset-2"
         >
           {{ match.title }}

@@ -61,14 +61,13 @@
           <div class="text-p-base-medium text-ink-gray-7 truncate">
             {{ __('Event Notifications') }}
           </div>
-          <div
-            class="text-p-sm text-ink-gray-5"
-            v-html="
+          <div class="text-p-sm text-ink-gray-5">
+            {{
               __(
-                'Reminders will be sent <b>before the event starts</b>, based on the configured time',
+                'Reminders will be sent before the event starts, based on the configured time',
               )
-            "
-          />
+            }}
+          </div>
         </div>
         <div
           v-if="notifications?.length"
@@ -157,14 +156,13 @@
           <div class="text-p-base-medium text-ink-gray-7 truncate">
             {{ __('All Day Event Notifications') }}
           </div>
-          <div
-            class="text-p-sm text-ink-gray-5"
-            v-html="
+          <div class="text-p-sm text-ink-gray-5">
+            {{
               __(
-                'For all-day events, <b>set a time</b> to send reminders before the event starts',
+                'For all-day events, set a time to send reminders before the event starts',
               )
-            "
-          />
+            }}
+          </div>
         </div>
         <div
           v-if="allDayNotifications?.length"

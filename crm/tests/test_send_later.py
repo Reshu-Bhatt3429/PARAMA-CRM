@@ -609,8 +609,8 @@ class TestPermissions(SendLaterTestCase):
 		for method in (email.schedule_email, email.cancel_scheduled_email, email.send_scheduled_email_now):
 			self.assertIn(method, frappe.whitelisted, msg=f"{method.__name__} must be whitelisted")
 			self.assertEqual(
-				frappe.allowed_http_methods_for_whitelisted_func[method],
-				["POST"],
+				tuple(frappe.allowed_http_methods_for_whitelisted_func[method]),
+				("POST",),
 				msg=f"{method.__name__} must be POST only",
 			)
 

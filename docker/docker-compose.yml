@@ -1,32 +1,70 @@
-version: "3.7"
 name: crm
 services:
   mariadb:
-    image: mariadb:10.8
+    image: mariadb@sha256:456709ab146585d6189da05669b84384518baecd83670c9e5221f8c20a47cf1e
+    restart: unless-stopped
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --skip-character-set-client-handshake
       - --skip-innodb-read-only-compressed # Temporary fix for MariaDB 10.6
     environment:
-      MYSQL_ROOT_PASSWORD: 123
+      MARIADB_ROOT_PASSWORD_FILE: /run/secrets/mariadb_root_password
+    secrets:
+      - mariadb_root_password
     volumes:
       - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
   redis:
-    image: redis:alpine
+    image: redis@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
   frappe:
-    image: frappe/bench:latest
+    image: frappe/bench@sha256:7b277fd5a15f2f92b7539fdd7673236a885db6973c7277fa74995184c3843e09
+    restart: unless-stopped
     command: bash /workspace/init.sh
     environment:
-      - SHELL=/bin/bash
+      SHELL: /bin/bash
+      FRAPPE_BRANCH: ${FRAPPE_BRANCH:-develop}
+      FRAPPE_COMMIT: ${FRAPPE_COMMIT:-c30e0e6de2ca93bb8fc603f84a496d4d0e02ddf5}
+      CRM_COMMIT: ${CRM_COMMIT:-a8e6482e235d949cdddf7f42d738bcdee8a4990b}
+      FRAPPE_WHATSAPP_COMMIT: ${FRAPPE_WHATSAPP_COMMIT:-08bc1f6af2e36022d7a5f77641c8ba2ef8c16aaa}
     working_dir: /home/frappe
     volumes:
       - .:/workspace
+      - bench-data:/home/frappe
+    secrets:
+      - mariadb_root_password
+      - crm_admin_password
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
-      - 8000:8000
-      - 9000:9000
+      - 127.0.0.1:8000:8000
+      - 127.0.0.1:9000:9000
 
 volumes:
   mariadb-data:
+  redis-data:
+  bench-data:
+
+secrets:
+  mariadb_root_password:
+    environment: MARIADB_ROOT_PASSWORD
+  crm_admin_password:
+    environment: CRM_ADMIN_PASSWORD

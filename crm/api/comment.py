@@ -67,7 +67,7 @@ def extract_mentions(html):
 	return mentions
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def add_comment(reference_doctype: str, reference_name: str, content: str, attachments: list | None = None):
 	"""Add a comment to the given document
 

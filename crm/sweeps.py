@@ -188,7 +188,7 @@ def run_sweep(
 			if commit_between_batches:
 				# The batch is durable before the next one starts, so a crash costs
 				# one batch rather than the whole run.
-				frappe.db.commit()
+				frappe.db.commit()  # nosemgrep
 
 			if len(rows) < batch_size:
 				stats["finished"] = True

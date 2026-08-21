@@ -156,7 +156,7 @@ class ERPNextCRMSettings(Document):
 			frappe.msgprint(
 				_(
 					"Could not create the PARAMA CRM custom fields on {0} automatically. "
-					"If it is running the latest ERPNext, enable <b>Frappe CRM Data Synchronization</b> "
+					"If it is running the latest ERPNext, enable <b>CRM Data Synchronization</b> "
 					"in its CRM Settings, Otherwise check the Error Log."
 				).format(self.erpnext_site_url),
 				title=_("ERPNext custom fields not created"),
@@ -192,7 +192,7 @@ class ERPNextCRMSettings(Document):
 				}
 			).insert()
 
-	@frappe.whitelist()
+	@frappe.whitelist(methods=["POST"])
 	def reset_erpnext_form_script(self):
 		try:
 			if frappe.db.exists("CRM Form Script", "Create Quotation from CRM Deal"):
@@ -215,7 +215,7 @@ class ERPNextCRMSettings(Document):
 	def is_erpnext_installed(self):
 		return _is_erpnext_installed()
 
-	@frappe.whitelist()
+	@frappe.whitelist(methods=["POST"])
 	def run_product_sync(self):
 		if not self.enabled or self.is_erpnext_in_different_site:
 			frappe.throw(_("ERPNext integration must be enabled on the same site"))
@@ -243,7 +243,7 @@ def get_open_sync_issues():
 	]
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def dismiss_sync_issue(issue_name: str):
 	settings = frappe.get_single("ERPNext CRM Settings")
 	for issue in settings.sync_issues:
@@ -371,7 +371,7 @@ def get_customer_link(crm_deal: str):
 		)
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def get_quotation_url(crm_deal: str, organization: str | None = None):
 	erpnext_crm_settings = _get_enabled_settings()
 
@@ -545,7 +545,7 @@ def check_customer_for_deal(crm_deal: str):
 	return customer
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def check_customer_for_quotation(quotation: str):
 	"""Create/fetch the Customer for the CRM Deal behind a quotation. Called when a
 	Sales Order form is opened from a CRM Deal quotation that has no customer yet.
@@ -629,7 +629,7 @@ def create_customer_from_deal(doc, erpnext_crm_settings):
 
 	if customer_name:
 		frappe.db.set_value("CRM Deal", doc.name, "erpnext_customer", customer_name)
-		frappe.publish_realtime("crm_customer_created")
+		frappe.publish_realtime("crm_customer_created", user=frappe.session.user)
 
 	return customer_name
 

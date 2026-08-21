@@ -23,12 +23,17 @@
       </Button>
     </div>
   </div>
-  <CallUI class="mr-3 mt-2" />
+  <CallUI v-if="callEnabled" class="mr-3 mt-2" />
 </template>
 
 <script setup>
 import MenuIcon from '@/components/Icons/MenuIcon.vue'
-import CallUI from '@/components/Telephony/CallUI.vue'
 import { mobileSidebarOpened as sidebarOpened } from '@/composables/settings'
 import { openCommandPalette } from '@/composables/commandPalette'
+import { callEnabled } from '@/composables/telephony'
+import { defineAsyncComponent } from 'vue'
+
+const CallUI = defineAsyncComponent(
+  () => import('@/components/Telephony/CallUI.vue'),
+)
 </script>

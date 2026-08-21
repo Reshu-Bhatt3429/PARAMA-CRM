@@ -120,15 +120,13 @@ describe('createDocProxy', () => {
   })
 
   it('trigger binds correct this context', () => {
-    let capturedThis = null
-    const instance = {
-      myMethod() {
-        capturedThis = this
-      },
-    }
+    const instance = {}
+    instance.myMethod = vi.fn(function () {
+      expect(this).toBe(instance)
+    })
     const proxy = createDocProxy({ name: 'test' }, instance)
     proxy.trigger('myMethod')
-    expect(capturedThis).toBe(instance)
+    expect(instance.myMethod).toHaveBeenCalledOnce()
   })
 
   // ─── has / in operator ────────────────────────────────────────
