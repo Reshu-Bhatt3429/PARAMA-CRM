@@ -435,3 +435,109 @@
 .menu-content {
   z-index: 101;
 }
+
+/* ---------------------------------------------------------------------------
+   Button polish (2026-08-21)
+
+   frappe-ui Button renders a <button> (or <a> when it routes) whose root
+   always carries `inline-flex items-center justify-center gap-2
+   transition-colors shrink-0` plus the variant's surface utilities — and NO
+   shadow utility. box-shadow is therefore free for this layer, and the
+   compound selectors below both outrank any single Tailwind utility and
+   exclude look-alikes (Switch is a button with bg-surface-gray-10, but it
+   has no gap-2, so nothing here touches it).
+
+   The design: solid buttons get a hairline top highlight plus a soft key
+   shadow (depth), grow the shadow on hover (lift), and sink flat with a
+   half-pixel press on :active. Outline buttons get the crisp shadow-xs that
+   cards use. Subtle and ghost stay deliberately flat — that is their job.
+   --------------------------------------------------------------------------- */
+
+/* Every real Button animates shadow and press, not only color. */
+:is(button, a).inline-flex.items-center.justify-center.gap-2.shrink-0 {
+  transition-property: color, background-color, border-color, box-shadow,
+    transform, opacity;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Solid variants: primary (gray-10 → indigo), blue, green, red. */
+:is(button, a).inline-flex.items-center.justify-center.gap-2.shrink-0:is(
+    .bg-surface-gray-10,
+    .bg-surface-blue-6,
+    .bg-surface-green-7,
+    .bg-surface-red-7
+  ) {
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.14),
+    0 1px 2px 0 rgb(15 23 42 / 0.22);
+}
+
+:is(button, a).inline-flex.items-center.justify-center.gap-2.shrink-0:is(
+    .bg-surface-gray-10,
+    .bg-surface-blue-6,
+    .bg-surface-green-7,
+    .bg-surface-red-7
+  ):hover {
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.18),
+    0 3px 8px -2px rgb(15 23 42 / 0.32);
+}
+
+:is(button, a).inline-flex.items-center.justify-center.gap-2.shrink-0:is(
+    .bg-surface-gray-10,
+    .bg-surface-blue-6,
+    .bg-surface-green-7,
+    .bg-surface-red-7
+  ):active {
+  box-shadow: inset 0 1.5px 3px 0 rgb(0 0 0 / 0.22);
+  transform: translateY(0.5px);
+}
+
+/* Outline variant: the crisp hairline-plus-shadow-xs treatment cards use. */
+:is(button, a).inline-flex.items-center.justify-center.gap-2.shrink-0.border.bg-surface-base {
+  box-shadow: 0 1px 2px 0 rgb(16 24 40 / 0.06);
+}
+
+:is(button, a).inline-flex.items-center.justify-center.gap-2.shrink-0.border.bg-surface-base:active {
+  box-shadow: none;
+  transform: translateY(0.5px);
+}
+
+/* Disabled buttons are dead flat — no depth, no press. */
+:is(button, a).inline-flex.items-center.justify-center.gap-2.shrink-0:disabled {
+  box-shadow: none;
+  transform: none;
+}
+
+/* Dark theme: the solid primary is a LIGHT indigo surface here (the ramp is
+   inverted), so the white inset highlight would be invisible and the light
+   shadow too weak. Thinner highlight, blacker key shadow. */
+[data-theme='dark']
+  :is(button, a).inline-flex.items-center.justify-center.gap-2.shrink-0:is(
+    .bg-surface-gray-10,
+    .bg-surface-blue-6,
+    .bg-surface-green-7,
+    .bg-surface-red-7
+  ) {
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.08),
+    0 1px 2px 0 rgb(0 0 0 / 0.45);
+}
+
+[data-theme='dark']
+  :is(button, a).inline-flex.items-center.justify-center.gap-2.shrink-0:is(
+    .bg-surface-gray-10,
+    .bg-surface-blue-6,
+    .bg-surface-green-7,
+    .bg-surface-red-7
+  ):hover {
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.1),
+    0 3px 8px -2px rgb(0 0 0 / 0.55);
+}
+
+[data-theme='dark']
+  :is(button, a).inline-flex.items-center.justify-center.gap-2.shrink-0.border.bg-surface-base {
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.35);
+}
