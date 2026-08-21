@@ -18,7 +18,7 @@
         @click="handleSelect(s)"
       >
         <EmailProviderIcon
-          :label="s.name"
+          :label="__(s.label || s.name)"
           :logo="s.icon"
           :selected="selectedService?.name === s?.name"
         />
@@ -32,10 +32,15 @@
         <CircleAlert class="w-5 h-6 w-min-5 w-max-5 min-h-5 max-w-5" />
         <div class="text-xs text-wrap">
           {{ selectedService.info }}
-          <a :href="selectedService.link" target="_blank" class="underline">
+          <a
+            v-if="selectedService.link"
+            :href="selectedService.link"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="underline"
+          >
             {{ __('here') }}
           </a>
-          .
         </div>
       </div>
       <!-- service provider fields -->

@@ -208,7 +208,9 @@ class InvoiceTestCase(FrappeTestCase):
 					"net_amount": 117000,
 				},
 			)
-			doc.append("products", {"product_name": "Airport transfers", "qty": 1, "rate": 4000, "amount": 4000})
+			doc.append(
+				"products", {"product_name": "Airport transfers", "qty": 1, "rate": 4000, "amount": 4000}
+			)
 		return doc.insert(ignore_permissions=True)
 
 	# --- fixtures ---------------------------------------------------------
@@ -257,9 +259,7 @@ class TestAC1ConvertDeal(InvoiceTestCase):
 	def test_the_draft_carries_the_deal_products_as_lines(self):
 		doc = self.new_invoice()
 		self.assertEqual(doc.status, invoicing.STATUS_DRAFT)
-		self.assertEqual(
-			[row.description for row in doc.items], ["Bali 5N/6D package", "Airport transfers"]
-		)
+		self.assertEqual([row.description for row in doc.items], ["Bali 5N/6D package", "Airport transfers"])
 
 	def test_the_lines_bill_the_net_amount_the_agent_negotiated(self):
 		# 2 x 65000 = 130000 less 10% = 117000 net, so 58500 a head.
@@ -414,9 +414,7 @@ class TestAC2NumberLock(InvoiceTestCase):
 
 		self.assertNotEqual(allocated, taken)
 		self.assertEqual(allocated, invoicing.number_for(2, second.invoice_date))
-		self.assertEqual(
-			frappe.db.get_value(DOCTYPE, second.name, "invoice_number"), allocated
-		)
+		self.assertEqual(frappe.db.get_value(DOCTYPE, second.name, "invoice_number"), allocated)
 
 	def test_the_number_carries_the_financial_year_of_the_invoice_date(self):
 		doc = self.issued_invoice()
@@ -576,9 +574,7 @@ class TestAC5ReminderLadders(InvoiceTestCase):
 	def sweep(self, now):
 		"""Run the ladder for our invoice at a stated moment. Returns new job keys."""
 		before = set(frappe.get_all(outbound.JOB_DOCTYPE, pluck="idempotency_key"))
-		row = next(
-			item for item in invoice_reminders.open_invoices() if item["name"] == self.invoice.name
-		)
+		row = next(item for item in invoice_reminders.open_invoices() if item["name"] == self.invoice.name)
 		invoice_reminders.remind_about(row, now)
 		after = set(frappe.get_all(outbound.JOB_DOCTYPE, pluck="idempotency_key"))
 		return after - before
@@ -587,9 +583,7 @@ class TestAC5ReminderLadders(InvoiceTestCase):
 		keys = self.sweep(self.due)
 		self.assertEqual(len(keys), 2)
 		for row in self.invoice.payment_schedule:
-			self.assertTrue(
-				any(row.name in key for key in keys), msg=f"no ladder started for {row.label}"
-			)
+			self.assertTrue(any(row.name in key for key in keys), msg=f"no ladder started for {row.label}")
 
 	def test_a_second_sweep_at_the_same_moment_adds_nothing(self):
 		self.sweep(self.due)
@@ -633,15 +627,11 @@ class TestAC5ReminderLadders(InvoiceTestCase):
 		self.assertEqual(invoice_reminders.OFFSET_DAYS, (0, 7, 14))
 		row = {"due_date": self.due}
 		self.assertEqual(invoice_reminders.due_steps(row, self.due), [0])
-		self.assertEqual(
-			invoice_reminders.due_steps(row, frappe.utils.add_days(self.due, 7)), [0, 7]
-		)
+		self.assertEqual(invoice_reminders.due_steps(row, frappe.utils.add_days(self.due, 7)), [0, 7])
 		# At day 14 the FIRST step is 14 days old, which is outside the 7-day
 		# catch-up window, so it is not re-fired. Only the steps whose own moment
 		# fell inside the window are queued.
-		self.assertEqual(
-			invoice_reminders.due_steps(row, frappe.utils.add_days(self.due, 14)), [7, 14]
-		)
+		self.assertEqual(invoice_reminders.due_steps(row, frappe.utils.add_days(self.due, 14)), [7, 14])
 
 	def test_the_catch_up_window_stops_a_switch_on_replaying_history(self):
 		"""Switching the flag on must not mail a customer about an instalment they
@@ -694,9 +684,7 @@ class TestAC5ReminderLadders(InvoiceTestCase):
 	# never renders a PDF, whatever the reminder ends up saying.
 
 	def payload_of(self, key: str) -> dict:
-		return frappe.parse_json(
-			frappe.get_doc(outbound.JOB_DOCTYPE, {"idempotency_key": key}).payload
-		)
+		return frappe.parse_json(frappe.get_doc(outbound.JOB_DOCTYPE, {"idempotency_key": key}).payload)
 
 	def share(self) -> str:
 		"""Mint one live tokenised link the way a real send would."""
@@ -721,9 +709,10 @@ class TestAC5ReminderLadders(InvoiceTestCase):
 
 	def test_the_sweep_never_mints_a_link_and_never_renders_a_pdf(self):
 		"""The whole reason the sweep reads a link rather than making one."""
-		with patch.object(document_links, "render_print_pdf") as renderer, patch.object(
-			document_links, "create_link"
-		) as minter:
+		with (
+			patch.object(document_links, "render_print_pdf") as renderer,
+			patch.object(document_links, "create_link") as minter,
+		):
 			self.sweep(self.due)
 			renderer.assert_not_called()
 			minter.assert_not_called()
@@ -798,9 +787,7 @@ class TestAC5ReminderLadders(InvoiceTestCase):
 		self.invoice.record_payment()
 		self.invoice.reload()
 		self.assertEqual(self.invoice.status, invoicing.STATUS_PAID)
-		self.assertNotIn(
-			self.invoice.name, [row["name"] for row in invoice_reminders.open_invoices()]
-		)
+		self.assertNotIn(self.invoice.name, [row["name"] for row in invoice_reminders.open_invoices()])
 
 
 # --- AC6 -------------------------------------------------------------------
@@ -1011,7 +998,9 @@ class TestAC8UpiQr(InvoiceTestCase):
 		half = scale // 2
 		return [
 			[
-				1 if image.getpixel(((border + col) * scale + half, (border + row) * scale + half)) < 128 else 0
+				1
+				if image.getpixel(((border + col) * scale + half, (border + row) * scale + half)) < 128
+				else 0
 				for col in range(size)
 			]
 			for row in range(size)
@@ -1104,9 +1093,7 @@ class TestAC9Permissions(InvoiceTestCase):
 
 	def test_a_sales_user_cannot_void_even_their_own_invoice(self):
 		frappe.set_user(AGENT)
-		self.assertRaises(
-			frappe.PermissionError, invoices.void_invoice, self.invoice.name, "Changed my mind"
-		)
+		self.assertRaises(frappe.PermissionError, invoices.void_invoice, self.invoice.name, "Changed my mind")
 
 	def test_the_document_method_refuses_a_sales_user_as_well_as_the_endpoint(self):
 		"""Checked twice on purpose: a future caller that skips the endpoint must
@@ -1127,9 +1114,7 @@ class TestAC9Permissions(InvoiceTestCase):
 
 	def test_a_sales_user_outside_the_deal_cannot_record_a_payment(self):
 		frappe.set_user(OUTSIDER)
-		self.assertRaises(
-			frappe.PermissionError, invoices.record_payment, self.invoice.name, 1000
-		)
+		self.assertRaises(frappe.PermissionError, invoices.record_payment, self.invoice.name, 1000)
 
 	def test_a_sales_user_cannot_edit_an_issued_invoices_amounts(self):
 		frappe.set_user(AGENT)
@@ -1183,8 +1168,8 @@ class TestAC9Permissions(InvoiceTestCase):
 		):
 			self.assertIn(method, frappe.whitelisted, msg=f"{method.__name__} must be whitelisted")
 			self.assertEqual(
-				frappe.allowed_http_methods_for_whitelisted_func[method],
-				["POST"],
+				tuple(frappe.allowed_http_methods_for_whitelisted_func[method]),
+				("POST",),
 				msg=f"{method.__name__} must be POST only",
 			)
 
@@ -1314,17 +1299,19 @@ class TestShareLink(InvoiceTestCase):
 		self.assertEqual(list(inspect.signature(invoices.send_invoice_email).parameters), ["invoice"])
 
 	def test_the_whatsapp_send_uses_a_number_the_deal_already_holds(self):
-		with self.stub_render(), patch(
-			"crm.api.whatsapp.create_whatsapp_message", return_value="WA-1"
-		) as sender:
+		with (
+			self.stub_render(),
+			patch("crm.api.whatsapp.create_whatsapp_message", return_value="WA-1") as sender,
+		):
 			result = invoices.send_invoice_on_whatsapp(self.invoice.name)
 		self.assertTrue(result["success"])
 		self.assertEqual(sender.call_args.kwargs["to"], "+919876543211")
 		self.assertEqual(sender.call_args.kwargs["attach"], result["link_url"])
 
 	def test_a_whatsapp_failure_retires_the_link_and_reports_the_window(self):
-		with self.stub_render(), patch(
-			"crm.api.whatsapp.create_whatsapp_message", side_effect=RuntimeError("outside window")
+		with (
+			self.stub_render(),
+			patch("crm.api.whatsapp.create_whatsapp_message", side_effect=RuntimeError("outside window")),
 		):
 			result = invoices.send_invoice_on_whatsapp(self.invoice.name)
 		self.assertFalse(result["success"])

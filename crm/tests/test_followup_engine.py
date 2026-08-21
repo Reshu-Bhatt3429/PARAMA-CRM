@@ -1231,8 +1231,8 @@ class TestDraftApproval(FollowupEngineTestCase):
 		for method in (engine.approve_pending, engine.dismiss_pending, engine.reopen_optout):
 			self.assertIn(method, frappe.whitelisted, msg=f"{method.__name__} must be whitelisted")
 			self.assertEqual(
-				frappe.allowed_http_methods_for_whitelisted_func[method],
-				["POST"],
+				tuple(frappe.allowed_http_methods_for_whitelisted_func[method]),
+				("POST",),
 				msg=f"{method.__name__} must be POST only",
 			)
 

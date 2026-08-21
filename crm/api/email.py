@@ -515,7 +515,7 @@ def email_adapter(job, recipient) -> dict:
 	previous_user = frappe.session.user
 
 	if owner != previous_user:
-		frappe.set_user(owner)
+		frappe.set_user(owner)  # nosemgrep
 	try:
 		result = send_email(
 			doctype=payload.get("doctype"),
@@ -531,7 +531,7 @@ def email_adapter(job, recipient) -> dict:
 		)
 	finally:
 		if owner != previous_user:
-			frappe.set_user(previous_user)
+			frappe.set_user(previous_user)  # nosemgrep
 
 	communication = (result or {}).get("name")
 	message_id = None

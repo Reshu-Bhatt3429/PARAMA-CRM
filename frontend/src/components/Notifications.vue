@@ -137,7 +137,7 @@ function markAsRead(doc) {
 
 function markAllAsRead() {
   capture('notification_mark_all_as_read')
-  mark_as_read.reload()
+  mark_as_read.submit()
 }
 
 onBeforeUnmount(() => {

@@ -5,13 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{{ form_title }}</title>
     <meta name="robots" content="noindex" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
-    <style>
+    <style nonce="{{ csp_nonce }}">
       :root {
         /* espresso / frappe-ui light-theme tokens (pure-neutral grays) */
         --ink-strong: oklch(0.168 0 0);       /* ink-gray-9 — headings */
@@ -34,7 +28,7 @@
       * { box-sizing: border-box; }
       html, body { margin: 0; padding: 0; }
       body {
-        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         background: var(--bg);
         color: var(--ink);
         min-height: 100vh;
@@ -241,7 +235,7 @@
       </div>
     </div>
 
-    <script>
+    <script nonce="{{ csp_nonce }}">
       (function () {
         var ROUTE = {{ form_route | tojson }};
         var WEB_FORM = {{ web_form_name | tojson }};

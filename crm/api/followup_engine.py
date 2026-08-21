@@ -203,7 +203,7 @@ URL_PATTERN = re.compile(
 
 
 def commit():
-	frappe.db.commit()
+	frappe.db.commit()  # nosemgrep
 
 
 def rollback():

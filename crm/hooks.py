@@ -1,8 +1,8 @@
 app_name = "crm"
 app_title = "PARAMA CRM"
-app_publisher = "Frappe Technologies Pvt. Ltd."
+app_publisher = "PARAMA CRM"
 app_description = "Travel sales CRM — leads, itineraries and follow-ups in one place"
-app_email = "shariq@frappe.io"
+app_email = ""
 app_license = "AGPLv3"
 app_icon_url = "/assets/crm/images/logo.svg"
 app_icon_title = "CRM"
@@ -26,6 +26,10 @@ get_site_info = "crm.activation.get_site_info"
 
 export_python_type_annotations = True
 require_type_annotated_api_methods = True
+
+# Browser hardening for CRM and API responses. Public website pages are left
+# alone because they can intentionally be embedded by customers.
+after_request = ["crm.security.add_security_headers"]
 
 # Includes in <head>
 # ------------------
@@ -74,6 +78,7 @@ doctype_js = {
 website_route_rules = [
 	{"from_route": "/crm/<path:app_path>", "to_route": "crm"},
 	{"from_route": "/crm-form/<route>", "to_route": "crm_form"},
+	{"from_route": "/accept-invitation", "to_route": "accept_invitation"},
 ]
 
 # Generators
@@ -162,11 +167,11 @@ has_permission = {
 
 # DocType Class
 # ---------------
-# Override standard doctype classes
-
-override_doctype_class = {
-	"Contact": "crm.overrides.contact.CustomContact",
-	"Email Template": "crm.overrides.email_template.CustomEmailTemplate",
+# Frappe 16+ composes these mixins with the installed controller (including an
+# ERPNext override) instead of replacing it and making app ordering significant.
+extend_doctype_class = {
+	"Contact": ["crm.overrides.contact.CustomContact"],
+	"Email Template": ["crm.overrides.email_template.CustomEmailTemplate"],
 }
 
 # Document Events
@@ -352,10 +357,11 @@ before_tests = "crm.tests.before_tests"
 # Overriding Methods
 # ------------------------------
 #
-# override_whitelisted_methods = {
-# "frappe.desk.doctype.event.event.get_events": "crm.event.get_events"
-# }
-#
+override_whitelisted_methods = {
+	"frappe_whatsapp.utils.webhook.webhook": "crm.integrations.whatsapp_security.webhook",
+	"frappe.model.utils.user_settings.save": "crm.api.user_settings.save",
+}
+
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,
 # along with any modifications made in other Frappe apps
@@ -448,13 +454,6 @@ standard_dropdown_items = [
 		"label": "Settings",
 		"type": "Route",
 		"icon": "settings",
-		"route": "#",
-		"is_standard": 1,
-	},
-	{
-		"name1": "login_to_fc",
-		"label": "Login to Frappe Cloud",
-		"type": "Route",
 		"route": "#",
 		"is_standard": 1,
 	},

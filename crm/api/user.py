@@ -5,7 +5,7 @@ from frappe.rate_limiter import rate_limit
 from frappe.utils.password import check_password, update_password
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 @rate_limit(limit=5, seconds=300)  # 5 attempts per 5 minutes per user/IP
 def change_password(old_password: str, new_password: str):
 	"""
@@ -46,7 +46,7 @@ def change_password(old_password: str, new_password: str):
 	return _("Password Updated Successfully")
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def add_existing_users(users: str | list, role: str = "Sales User"):
 	"""
 	Add existing users to the CRM by assigning them a role (Sales User or Sales Manager).
@@ -67,7 +67,7 @@ def add_existing_users(users: str | list, role: str = "Sales User"):
 		update_user_role(user, role)
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def update_user_role(user: str, new_role: str):
 	"""
 	Update the role of the user to Sales Manager, Sales User, or System Manager.
@@ -117,7 +117,7 @@ def update_user_role(user: str, new_role: str):
 	user_doc.save(ignore_permissions=True)
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def remove_crm_roles_from_user(user: str):
 	"""
 	Remove a user means removing Sales User & Sales Manager roles from the user.

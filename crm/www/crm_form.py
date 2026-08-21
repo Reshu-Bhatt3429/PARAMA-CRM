@@ -2,10 +2,11 @@
 # For license information, please see license.txt
 
 import re
+import secrets
 
 import frappe
 
-from crm.api.form import ALLOWED_DOCTYPES, guest_can_select
+from crm.api.form import ALLOWED_DOCTYPES, get_safe_form_redirect_url, guest_can_select
 
 no_cache = 1
 
@@ -35,7 +36,8 @@ def get_context(context):
 		raise frappe.DoesNotExistError
 
 	doc = frappe.get_doc("Web Form", name)
-	set_embedding_headers(doc)
+	context.csp_nonce = secrets.token_urlsafe(24)
+	set_embedding_headers(doc, context.csp_nonce)
 	context.no_cache = 1
 	try:
 		context.csrf_token = frappe.sessions.get_csrf_token()
@@ -51,7 +53,7 @@ def get_context(context):
 	context.form_route = doc.route
 	context.submit_label = doc.button_label or "Submit"
 	context.success_message = doc.success_message or "Thank you!"
-	context.success_url = doc.success_url or ""
+	context.success_url = get_safe_form_redirect_url(doc.success_url)
 	context.fields = [
 		{
 			"fieldname": f.fieldname,
@@ -105,7 +107,27 @@ def _link_field_options(doctype: str) -> list[dict]:
 	return [{"value": r["name"], "label": r.get(title_field) or r["name"]} for r in rows]
 
 
-def set_embedding_headers(doc):
+def get_allowed_embedding_domains(raw_domains: str | None) -> list[str]:
+	return [domain for domain in str(raw_domains or "").split() if ALLOWED_EMBEDDING_DOMAIN_RE.match(domain)]
+
+
+def build_form_csp(nonce: str, raw_domains: str | None = None) -> str:
+	ancestors = ["'self'", *get_allowed_embedding_domains(raw_domains)]
+	return "; ".join(
+		(
+			"default-src 'none'",
+			f"script-src 'nonce-{nonce}'",
+			f"style-src 'nonce-{nonce}'",
+			"img-src 'self' data: https:",
+			"connect-src 'self'",
+			"base-uri 'none'",
+			"form-action 'self'",
+			f"frame-ancestors {' '.join(ancestors)}",
+		)
+	)
+
+
+def set_embedding_headers(doc, nonce: str):
 	"""Allow this page to be embedded as an iframe on the form's allow-listed origins.
 
 	Emits a Content-Security-Policy `frame-ancestors` header. Modern browsers ignore
@@ -113,11 +135,9 @@ def set_embedding_headers(doc):
 	is present, so this is what makes cross-origin embedding work — without it a form
 	can only be embedded on its own site.
 	"""
-	raw_domains = (doc.allowed_embedding_domains or "").split()
-	domains = [d for d in raw_domains if ALLOWED_EMBEDDING_DOMAIN_RE.match(d)]
-	if not domains:
-		return
-	frappe.local.response_headers["Content-Security-Policy"] = "frame-ancestors 'self' " + " ".join(domains)
+	frappe.local.response_headers["Content-Security-Policy"] = build_form_csp(
+		nonce, doc.allowed_embedding_domains
+	)
 
 
 def build_layout(fields):

@@ -139,18 +139,18 @@ export function getMeta(doctype) {
     }
 
     if (JSON.stringify(oldUserSettings) !== JSON.stringify(newUserSettings)) {
-      return createResource({
+      const resource = createResource({
         url: 'frappe.model.utils.user_settings.save',
         params: {
           doctype: parentDoctype,
           user_settings: JSON.stringify(newUserSettings),
         },
-        auto: true,
         onSuccess: () => {
           userSettings[parentDoctype] = newUserSettings
           callback?.()
         },
       })
+      return resource.submit()
     }
     userSettings[parentDoctype] = newUserSettings
     return callback?.()

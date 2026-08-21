@@ -6,7 +6,10 @@ from frappe.query_builder import Case, DocType
 from frappe.query_builder.functions import Avg, Coalesce, Count, Date, DateFormat, IfNull, Sum
 from pypika.functions import Function
 
-from crm.fcrm.doctype.crm_dashboard.crm_dashboard import create_default_manager_dashboard
+from crm.fcrm.doctype.crm_dashboard.crm_dashboard import (
+	create_default_manager_dashboard,
+	default_manager_dashboard_layout,
+)
 from crm.utils import sales_user_only
 
 
@@ -48,7 +51,7 @@ def get_chart_method(name: str):
 	return globals().get(f"get_{name}")
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def reset_to_default():
 	frappe.only_for("System Manager", True)
 	create_default_manager_dashboard(force=True)
@@ -77,8 +80,10 @@ def get_dashboard(from_date: str | None = None, to_date: str | None = None, user
 	layout = []
 
 	if not dashboard:
-		layout = json.loads(create_default_manager_dashboard())
-		frappe.db.commit()
+		# GET requests stay read-only. App installation creates the persisted
+		# dashboard; if it is ever missing, render the default without silently
+		# inserting and committing a document from a safe-method request.
+		layout = json.loads(default_manager_dashboard_layout())
 	else:
 		layout = json.loads(frappe.db.get_value("CRM Dashboard", "Manager Dashboard", "layout") or "[]")
 

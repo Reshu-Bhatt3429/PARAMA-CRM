@@ -47,15 +47,14 @@
 
 <script setup>
 import BrandLogo from '@/components/BrandLogo.vue'
-import FrappeCloudIcon from '@/components/Icons/FrappeCloudIcon.vue'
 import AppsIcon from '@/components/Icons/AppsIcon.vue'
 import { sessionStore } from '@/stores/session'
 import { usersStore } from '@/stores/users'
 import { getSettings } from '@/stores/settings'
 import { showSettings, isMobileView } from '@/composables/settings'
 import { showAboutModal } from '@/composables/modals'
-import { confirmLoginToFrappeCloud } from '@/composables/frappecloud'
 import { sanitizeHTML } from '@/utils'
+import { openSafeUrl } from '@/utils/safeUrl'
 import { createResource, Dropdown } from 'frappe-ui'
 import { computed, h, markRaw } from 'vue'
 
@@ -73,7 +72,7 @@ const apps = createResource({
   url: 'frappe.apps.get_apps',
   cache: 'apps',
   auto: true,
-  transform: (data) => [deskApp(), ...crmSiblingApps(data)],
+  transform: (data) => crmSiblingApps(data),
 })
 
 const dropdownItems = computed(() => {
@@ -92,9 +91,10 @@ const dropdownItems = computed(() => {
   items.forEach((item) => {
     if (item.hidden) return
     if (item.type !== 'Separator') {
-      _dropdownItems[_dropdownItems.length - 1].items.push(
-        dropdownItemObj(item),
-      )
+      const dropdownItem = dropdownItemObj(item)
+      if (dropdownItem) {
+        _dropdownItems[_dropdownItems.length - 1].items.push(dropdownItem)
+      }
     } else {
       _dropdownItems.push({
         group: '',
@@ -121,11 +121,15 @@ function dropdownItemObj(item) {
     return getStandardItem(_item)
   }
 
+  if (isRemovedDestination(_item.route)) return null
+
   return {
     icon: _item.icon,
     label: __(_item.label),
     onClick: () =>
-      window.open(_item.route, _item.open_in_new_window ? '_blank' : ''),
+      openSafeUrl(_item.route, {
+        target: _item.open_in_new_window ? '_blank' : '_self',
+      }),
   }
 }
 
@@ -136,6 +140,7 @@ function getStandardItem(item) {
         icon: markRaw(AppsIcon),
         label: __(item.label),
         submenu: appMenuItems(),
+        condition: () => Boolean(apps.data?.length),
       }
     case 'settings':
       return {
@@ -143,13 +148,6 @@ function getStandardItem(item) {
         label: __(item.label),
         onClick: () => (showSettings.value = true),
         condition: () => !isMobileView.value,
-      }
-    case 'login_to_fc':
-      return {
-        icon: h(FrappeCloudIcon),
-        label: __(item.label),
-        onClick: () => confirmLoginToFrappeCloud(),
-        condition: () => !isMobileView.value && window.is_fc_site,
       }
     case 'about':
       return {
@@ -164,35 +162,42 @@ function getStandardItem(item) {
         onClick: () => logout.submit(),
       }
   }
+  return null
 }
 
 function appMenuItems() {
   return (apps.data || []).map((app) => ({
     label: app.title,
-    onClick: () => (window.location.href = app.route),
+    onClick: () => openSafeUrl(app.route, { target: '_self' }),
     slots: {
       prefix: () => h('img', { class: 'size-5 rounded', src: app.logo }),
     },
   }))
 }
 
-function deskApp() {
-  return {
-    name: 'frappe',
-    logo: '/assets/frappe/images/framework.png',
-    title: __('Desk'),
-    route: '/desk',
-  }
-}
-
 function crmSiblingApps(data) {
   return data
-    .filter((app) => app.name !== 'crm')
+    .filter(
+      (app) =>
+        !['crm', 'frappe'].includes(app.name) &&
+        !String(app.title || '')
+          .toLowerCase()
+          .includes('frappe'),
+    )
     .map((app) => ({
       name: app.name,
       logo: app.logo,
       title: __(app.title),
       route: app.route,
     }))
+}
+
+function isRemovedDestination(route) {
+  const value = String(route || '').toLowerCase()
+  return (
+    value.includes('frappe.io') ||
+    value.includes('frappecloud.com') ||
+    value.includes('github.com/frappe/')
+  )
 }
 </script>

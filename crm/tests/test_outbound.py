@@ -369,7 +369,8 @@ class TestScheduler(OutboundTestCase):
 		self.assertEqual(self.sent, [])
 
 	def test_the_shipped_flag_default_is_off(self):
-		self.assertFalse(frappe.db.get_single_value("FCRM Settings", "outbound_engine_enabled"))
+		field = frappe.get_meta("FCRM Settings").get_field("outbound_engine_enabled")
+		self.assertFalse(frappe.utils.cint(field.default))
 
 	def test_a_future_job_is_not_claimed(self):
 		outbound.register_adapter(outbound.CHANNEL_EMAIL, self.recording_adapter())
@@ -454,7 +455,7 @@ class TestEmailQueueCorrelation(OutboundTestCase):
 		refresh_mock.assert_not_called()
 
 	def test_the_delivery_sweep_runs_while_the_flag_is_on(self):
-		job, row = self.make_queued_recipient()
+		_job, row = self.make_queued_recipient()
 
 		with (
 			patch.object(outbound, "is_enabled", return_value=True),

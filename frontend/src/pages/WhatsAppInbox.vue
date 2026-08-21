@@ -732,6 +732,7 @@ import {
   groupSizeLabel,
   humanizeAge,
   isSameConversation,
+  normalizeDialablePhone,
   priorityPill,
   statusPill,
   travelWindowLabel,
@@ -1016,9 +1017,12 @@ function openReference() {
 }
 
 function callNumber(number) {
-  // `tel:` with nothing after it only makes the browser leave the page.
-  if (!number) return
-  window.location.href = `tel:${number}`
+  const dialable = normalizeDialablePhone(number)
+  if (!dialable) {
+    toast.error(__('Invalid phone number'))
+    return
+  }
+  window.location.href = `tel:${dialable}`
 }
 
 async function copyNumber(number) {

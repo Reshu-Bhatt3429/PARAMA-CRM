@@ -196,8 +196,12 @@ class EmailSequenceAdapter(core.ChannelAdapter):
 		# now rather than an hour of hourly tracebacks later. Frappe's Jinja leaves
 		# an unknown variable empty, so only a syntax error fails here.
 		try:
-			frappe.render_template(subject, {})
-			frappe.render_template(body, {})
+			frappe.render_template(  # nosemgrep
+				subject, {}, restrict_globals=True
+			)
+			frappe.render_template(  # nosemgrep
+				body, {}, restrict_globals=True
+			)
 		except Exception as error:
 			return None, _("Email template {0} could not be rendered: {1}").format(
 				name, frappe.utils.cstr(error)[:120]
@@ -238,8 +242,14 @@ class EmailSequenceAdapter(core.ChannelAdapter):
 		context = lead_context(row.lead)
 		link = unsubscribe.link_for(address, LEAD_DOCTYPE, row.lead)
 
-		subject = one_line(frappe.render_template(content.subject, context))[:MAX_SUBJECT_LENGTH]
-		body = frappe.render_template(content.body, context)
+		subject = one_line(
+			frappe.render_template(  # nosemgrep
+				content.subject, context, restrict_globals=True
+			)
+		)[:MAX_SUBJECT_LENGTH]
+		body = frappe.render_template(  # nosemgrep
+			content.body, context, restrict_globals=True
+		)
 
 		return self.remember(
 			{

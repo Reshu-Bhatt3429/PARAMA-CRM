@@ -12,6 +12,8 @@
   "lead",
   "deal",
   "title",
+  "subtitle",
+  "customer_name",
   "column_break_link",
   "status",
   "version",
@@ -19,10 +21,31 @@
   "destination",
   "start_date",
   "num_days",
+  "duration_label",
+  "departure_type",
   "column_break_trip",
   "group_size",
+  "group_size_label",
   "budget",
   "currency",
+  "section_media",
+  "cover_image",
+  "brand_logo",
+  "section_design",
+  "theme",
+  "font_preset",
+  "title_weight",
+  "title_style",
+  "column_break_design",
+  "tagline_style",
+  "title_case",
+  "section_contact",
+  "contact_email",
+  "contact_phone",
+  "contact_website",
+  "section_generation",
+  "trip_vibe",
+  "ai_instructions",
   "section_days",
   "days_json",
   "section_pricing",
@@ -60,6 +83,17 @@
    "in_list_view": 1,
    "label": "Title",
    "reqd": 1
+  },
+  {
+   "description": "Customer-facing tagline shown below the itinerary title.",
+   "fieldname": "subtitle",
+   "fieldtype": "Small Text",
+   "label": "Subtitle / Tagline"
+  },
+  {
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "label": "Prepared For"
   },
   {
    "fieldname": "column_break_link",
@@ -107,6 +141,19 @@
    "label": "Days"
   },
   {
+   "description": "Optional customer-facing duration, for example 5 Days / 4 Nights.",
+   "fieldname": "duration_label",
+   "fieldtype": "Data",
+   "label": "Duration Label"
+  },
+  {
+   "default": "Group Departure",
+   "fieldname": "departure_type",
+   "fieldtype": "Select",
+   "label": "Departure Type",
+   "options": "Private Departure\nGroup Departure"
+  },
+  {
    "fieldname": "column_break_trip",
    "fieldtype": "Column Break"
   },
@@ -114,6 +161,12 @@
    "fieldname": "group_size",
    "fieldtype": "Int",
    "label": "Group Size"
+  },
+  {
+   "description": "Optional customer-facing group range, for example Min 4 - Max 14 Pax.",
+   "fieldname": "group_size_label",
+   "fieldtype": "Data",
+   "label": "Group Size Label"
   },
   {
    "fieldname": "budget",
@@ -127,6 +180,112 @@
    "fieldtype": "Link",
    "label": "Currency",
    "options": "Currency"
+  },
+  {
+   "fieldname": "section_media",
+   "fieldtype": "Section Break",
+   "label": "Brand and Media"
+  },
+  {
+   "fieldname": "cover_image",
+   "fieldtype": "Attach Image",
+   "label": "Cover Image"
+  },
+  {
+   "fieldname": "brand_logo",
+   "fieldtype": "Attach Image",
+   "label": "Brand Logo"
+  },
+  {
+   "fieldname": "section_design",
+   "fieldtype": "Section Break",
+   "label": "Document Design"
+  },
+  {
+   "default": "Sunrise",
+   "fieldname": "theme",
+   "fieldtype": "Select",
+   "label": "Theme",
+   "options": "Sunrise\nMidnight\nMeadow"
+  },
+  {
+   "default": "Modern Alpine",
+   "fieldname": "font_preset",
+   "fieldtype": "Select",
+   "label": "Font Combination",
+   "options": "Modern Alpine\nClassic Bold\nElegant Serif\nClean Geometric"
+  },
+  {
+   "default": "900",
+   "fieldname": "title_weight",
+   "fieldtype": "Select",
+   "label": "Title Weight",
+   "options": "900\n700\n500\n400"
+  },
+  {
+   "default": "Normal",
+   "fieldname": "title_style",
+   "fieldtype": "Select",
+   "label": "Title Style",
+   "options": "Normal\nItalic"
+  },
+  {
+   "fieldname": "column_break_design",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Bold Normal",
+   "fieldname": "tagline_style",
+   "fieldtype": "Select",
+   "label": "Tagline Style",
+   "options": "Bold Normal\nBold Italic\nMedium Normal\nMedium Italic"
+  },
+  {
+   "default": "Uppercase",
+   "fieldname": "title_case",
+   "fieldtype": "Select",
+   "label": "Title Case",
+   "options": "Uppercase\nCapitalize\nNormal"
+  },
+  {
+   "fieldname": "section_contact",
+   "fieldtype": "Section Break",
+   "label": "Contact"
+  },
+  {
+   "fieldname": "contact_email",
+   "fieldtype": "Data",
+   "label": "Email",
+   "options": "Email"
+  },
+  {
+   "fieldname": "contact_phone",
+   "fieldtype": "Data",
+   "label": "Phone",
+   "options": "Phone"
+  },
+  {
+   "fieldname": "contact_website",
+   "fieldtype": "Data",
+   "label": "Website",
+   "options": "URL"
+  },
+  {
+   "fieldname": "section_generation",
+   "fieldtype": "Section Break",
+   "label": "Generation Brief"
+  },
+  {
+   "default": "Adventure",
+   "fieldname": "trip_vibe",
+   "fieldtype": "Select",
+   "label": "Trip Style",
+   "options": "Adventure\nCultural\nLeisure\nBudget"
+  },
+  {
+   "fieldname": "ai_instructions",
+   "fieldtype": "Small Text",
+   "label": "Generation Instructions"
   },
   {
    "fieldname": "section_days",

@@ -199,7 +199,10 @@ def ask_model(prompt: str) -> dict:
 	except AIConfigurationError:
 		raise
 	except AIResponseError as error:
-		frappe.throw(_("The AI could not draft this email: {0}").format(error), title=_("Draft Failed"))
+		frappe.throw(
+			_("The AI could not draft this email: {0}").format(frappe.utils.escape_html(str(error))),
+			title=_("Draft Failed"),
+		)
 
 	if not isinstance(answer, dict):
 		frappe.throw(_("The AI answered with something that is not a draft."))

@@ -74,8 +74,7 @@ TOUR_PACKAGE_RATE = 5.0
 # Printed verbatim on every tour-package invoice. The wording is prescribed; do
 # not paraphrase it.
 TOUR_PACKAGE_STATEMENT = (
-	"The amount charged is gross amount and inclusive of charges of "
-	"accommodation and transportation."
+	"The amount charged is gross amount and inclusive of charges of accommodation and transportation."
 )
 
 # --- Rule 46(b): what a document number may be ---
@@ -334,10 +333,11 @@ def allocate_number(doc) -> str:
 		return doc.invoice_number
 
 	prefix = number_prefix()
-	last_error = None
 
 	for _attempt in range(ALLOCATION_ATTEMPTS):
-		candidate = validate_number(number_for(highest_serial(doc.get("invoice_date"), prefix) + 1, doc.get("invoice_date"), prefix))
+		candidate = validate_number(
+			number_for(highest_serial(doc.get("invoice_date"), prefix) + 1, doc.get("invoice_date"), prefix)
+		)
 		try:
 			# `db_set` goes straight to the column, so the unique index answers
 			# now rather than at the end of the caller's transaction.
@@ -350,13 +350,10 @@ def allocate_number(doc) -> str:
 			# eight attempts on it would turn a clear error into a vague one.
 			if not is_duplicate_entry(error):
 				raise
-			last_error = error
 			continue
 
 	frappe.throw(
-		_("Could not allocate an invoice number after {0} attempts. Try again.").format(
-			ALLOCATION_ATTEMPTS
-		),
+		_("Could not allocate an invoice number after {0} attempts. Try again.").format(ALLOCATION_ATTEMPTS),
 		exc=frappe.ValidationError,
 	)
 
@@ -550,9 +547,7 @@ def finalize_blockers(doc, totals: dict) -> list[str]:
 		# Planner addendum (c). An invoice with no lines has no taxable value, no
 		# SAC and nothing to describe -- it fails Rule 46 in four places at once,
 		# and the useful thing to say is the first one.
-		problems.append(
-			_("This invoice has no item lines. Add at least one line before you issue it.")
-		)
+		problems.append(_("This invoice has no item lines. Add at least one line before you issue it."))
 
 	if is_b2c(doc) and flt(totals.get("grand_total")) >= B2C_RECIPIENT_THRESHOLD:
 		missing = [

@@ -22,7 +22,7 @@ class FailedLeadSyncLog(Document):
 		type: DF.Literal["Duplicate", "Failure", "Synced"]
 	# end: auto-generated types
 
-	@frappe.whitelist()
+	@frappe.whitelist(methods=["POST"])
 	def retry_sync(self):
 		if not self.source:
 			frappe.throw(frappe._("Can't retry sync for this without source!"))

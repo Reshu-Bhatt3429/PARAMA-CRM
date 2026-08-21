@@ -36,6 +36,7 @@ AGENTS.md
 /Gemini api key *.txt
 *api key*.txt
 *.apikey
+/.env
 
 # Local reference documents (engineering bibles etc.) stay out of the repo
 *.docx

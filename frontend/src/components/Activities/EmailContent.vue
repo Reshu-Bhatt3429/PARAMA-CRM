@@ -68,7 +68,7 @@ function replaceReplyToContent(replyToContentElement, forGmail) {
   const collapseLabel = doc.createElement('label')
   collapseLabel.classList.add('collapse')
   collapseLabel.setAttribute('for', randomId)
-  collapseLabel.innerHTML = '...'
+  collapseLabel.textContent = '...'
   wrapper.appendChild(collapseLabel)
 
   const collapseInput = doc.createElement('input')

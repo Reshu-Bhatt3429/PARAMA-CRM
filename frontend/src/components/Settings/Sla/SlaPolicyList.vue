@@ -212,7 +212,6 @@ const duplicate = (sla) => {
             sla_name: duplicateDialog.value.name,
           },
         },
-        auto: true,
         onSuccess(newSlaData) {
           slaPolicyListResource.reload()
           toast.success(__('SLA policy duplicated'))
@@ -225,7 +224,7 @@ const duplicate = (sla) => {
             updateStep('view', newSlaData, true)
           }, 250)
         },
-      })
+      }).submit()
     },
     auto: true,
   })

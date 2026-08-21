@@ -93,6 +93,7 @@
               <template #suffix>
                 <a
                   target="_blank"
+                  rel="noopener noreferrer"
                   href="https://developers.facebook.com/docs/facebook-login/guides/access-tokens/"
                 >
                   <LucideCircleQuestionMark class="w-4" />

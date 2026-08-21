@@ -13,8 +13,18 @@ export default defineConfig(async ({ mode }) => {
       vueJsx(),
       VitePWA({
         registerType: 'autoUpdate',
+        workbox: {
+          // Keep the shell available offline without downloading the largest
+          // editor chunk during service-worker installation. That chunk is
+          // cached by the browser on demand when a user opens the editor.
+          maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+          globIgnores: ['**/useActiveTabManager-*.js', '**/*.map'],
+        },
         devOptions: {
-          enabled: true,
+          // A development service worker can keep serving an older app shell
+          // after Vite restarts. Production builds still generate and register
+          // the PWA; keep it out of the live-development request path.
+          enabled: false,
         },
         manifest: {
           display: 'standalone',
@@ -88,6 +98,9 @@ export default defineConfig(async ({ mode }) => {
       ],
     },
     optimizeDeps: {
+      // frappe-ui source contains virtual `~icons/lucide/*` imports that must
+      // pass through the Frappe UI Vite plugin instead of esbuild pre-bundling.
+      exclude: ['frappe-ui', '@framework/ui'],
       include: [
         'feather-icons',
         'tailwind.config.js',
@@ -115,7 +128,9 @@ export default defineConfig(async ({ mode }) => {
       buildConfig: {
         indexHtmlPath: '../crm/www/crm.html',
         emptyOutDir: true,
-        sourcemap: true,
+        // Production maps expose application source and add tens of MB to the
+        // deploy. Vite's dev server still provides mapped stack traces.
+        sourcemap: isDev,
       },
     }),
   )

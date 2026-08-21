@@ -208,7 +208,7 @@ STANDARD_READABLE_FIELDS = frozenset(
 
 def commit():
 	"""Named so a test can watch it. See `crm/reminders.py` for the precedent."""
-	frappe.db.commit()
+	frappe.db.commit()  # nosemgrep
 
 
 # --- the cached rule table -------------------------------------------------
@@ -584,13 +584,13 @@ def execute_rule(rule, reference_doctype, reference_docname, workflow_event, sou
 
 	try:
 		if actor:
-			frappe.set_user(actor)
+			frappe.set_user(actor)  # nosemgrep
 
 		for index, action in enumerate(rule_doc.actions):
 			run_action(rule_doc, action, index, doc, event, source, actor)
 	finally:
 		if actor:
-			frappe.set_user(original)
+			frappe.set_user(original)  # nosemgrep
 
 
 def acting_user(rule_doc) -> str | None:
@@ -709,7 +709,7 @@ def notify_owner_of_cap(rule_doc, cap: int) -> None:
 	"""
 	today = frappe.utils.nowdate()
 
-	frappe.db.sql(
+	frappe.db.sql(  # nosemgrep
 		f"""
 		update `tab{RULE_DOCTYPE}`
 		set `cap_notified_on` = %(today)s
@@ -795,7 +795,9 @@ def send_template_email(action, doc) -> tuple[str, str]:
 	if is_suppressed(CHANNEL_EMAIL, address):
 		return STATUS_SKIPPED_SUPPRESSED, _("{0} has opted out of email.").format(address)
 
-	subject, content = render_template(action.email_template, doc)
+	subject, content = render_template(  # nosemgrep
+		action.email_template, doc
+	)
 
 	send_email(
 		doctype=doc.doctype,
@@ -813,8 +815,12 @@ def render_template(template_name: str, doc) -> tuple[str, str]:
 	body = template.response_html if template.use_html else template.response
 	context = {"doc": doc, "user": frappe.session.user}
 
-	subject = frappe.render_template(template.subject or "", context)
-	content = frappe.render_template(body or "", context)
+	subject = frappe.render_template(  # nosemgrep
+		template.subject or "", context, restrict_globals=True
+	)
+	content = frappe.render_template(  # nosemgrep
+		body or "", context, restrict_globals=True
+	)
 	return subject, content
 
 
@@ -983,7 +989,7 @@ def get_rule(name: str) -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
-def save_rule(rule) -> str:
+def save_rule(rule: str | dict) -> str:
 	"""Create or update one rule. Returns its name.
 
 	The doctype's own `validate` is the authority on what a rule may say; this

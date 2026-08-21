@@ -150,7 +150,7 @@ class TestTagWrites(TagsTestCase):
 	def test_the_column_holds_the_frappe_format(self):
 		tags.add_tag(LEAD_DOCTYPE, self.lead.name, "VIP")
 		stored = frappe.db.get_value(LEAD_DOCTYPE, self.lead.name, "_user_tags")
-		self.assertEqual(stored, ",VIP")
+		self.assertEqual(stored, "VIP")
 
 
 # --- the allowlist ---------------------------------------------------------
@@ -257,8 +257,8 @@ class TestPermissions(TagsTestCase):
 		for method in (tags.add_tag, tags.remove_tag):
 			self.assertIn(method, frappe.whitelisted, msg=f"{method.__name__} must be whitelisted")
 			self.assertEqual(
-				frappe.allowed_http_methods_for_whitelisted_func[method],
-				["POST"],
+				tuple(frappe.allowed_http_methods_for_whitelisted_func[method]),
+				("POST",),
 				msg=f"{method.__name__} must be POST only",
 			)
 

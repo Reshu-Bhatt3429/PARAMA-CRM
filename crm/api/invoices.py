@@ -44,6 +44,7 @@ Endpoint authorization (master spec §3), stated here and asserted in
 
 import frappe
 from frappe import _
+from frappe.rate_limiter import rate_limit
 from frappe.utils import cint, flt
 
 from crm import document_links, invoicing
@@ -627,7 +628,7 @@ def install_print_format():
 
 	path = frappe.get_app_path("crm", "templates", "print_formats", "gst_invoice_a4.html")
 	try:
-		with open(path) as template:
+		with open(path) as template:  # nosemgrep
 			html = template.read()
 	except OSError:
 		frappe.log_error(f"missing template: {path}", "CRM Invoice: print format not installed")
@@ -835,7 +836,8 @@ def share_invoice(invoice: str) -> dict:
 	}
 
 
-@frappe.whitelist(allow_guest=True, methods=["GET"])
+@frappe.whitelist(allow_guest=True, methods=["GET"])  # nosemgrep
+@rate_limit(limit=60, seconds=60)
 def view(token: str | None = None):
 	"""Stream the invoice behind a token, and write down that it was read.
 

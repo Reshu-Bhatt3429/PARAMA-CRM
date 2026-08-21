@@ -1,8 +1,7 @@
-# import frappe
-from frappe.email.doctype.email_template.email_template import EmailTemplate
+from frappe.model.base_document import BaseDocument
 
 
-class CustomEmailTemplate(EmailTemplate):
+class CustomEmailTemplate(BaseDocument):
 	@staticmethod
 	def default_list_data():
 		columns = [

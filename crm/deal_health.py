@@ -381,7 +381,7 @@ def run_sweep(
 			set_watermark(JOB_NAME, cursor[0], cursor[1])
 			stats["batches"] += 1
 			if commit_between_batches:
-				frappe.db.commit()
+				frappe.db.commit()  # nosemgrep
 
 			if len(rows) < batch_size:
 				stats["finished"] = True

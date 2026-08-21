@@ -191,7 +191,7 @@ def get_field_obj(field):
 	return field
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def save_fields_layout(doctype: str, type: str, layout: str):
 	if not frappe.has_permission("CRM Fields Layout", "write"):
 		frappe.throw(_("Not permitted to modify fields layout"), frappe.PermissionError)

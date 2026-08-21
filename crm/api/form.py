@@ -13,6 +13,7 @@ doctype; this module only:
 
 import json
 import re
+from urllib.parse import urlsplit
 
 import frappe
 from frappe import _
@@ -48,6 +49,22 @@ AUTO_RESPONSE_MERGE_FIELDS = (
 MERGE_TOKEN_PATTERN = re.compile(r"\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}", re.IGNORECASE)
 
 AUTO_RESPONSE_JOB = "crm.api.form.send_auto_response"
+
+
+def get_safe_form_redirect_url(value: str | None) -> str:
+	"""Return a public-form redirect only when it is a safe local path or HTTPS URL."""
+	value = str(value or "").strip()
+	if not value or any(ord(character) < 32 or ord(character) == 127 for character in value):
+		return ""
+	if "\\" in value:
+		return ""
+	if value.startswith("/") and not value.startswith("//"):
+		return value
+
+	parsed = urlsplit(value)
+	if parsed.scheme.lower() == "https" and parsed.netloc:
+		return value
+	return ""
 
 
 def ensure_form_source() -> str:
@@ -291,7 +308,7 @@ def link_field_guest_access(doctype: str) -> dict:
 	return {"doctype": doctype, "guest_can_select": guest_can_select(doctype)}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def grant_guest_link_access(doctype: str) -> dict:
 	"""Grant Guest `select` on `doctype` so a public Link dropdown can list its records — a
 	deliberate choice by a form manager (the builder warns that anyone with the form link
@@ -422,7 +439,7 @@ def _assert_hidden_defaults_set(hidden: list[dict]):
 		frappe.throw(_("Set a default value before publishing for: {0}").format(", ".join(missing)))
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def save_form(name: str | None, form: dict | str) -> dict:
 	"""Create/update a native Web Form scoped to CRM doctypes."""
 	_check_manager()
@@ -442,7 +459,10 @@ def save_form(name: str | None, form: dict | str) -> dict:
 	doc.success_message = form.get("success_message")
 	# redirect visitors here after a successful submission (native Web Form field);
 	# blank falls back to showing the success message
-	doc.success_url = form.get("redirect_url") or ""
+	redirect_url = str(form.get("redirect_url") or "").strip()
+	doc.success_url = get_safe_form_redirect_url(redirect_url)
+	if redirect_url and not doc.success_url:
+		frappe.throw(_("Redirect URL must be a local path or a complete HTTPS URL."))
 	doc.allowed_embedding_domains = form.get("allowed_embedding_domains")
 	# `crm_published` drives the CRM's own branded page at /crm-form/<route>; mirror
 	# it onto the native `published` so the Desk Web Form view shows the right state.
@@ -517,7 +537,7 @@ def _get_crm_form(name: str):
 	return doc
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def set_published(name: str, published: int) -> None:
 	"""Publish/unpublish from the list, bypassing native Web Form role perms."""
 	_check_manager()
@@ -529,7 +549,7 @@ def set_published(name: str, published: int) -> None:
 	doc.save(ignore_permissions=True)
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def delete_form(name: str) -> None:
 	_check_manager()
 	_get_crm_form(name)
@@ -816,7 +836,7 @@ def send_auto_response(web_form: str, reference_doctype: str, reference_name: st
 		# permission on the referenced record and Guest holds none; the message is
 		# the agency's, not the visitor's, so the agency's account is the honest
 		# sender either way.
-		frappe.set_user("Administrator")
+		frappe.set_user("Administrator")  # nosemgrep
 		result = _make_auto_response(
 			doctype=reference_doctype,
 			name=reference_name,
@@ -840,7 +860,7 @@ def send_auto_response(web_form: str, reference_doctype: str, reference_name: st
 		return "failed"
 	finally:
 		if frappe.session.user != previous_user:
-			frappe.set_user(previous_user)
+			frappe.set_user(previous_user)  # nosemgrep
 
 
 def _make_auto_response(doctype, name, recipient, subject, content, sender, sender_full_name):

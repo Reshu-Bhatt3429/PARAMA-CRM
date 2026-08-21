@@ -11,9 +11,9 @@
             :class="{ border: !isImage(attachment.file_type) }"
           >
             <img
-              v-if="isImage(attachment.file_type)"
+              v-if="isImage(attachment.file_type) && attachmentUrl(attachment)"
               class="size-full object-cover"
-              :src="attachment.file_url"
+              :src="attachmentUrl(attachment)"
               :alt="attachment.file_name"
             />
             <component
@@ -80,6 +80,7 @@ import { globalStore } from '@/stores/global'
 import { call } from 'frappe-ui'
 import TimelineTimestamp from '@/components/Activities/TimelineTimestamp.vue'
 import { convertSize, isImage } from '@/utils'
+import { getSafeHttpUrl, openSafeUrl } from '@/utils/safeUrl'
 
 defineProps({
   attachments: { type: Array, default: () => [] },
@@ -90,7 +91,11 @@ const emit = defineEmits(['reload'])
 const { $dialog } = globalStore()
 
 function openFile(attachment) {
-  window.open(attachment.file_url, '_blank')
+  openSafeUrl(attachment.file_url)
+}
+
+function attachmentUrl(attachment) {
+  return getSafeHttpUrl(attachment?.file_url)
 }
 
 function togglePrivate(fileName, isPrivate) {

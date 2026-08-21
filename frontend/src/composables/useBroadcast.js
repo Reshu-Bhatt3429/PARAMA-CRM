@@ -1,19 +1,44 @@
 import { onMounted, onUnmounted } from 'vue'
 
 const STORAGE_KEY = 'app_broadcasts'
+const MAX_BROADCASTS = 100
+
+function readBroadcasts() {
+  try {
+    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+    return Array.isArray(value) ? value.slice(-MAX_BROADCASTS) : []
+  } catch {
+    localStorage.removeItem(STORAGE_KEY)
+    return []
+  }
+}
+
+function writeBroadcasts(broadcasts) {
+  try {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(broadcasts.slice(-MAX_BROADCASTS)),
+    )
+  } catch (error) {
+    console.warn('[crm] Could not persist an in-app broadcast.', error)
+  }
+}
+
 const bus = {
   send(event, payload) {
     window.dispatchEvent(new CustomEvent(event, { detail: payload }))
 
-    const broadcasts = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+    const broadcasts = readBroadcasts()
     broadcasts.push({ event, payload, timestamp: Date.now() })
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(broadcasts))
+    writeBroadcasts(broadcasts)
   },
   on(event, handler) {
-    window.addEventListener(event, (e) => handler(e.detail))
+    const listener = (e) => handler(e.detail)
+    window.addEventListener(event, listener)
+    return listener
   },
-  off(event, handler) {
-    window.removeEventListener(event, handler)
+  off(event, listener) {
+    window.removeEventListener(event, listener)
   },
 }
 
@@ -21,24 +46,24 @@ export function useBroadcast() {
   const listeners = []
 
   function on(event, handler) {
-    bus.on(event, handler)
-    listeners.push({ event, handler })
+    const listener = bus.on(event, handler)
+    listeners.push({ event, listener })
 
     // check localStorage for missed broadcasts on init
     onMounted(() => {
-      const broadcasts = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+      const broadcasts = readBroadcasts()
       const missed = broadcasts.filter((b) => b.event === event)
       if (missed.length) {
         missed.forEach((b) => handler(b.payload))
         // clear handled broadcasts
         const remaining = broadcasts.filter((b) => b.event !== event)
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(remaining))
+        writeBroadcasts(remaining)
       }
     })
   }
 
   onUnmounted(() => {
-    listeners.forEach(({ event, handler }) => bus.off(event, handler))
+    listeners.forEach(({ event, listener }) => bus.off(event, listener))
   })
 
   return { on, send: bus.send }

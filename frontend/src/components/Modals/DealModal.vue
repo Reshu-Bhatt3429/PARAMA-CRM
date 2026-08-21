@@ -242,7 +242,6 @@ async function createDeal() {
   createResource({
     url: 'crm.fcrm.doctype.crm_deal.crm_deal.create_deal',
     params: { doc: deal.doc },
-    auto: true,
     validate() {
       error.value = null
       if (deal.doc.annual_revenue) {
@@ -284,7 +283,7 @@ async function createDeal() {
       }
       error.value = err.messages.join('\n')
     },
-  })
+  }).submit()
 }
 
 function openQuickEntryModal() {

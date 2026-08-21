@@ -139,7 +139,7 @@ class FacebookSyncSource:
 			raise DuplicateLeadError
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def fetch_and_store_pages_from_facebook(access_token: str) -> list[dict]:
 	frappe.only_for(["System Manager", "Sales Manager"], True)
 
@@ -179,7 +179,6 @@ def create_facebook_page_in_db(page: dict, account_details: dict) -> None:
 			"page_name": page["name"],
 			"id": page["id"],
 			"category": page["category"],
-			"access_token": page["access_token"],
 			"account_id": account_details["id"],
 		}
 	).insert(ignore_permissions=True)

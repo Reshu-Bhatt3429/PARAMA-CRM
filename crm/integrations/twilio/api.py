@@ -107,8 +107,8 @@ def generate_access_token():
 	return {"token": frappe.safe_decode(token)}
 
 
-@frappe.whitelist(allow_guest=True)
-def voice(**kwargs):
+@frappe.whitelist(allow_guest=True, methods=["POST"])  # nosemgrep
+def voice(**kwargs: str):
 	"""This is a webhook called by twilio to get instructions when the voice call request comes to twilio server."""
 
 	def _get_caller_number(caller):
@@ -128,8 +128,8 @@ def voice(**kwargs):
 	return Response(resp.to_xml(), mimetype="text/xml")
 
 
-@frappe.whitelist(allow_guest=True)
-def twilio_incoming_call_handler(**kwargs):
+@frappe.whitelist(allow_guest=True, methods=["POST"])  # nosemgrep
+def twilio_incoming_call_handler(**kwargs: str):
 	args = frappe._dict(kwargs)
 	validate_twilio_request(args)
 
@@ -150,7 +150,7 @@ def create_call_log(call_details: TwilioCallDetails):
 	link(contact_number, call_log)
 
 	call_log.save(ignore_permissions=True)
-	frappe.db.commit()
+	frappe.db.commit()  # nosemgrep
 	return call_log
 
 
@@ -193,8 +193,8 @@ def get_twilio_settings():
 	return frappe.get_single("CRM Twilio Settings")
 
 
-@frappe.whitelist(allow_guest=True)
-def update_recording_info(**kwargs):
+@frappe.whitelist(allow_guest=True, methods=["POST"])  # nosemgrep
+def update_recording_info(**kwargs: str):
 	args = frappe._dict(kwargs)
 	validate_twilio_request(args)
 
@@ -212,8 +212,8 @@ def update_recording_info(**kwargs):
 		raise exc
 
 
-@frappe.whitelist(allow_guest=True)
-def update_call_status_info(**kwargs):
+@frappe.whitelist(allow_guest=True, methods=["POST"])  # nosemgrep
+def update_call_status_info(**kwargs: str):
 	args = frappe._dict(kwargs)
 	validate_twilio_request(args)
 

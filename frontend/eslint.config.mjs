@@ -7,7 +7,12 @@ import globals from 'globals'
 
 export default [
   {
-    ignores: ['**/dist/**', '**/node_modules/**', '**/public/dist/**'],
+    ignores: [
+      '**/dist/**',
+      '**/dev-dist/**',
+      '**/node_modules/**',
+      '**/public/dist/**',
+    ],
   },
   js.configs.recommended,
   ...ts.configs.recommended,
@@ -30,13 +35,27 @@ export default [
     },
   },
   {
+    files: ['tests/**/*.js', 'tests/**/*.ts'],
+    languageOptions: {
+      globals: globals.vitest,
+    },
+  },
+  {
     rules: {
       'vue/multi-word-component-names': 'off',
       'vue/prop-name-casing': 'off',
       'vue/attribute-hyphenation': 'off',
       'vue/v-on-event-hyphenation': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': 'warn',
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          caughtErrors: 'none',
+          ignoreRestSiblings: true,
+          varsIgnorePattern: '^_',
+        },
+      ],
       'no-undef': 'error',
     },
   },

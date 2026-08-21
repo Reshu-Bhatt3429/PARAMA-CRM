@@ -63,7 +63,7 @@ def get_linked_deals(contact: str):
 	return deals
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def create_new(contact: str, field: str, value: str):
 	"""Create new email or phone for a contact"""
 	if not frappe.has_permission("Contact", "write", contact):
@@ -84,7 +84,7 @@ def create_new(contact: str, field: str, value: str):
 	return True
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def set_as_primary(contact: str, field: str, value: str):
 	"""Set email or phone as primary for a contact"""
 	if not frappe.has_permission("Contact", "write", contact):

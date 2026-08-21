@@ -183,6 +183,7 @@ import {
   toast,
 } from 'frappe-ui'
 import { ref, watch } from 'vue'
+import { openSafeUrl } from '@/utils/safeUrl'
 
 const props = defineProps({
   deal: { type: String, required: true },
@@ -220,7 +221,9 @@ async function download() {
     })
     // The file is PRIVATE and the agent is logged in, so the ordinary file URL
     // is the right way to hand it over. Only the CUSTOMER gets a token.
-    window.open(result.file_url, '_blank')
+    if (!openSafeUrl(result.file_url)) {
+      throw new Error(__('The server returned an invalid PDF URL.'))
+    }
     emit('sent')
   } catch (error) {
     toast.error(error?.messages?.[0] || __('Could not build the quote'))

@@ -26,6 +26,8 @@ because this route does not accept POST. See
 `demo-package/specs/stage5-1-notes.md`.
 """
 
+import secrets
+
 import frappe
 
 from crm.sequences import unsubscribe
@@ -36,6 +38,16 @@ no_cache = 1
 def get_context(context):
 	"""Answer one click. Never raises: an unauthenticated visitor gets a page."""
 	context.no_cache = 1
+	context.csp_nonce = secrets.token_urlsafe(24)
+	frappe.local.response_headers["Content-Security-Policy"] = "; ".join(
+		(
+			"default-src 'none'",
+			f"style-src 'nonce-{context.csp_nonce}'",
+			"base-uri 'none'",
+			"form-action 'none'",
+			"frame-ancestors 'none'",
+		)
+	)
 
 	token = frappe.form_dict.get("token")
 	outcome = unsubscribe.handle(token)

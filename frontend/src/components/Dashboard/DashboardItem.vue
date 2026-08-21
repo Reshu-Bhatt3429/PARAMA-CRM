@@ -24,13 +24,13 @@
       v-else-if="item.type == 'axis_chart'"
       class="h-full w-full rounded-md bg-surface-base shadow"
     >
-      <AxisChart v-if="item.data" :config="item.data" />
+      <SafeAxisChart v-if="item.data" :config="item.data" />
     </div>
     <div
       v-else-if="item.type == 'donut_chart'"
       class="h-full w-full rounded-md bg-surface-base shadow overflow-hidden"
     >
-      <DonutChart v-if="item.data" :config="item.data" />
+      <SafeDonutChart v-if="item.data" :config="item.data" />
     </div>
     <!-- Target meter (master spec §5, item 7). Its own type because frappe-ui
          has no progress primitive, and UX §2.8 forbids the gauge that would
@@ -45,7 +45,15 @@
 </template>
 <script setup>
 import TargetMeter from '@/components/Dashboard/TargetMeter.vue'
-import { AxisChart, DonutChart, NumberChart, Tooltip } from 'frappe-ui'
+import { NumberChart, Tooltip } from 'frappe-ui'
+import { defineAsyncComponent } from 'vue'
+
+const SafeAxisChart = defineAsyncComponent(
+  () => import('@/components/Dashboard/SafeAxisChart.vue'),
+)
+const SafeDonutChart = defineAsyncComponent(
+  () => import('@/components/Dashboard/SafeDonutChart.vue'),
+)
 
 defineProps({
   index: { type: Number, required: true },

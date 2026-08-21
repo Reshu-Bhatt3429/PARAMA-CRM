@@ -1034,7 +1034,7 @@ def validate_recipient(reference_doc, to: str):
 		)
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def create_whatsapp_message(
 	reference_doctype: str,
 	reference_name: str,
@@ -1080,7 +1080,7 @@ def create_whatsapp_message(
 	return doc.name
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def send_whatsapp_template(reference_doctype: str, reference_name: str, template: str, to: str):
 	# Same contract as create_whatsapp_message: a template send is outbound, so it
 	# needs write access, and it may only go to a number the reference holds.
@@ -1103,7 +1103,7 @@ def send_whatsapp_template(reference_doctype: str, reference_name: str, template
 	return doc.name
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def react_on_whatsapp_message(emoji: str, reply_to_name: str):
 	validate_access()
 	if not frappe.db.exists("WhatsApp Message", reply_to_name):

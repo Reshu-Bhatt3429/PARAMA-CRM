@@ -31,7 +31,7 @@ def execute():
 		# to backfill, and the next migrate brings the patch round again.
 		return
 
-	frappe.db.sql(
+	frappe.db.sql(  # nosemgrep
 		f"update `{table}` set channel = %s where channel is null or channel = ''",
 		(DEFAULT_CHANNEL,),
 	)

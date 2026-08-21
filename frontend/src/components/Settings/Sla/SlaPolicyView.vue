@@ -143,7 +143,13 @@
               >
                 <span class="text-p-sm">
                   Conditions for this SLA were created from
-                  <a :href="deskUrl" target="_blank" class="underline">desk</a>
+                  <a
+                    :href="deskUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="underline"
+                    >desk</a
+                  >
                   which are not compatible with this UI, you will need to
                   recreate the conditions here if you want to manage and add new
                   conditions from this UI.

@@ -81,7 +81,7 @@
   {
    "depends_on": "enabled",
    "fieldname": "webhook_verify_token",
-   "fieldtype": "Data",
+   "fieldtype": "Password",
    "label": "Webhook Verify Token",
    "mandatory_depends_on": "enabled"
   },

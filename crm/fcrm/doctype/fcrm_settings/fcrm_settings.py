@@ -43,11 +43,11 @@ class FCRMSettings(Document):
 		update_timestamp_on_new_communication: DF.Check
 	# end: auto-generated types
 
-	@frappe.whitelist()
+	@frappe.whitelist(methods=["POST"])
 	def restore_defaults(self, force: bool = False):
 		after_install(force)
 
-	@frappe.whitelist()
+	@frappe.whitelist(methods=["POST"])
 	def restore_demo_data(self):
 		create_demo_data()
 

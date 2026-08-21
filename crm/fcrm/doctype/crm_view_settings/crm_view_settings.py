@@ -43,7 +43,7 @@ class CRMViewSettings(Document):
 	pass
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def create(view: dict):
 	view = frappe._dict(view)
 
@@ -84,7 +84,7 @@ def create(view: dict):
 	return doc
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def update(view: dict):
 	view = frappe._dict(view)
 
@@ -119,7 +119,7 @@ def update(view: dict):
 	return doc
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def delete(name: str | int):
 	if frappe.db.exists("CRM View Settings", name):
 		doc = frappe.get_doc("CRM View Settings", name)
@@ -127,7 +127,7 @@ def delete(name: str | int):
 		frappe.delete_doc("CRM View Settings", name)
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def public(name: str | int, value: bool | int):
 	if frappe.session.user != "Administrator" and "Sales Manager" not in frappe.get_roles():
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
@@ -140,7 +140,7 @@ def public(name: str | int, value: bool | int):
 	doc.save()
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def pin(name: str | int, value: bool | int):
 	doc = frappe.get_doc("CRM View Settings", name)
 	check_permission(doc)
@@ -197,7 +197,7 @@ def sync_default_columns(view):
 	return columns
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def set_as_default(name: str | int | None = None, type: str | None = None, doctype: str | None = None):
 	if name:
 		doc = frappe.get_doc("CRM View Settings", name)
@@ -216,7 +216,7 @@ def set_as_default(name: str | int | None = None, type: str | None = None, docty
 	)
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def create_or_update_standard_view(view: dict):
 	view = frappe._dict(view)
 
@@ -289,7 +289,7 @@ def create_or_update_standard_view(view: dict):
 	return doc
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def fetch_and_update_kanban_columns(name: str | int):
 	doc = frappe.get_doc("CRM View Settings", name)
 	check_permission(doc)

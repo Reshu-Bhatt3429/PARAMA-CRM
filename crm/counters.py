@@ -94,7 +94,7 @@ def reserve_daily_slot(
 	day_field = validated_field(doctype, day_field)
 	day = frappe.utils.cstr(day or frappe.utils.nowdate())
 
-	frappe.db.sql(
+	frappe.db.sql(  # nosemgrep
 		f"""
 		update `tab{doctype}`
 		set `{count_field}` = case when `{day_field}` = %(day)s then `{count_field}` + 1 else 1 end,

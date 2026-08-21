@@ -11,8 +11,11 @@
   />
 </template>
 <script setup>
-import DoctypeModal from '@/components/Modals/DoctypeModal.vue'
 import { useDoctypeModal } from '@/composables/doctypeModal'
+import { defineAsyncComponent } from 'vue'
 
 const doctypeModal = useDoctypeModal()
+const DoctypeModal = defineAsyncComponent(
+  () => import('@/components/Modals/DoctypeModal.vue'),
+)
 </script>

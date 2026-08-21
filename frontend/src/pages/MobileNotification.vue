@@ -13,7 +13,7 @@
         :tooltip="__('Mark all as read')"
         :label="__('Mark all as read')"
         :iconLeft="MarkAsDoneIcon"
-        @click="() => mark_as_read.reload()"
+        @click="() => mark_as_read.submit()"
       />
     </template>
   </LayoutHeader>

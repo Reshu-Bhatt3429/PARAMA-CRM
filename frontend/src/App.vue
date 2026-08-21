@@ -1,20 +1,17 @@
 <template>
   <FrappeUIProvider>
-    <NotPermitted v-if="$route.name === 'Not Permitted'" />
+    <router-view v-if="$route.name === 'Not Permitted'" />
     <router-view v-else-if="$route.name === 'Onboarding'" />
     <Layout v-else-if="session.isLoggedIn" class="isolate">
       <router-view :key="$route.fullPath" />
     </Layout>
     <Dialogs />
-    <DoctypeModals />
-    <EventNotificationPopup />
+    <DoctypeModals v-if="session.isLoggedIn" />
+    <EventNotificationPopup v-if="session.isLoggedIn" />
   </FrappeUIProvider>
 </template>
 
 <script setup>
-import NotPermitted from '@/pages/NotPermitted.vue'
-import EventNotificationPopup from '@/components/EventNotificationPopup.vue'
-import DoctypeModals from '@/components/Modals/DoctypeModals.vue'
 import { Dialogs } from '@/utils/dialogs'
 import { sessionStore } from '@/stores/session'
 import { FrappeUIProvider, setConfig, useTheme } from 'frappe-ui'
@@ -34,6 +31,12 @@ const MobileLayout = defineAsyncComponent(
 )
 const DesktopLayout = defineAsyncComponent(
   () => import('./components/Layouts/DesktopLayout.vue'),
+)
+const DoctypeModals = defineAsyncComponent(
+  () => import('@/components/Modals/DoctypeModals.vue'),
+)
+const EventNotificationPopup = defineAsyncComponent(
+  () => import('@/components/EventNotificationPopup.vue'),
 )
 const Layout = computed(() => {
   if (window.innerWidth < 640) {

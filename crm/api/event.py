@@ -323,13 +323,23 @@ def _send_email_notification(notification, event_start, before_value, interval):
 			return
 		time_remaining_text = _format_time_remaining(before_value, interval)
 
+		safe_subject = frappe.utils.escape_html(frappe.utils.cstr(notification.subject))
+		safe_description = frappe.utils.sanitize_html(
+			frappe.utils.cstr(notification.description), always_sanitize=True
+		)
+		description_html = (
+			f'<div style="margin: 10px 0; color: #666;">{safe_description}</div>'
+			if safe_description
+			else ""
+		)
+
 		message = f"""
 		<div style="font-family: Arial, sans-serif; max-width: 600px;">
 			<h2 style="color: #333;">Event Reminder</h2>
 			<p>This is a reminder for your upcoming event:</p>
 			<div style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #007bff; margin: 20px 0;">
-				<h3 style="margin: 0; color: #007bff;">{notification.subject}</h3>
-				{f'<p style="margin: 10px 0; color: #666;">{notification.description}</p>' if notification.description else ""}
+				<h3 style="margin: 0; color: #007bff;">{safe_subject}</h3>
+				{description_html}
 				<p style="margin: 5px 0;"><strong>Start Time:</strong> {event_start.strftime("%Y-%m-%d %H:%M:%S")}</p>
 				<p style="margin: 5px 0;"><strong>Time Remaining:</strong> {time_remaining_text}</p>
 			</div>
@@ -368,5 +378,19 @@ def _format_time_remaining(before_value, interval):
 
 
 def _send_system_notification(notification):
-	"""Send system notification for an event"""
-	frappe.publish_realtime("event_notification", notification)
+	"""Send an event only to enabled users who own or participate in it."""
+	recipients = {
+		frappe.utils.cstr(value).strip()
+		for value in [notification.get("owner"), *(notification.get("event_participants") or [])]
+		if frappe.utils.cstr(value).strip()
+	}
+	if not recipients:
+		return
+
+	users = frappe.get_all(
+		"User",
+		filters={"name": ["in", sorted(recipients)], "enabled": 1},
+		pluck="name",
+	)
+	for user in users:
+		frappe.publish_realtime("event_notification", notification, user=user)

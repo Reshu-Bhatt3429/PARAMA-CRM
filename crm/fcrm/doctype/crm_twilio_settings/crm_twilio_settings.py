@@ -27,7 +27,7 @@ class CRMTwilioSettings(Document):
 		twiml_sid: DF.Data | None
 	# end: auto-generated types
 
-	friendly_resource_name = "Frappe CRM"  # System creates TwiML app & API keys with this name.
+	friendly_resource_name = "PARAMA CRM"  # System creates TwiML app & API keys with this name.
 
 	def validate(self):
 		old_account_sid = frappe.db.get_single_value("CRM Twilio Settings", "account_sid")
@@ -109,7 +109,7 @@ class CRMTwilioSettings(Document):
 		)
 		return application
 
-	@frappe.whitelist()
+	@frappe.whitelist(methods=["POST"])
 	def fetch_applications(self):
 		twilio = self.validate_twilio_account()
 

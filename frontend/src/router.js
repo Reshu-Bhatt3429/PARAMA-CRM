@@ -338,6 +338,7 @@ router.beforeEach(async (to, from, next) => {
     }
   } else if (!isLoggedIn) {
     window.location.href = '/login?redirect-to=/crm'
+    return next(false)
   } else if (to.matched.length === 0) {
     next({ name: 'Invalid Page' })
   } else if (['Deal', 'Lead'].includes(to.name) && !to.hash) {

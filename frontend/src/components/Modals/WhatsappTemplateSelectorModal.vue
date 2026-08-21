@@ -70,6 +70,7 @@
 <script setup>
 import { TextEditor, createListResource } from 'frappe-ui'
 import { ref, computed, nextTick, watch } from 'vue'
+import { openSafeUrl } from '@/utils/safeUrl'
 
 const props = defineProps({
   doctype: { type: String, default: '' },
@@ -117,7 +118,7 @@ const filteredTemplates = computed(() => {
 
 function newWhatsappTemplate() {
   show.value = false
-  window.open('/app/whatsapp-templates/new')
+  openSafeUrl('/app/whatsapp-templates/new')
 }
 
 watch(show, (value) => value && nextTick(() => searchInput.value?.el?.focus()))

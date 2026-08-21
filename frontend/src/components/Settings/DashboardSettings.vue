@@ -147,6 +147,7 @@
               class="hover:underline text-ink-gray-7"
               :href="providerMeta.docsUrl"
               target="_blank"
+              rel="noopener noreferrer"
             >
               {{ __(providerMeta.docsLabel) }}
             </a>

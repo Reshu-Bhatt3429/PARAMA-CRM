@@ -138,7 +138,6 @@
 </template>
 
 <script setup lang="ts">
-import AddChartModal from '@/components/Dashboard/AddChartModal.vue'
 import LucideRefreshCcw from '~icons/lucide/refresh-ccw'
 import LucideUndo2 from '~icons/lucide/undo-2'
 import LucidePenLine from '~icons/lucide/pen-line'
@@ -158,7 +157,11 @@ import {
   Dropdown,
   Tooltip,
 } from 'frappe-ui'
-import { ref, reactive, computed, provide } from 'vue'
+import { ref, reactive, computed, defineAsyncComponent, provide } from 'vue'
+
+const AddChartModal = defineAsyncComponent(
+  () => import('@/components/Dashboard/AddChartModal.vue'),
+)
 
 const { users, getUser, isManager, isAdmin } = usersStore()
 
@@ -300,12 +303,11 @@ function save() {
 function resetToDefault() {
   createResource({
     url: 'crm.api.dashboard.reset_to_default',
-    auto: true,
     onSuccess: () => {
       dashboardItems.reload()
       editing.value = false
     },
-  })
+  }).submit()
 }
 
 usePageMeta(() => {

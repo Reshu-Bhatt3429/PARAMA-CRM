@@ -1,10 +1,25 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Local-dev variant of init.sh: installs the CRM app from the mounted local
 # repo (/workspace/app) instead of cloning frappe/crm from GitHub, so local
 # commits are what gets installed. Re-runs reuse the existing bench.
 
-set -e
+set -Eeuo pipefail
+
+read_secret() {
+    local secret_path="$1"
+    if [[ ! -s "${secret_path}" ]]; then
+        echo "FATAL: required Docker secret ${secret_path} is missing or empty." >&2
+        exit 1
+    fi
+    tr -d '\r\n' < "${secret_path}"
+}
+
+mariadb_root_password="$(read_secret /run/secrets/mariadb_root_password)"
+crm_admin_password="$(read_secret /run/secrets/crm_admin_password)"
+frappe_branch="${FRAPPE_BRANCH:-develop}"
+frappe_commit="${FRAPPE_COMMIT:-c30e0e6de2ca93bb8fc603f84a496d4d0e02ddf5}"
+frappe_whatsapp_commit="${FRAPPE_WHATSAPP_COMMIT:-08bc1f6af2e36022d7a5f77641c8ba2ef8c16aaa}"
 
 if [ -d "/home/frappe/frappe-bench/apps/frappe" ]; then
     echo "Bench already exists, skipping init"
@@ -35,9 +50,17 @@ fi
 
 echo "Creating new bench..."
 
-bench init --skip-redis-config-generation frappe-bench --version version-15
+bench init --skip-redis-config-generation frappe-bench --version "${frappe_branch}"
 
 cd frappe-bench
+
+
+# Frappe 17 currently lives on the develop branch. Detach at the tested commit
+# so rebuilding this developer stack stays reproducible.
+git -C apps/frappe fetch --depth 1 origin "${frappe_commit}"
+git -C apps/frappe checkout --detach "${frappe_commit}"
+bench setup requirements frappe
+bench build --app frappe
 
 # Keep apps importable while bench installs editable packages. This is needed
 # with the Python/uv combination used by the current frappe/bench image.
@@ -53,18 +76,22 @@ bench set-redis-socketio-host redis://redis:6379
 sed -i '/redis/d' ./Procfile
 sed -i '/watch/d' ./Procfile
 
-# Install the local fork (clones committed state of the mounted repo)
-bench get-app /workspace/app
-# Unpinned: this tracks whatever frappe_whatsapp's default branch holds today.
-# Add --branch <tag-or-branch> to pin it before using this on a client box.
-bench get-app https://github.com/shridarpatil/frappe_whatsapp.git
+# Soft-link the mounted worktree so the developer stack runs the exact local
+# files, including deliberate uncommitted changes under active development.
+bench get-app --soft-link /workspace/app
+bench setup requirements crm
+bench build --app crm
+# The tested companion-app commit is detached after cloning for reproducibility.
+bench get-app --branch master https://github.com/shridarpatil/frappe_whatsapp.git
+git -C apps/frappe_whatsapp fetch --depth 1 origin "${frappe_whatsapp_commit}"
+git -C apps/frappe_whatsapp checkout --detach "${frappe_whatsapp_commit}"
+bench setup requirements frappe_whatsapp
+bench build --app frappe_whatsapp
 
-# Set ADMIN_PASSWORD in the environment before running this on any box someone
-# else can reach. The fallback below is a demo-only credential.
 bench new-site crm.localhost \
     --force \
-    --mariadb-root-password 123 \
-    --admin-password "${ADMIN_PASSWORD:-admin}" \
+    --mariadb-root-password "${mariadb_root_password}" \
+    --admin-password "${crm_admin_password}" \
     --no-mariadb-socket
 
 bench --site crm.localhost install-app crm
@@ -77,4 +104,4 @@ bench --site crm.localhost set-config server_script_enabled 0
 bench --site crm.localhost clear-cache
 bench use crm.localhost
 
-bench start
+exec bench start

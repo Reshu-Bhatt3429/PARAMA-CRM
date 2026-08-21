@@ -27,7 +27,9 @@ class CRMInvitation(Document):
 	def before_insert(self):
 		frappe.utils.validate_email_address(self.email, True)
 
-		self.key = frappe.generate_hash(length=12)
+		# The key is the invitation's bearer credential. 32 hexadecimal characters
+		# provide 128 bits of entropy while still fitting comfortably in an email URL.
+		self.key = frappe.generate_hash(length=32)
 		self.invited_by = frappe.session.user
 		self.status = "Pending"
 
@@ -35,7 +37,7 @@ class CRMInvitation(Document):
 		self.invite_via_email()
 
 	def invite_via_email(self):
-		invite_link = frappe.utils.get_url(f"/api/method/crm.api.accept_invitation?key={self.key}")
+		invite_link = frappe.utils.get_url(f"/accept-invitation?key={self.key}")
 		if frappe.local.dev_server:
 			print(f"Invite link for {self.email}: {invite_link}")  # nosemgrep
 
@@ -51,7 +53,7 @@ class CRMInvitation(Document):
 		)
 		self.db_set("email_sent_at", frappe.utils.now())
 
-	@frappe.whitelist()
+	@frappe.whitelist(methods=["POST"])
 	def accept_invitation(self):
 		frappe.only_for(["System Manager", "Sales Manager"], True)
 		if self.accept():
